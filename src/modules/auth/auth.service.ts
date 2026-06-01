@@ -115,11 +115,36 @@ async function assertResendAllowed(phone: string, isResend: boolean): Promise<vo
   }
 }
 
+/** Prisma MongoDB: unset optional fields are not matched by `usedAt: null` alone. */
+function whereAuthCodeUnused() {
+  return { OR: [{ usedAt: null }, { usedAt: { isSet: false } }] };
+}
+
 async function invalidatePreviousCodes(phone: string, purpose: AuthCodePurpose): Promise<void> {
   await prisma.authCode.updateMany({
-    where: { phone, purpose, usedAt: null, expiresAt: { gt: new Date() } },
+    where: { phone, purpose, expiresAt: { gt: new Date() }, ...whereAuthCodeUnused() },
     data: { usedAt: new Date() },
   });
+}
+
+async function resolveSendCodePurpose(
+  e164: string,
+  requestedPurpose: AuthCodePurpose,
+): Promise<{ purpose: AuthCodePurpose; accountExists?: boolean }> {
+  if (requestedPurpose !== 'login') {
+    return { purpose: requestedPurpose };
+  }
+
+  const existingUser = await prisma.user.findUnique({ where: { phone: e164 } });
+  if (!existingUser) {
+    return { purpose: 'register', accountExists: false };
+  }
+
+  if (existingUser.accountStatus !== 'active') {
+    throw new AppError(403, AUTH_ERROR_CODES.UNAUTHORIZED, 'Esta cuenta no está activa');
+  }
+
+  return { purpose: 'login', accountExists: true };
 }
 
 async function createAndSendOtp(
@@ -134,16 +159,8 @@ async function createAndSendOtp(
 
   const existingUser = await prisma.user.findUnique({ where: { phone: e164 } });
 
-  if (purpose === 'login' && !existingUser) {
-    throw new AppError(404, AUTH_ERROR_CODES.USER_NOT_FOUND, 'No encontramos una cuenta con este número');
-  }
-
   if (purpose === 'register' && existingUser) {
     throw new AppError(409, AUTH_ERROR_CODES.USER_EXISTS, 'Ya existe una cuenta con este número');
-  }
-
-  if (purpose === 'login' && existingUser?.accountStatus !== 'active') {
-    throw new AppError(403, AUTH_ERROR_CODES.UNAUTHORIZED, 'Esta cuenta no está activa');
   }
 
   const country = await prisma.country.findUnique({ where: { code: countryCode } });
@@ -214,7 +231,7 @@ async function verifyOtpCode(
     where: {
       phone: e164,
       purpose,
-      usedAt: null,
+      ...whereAuthCodeUnused(),
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -258,11 +275,16 @@ async function verifyOtpCode(
 export const authService = {
   async sendCode(input: SendCodeInput, context?: OtpContext) {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
-    const result = await createAndSendOtp(e164, countryCode, input.purpose, context, false);
+    const { purpose, accountExists } = await resolveSendCodePurpose(e164, input.purpose);
+    const result = await createAndSendOtp(e164, countryCode, purpose, context, false);
     return {
-      message: 'Código enviado por WhatsApp',
+      message:
+        accountExists === false
+          ? 'Código enviado por WhatsApp. Crea tu cuenta para continuar.'
+          : 'Código enviado por WhatsApp',
       phone: e164,
-      purpose: input.purpose,
+      purpose,
+      ...(accountExists !== undefined ? { account_exists: accountExists } : {}),
       channel: 'whatsapp' as const,
       ...result,
     };
@@ -270,11 +292,16 @@ export const authService = {
 
   async resendCode(input: SendCodeInput, context?: OtpContext) {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
-    const result = await createAndSendOtp(e164, countryCode, input.purpose, context, true);
+    const { purpose, accountExists } = await resolveSendCodePurpose(e164, input.purpose);
+    const result = await createAndSendOtp(e164, countryCode, purpose, context, true);
     return {
-      message: 'Código reenviado por WhatsApp',
+      message:
+        accountExists === false
+          ? 'Código reenviado por WhatsApp. Crea tu cuenta para continuar.'
+          : 'Código reenviado por WhatsApp',
       phone: e164,
-      purpose: input.purpose,
+      purpose,
+      ...(accountExists !== undefined ? { account_exists: accountExists } : {}),
       channel: 'whatsapp' as const,
       ...result,
     };

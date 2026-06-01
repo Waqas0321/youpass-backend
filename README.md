@@ -109,6 +109,15 @@ Build runs `prisma generate && tsc` automatically via `vercel-build` script.
 
 ---
 
+## WhatsApp OTP implementation
+
+See **[docs/WHATSAPP_OTP_IMPLEMENTATION.md](./docs/WHATSAPP_OTP_IMPLEMENTATION.md)** for:
+
+- Send / verify / resend API details and examples
+- Client integration flows (register, login)
+- WhatsApp mock vs production setup
+- MongoDB verify fix and production test results
+
 ## Auth API endpoints
 
 | Method | Endpoint | Auth | Description |
