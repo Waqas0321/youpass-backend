@@ -27,6 +27,12 @@ function buildOtpMessage(purpose: AuthCodePurpose, code: string): string {
   return messages[purpose];
 }
 
+function normalizeE164(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
+}
+
 class MockOtpDeliveryService implements OtpDeliveryService {
   constructor(private readonly channel: OtpDeliveryChannel) {}
 
@@ -56,10 +62,19 @@ class TwilioOtpDeliveryService implements OtpDeliveryService {
 
   private getFromAddress(): string {
     if (this.channel === 'whatsapp') {
-      const from = env.TWILIO_WHATSAPP_FROM.replace(/^whatsapp:/, '');
+      const from = normalizeE164(env.TWILIO_WHATSAPP_FROM.replace(/^whatsapp:/, ''));
+      if (!from) {
+        throw new Error(
+          'TWILIO_WHATSAPP_FROM is not set. Use your Twilio WhatsApp sandbox number, e.g. +14155238886',
+        );
+      }
       return `whatsapp:${from}`;
     }
-    return env.TWILIO_SMS_FROM;
+    const smsFrom = normalizeE164(env.TWILIO_SMS_FROM);
+    if (!smsFrom) {
+      throw new Error('TWILIO_SMS_FROM is not set');
+    }
+    return smsFrom;
   }
 
   private getToAddress(phone: string): string {
