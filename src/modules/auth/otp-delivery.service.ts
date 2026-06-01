@@ -70,6 +70,10 @@ class TwilioOtpDeliveryService implements OtpDeliveryService {
   }
 
   async sendOtp(params: OtpSendParams): Promise<void> {
+    if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) {
+      throw new Error('Twilio credentials missing: set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN');
+    }
+
     const body = buildOtpMessage(params.purpose, params.code);
     const url = `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`;
     const auth = Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');

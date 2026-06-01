@@ -223,12 +223,12 @@ async function createAndSendOtp(
     throw new AppError(
       502,
       AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
-      `Failed to send the code via ${otpChannelLabel(deliveryChannel)}`,
+      `Failed to send the code via ${otpChannelLabel(deliveryChannel)}. Try again later.`,
     );
   }
 
-  if (env.NODE_ENV === 'development') {
-    console.log(`[DEV OTP] ${e164} purpose=${purpose} code=${code}`);
+  if (env.TWILIO_MOCK || env.NODE_ENV === 'development') {
+    console.log(`[DEV OTP] ${e164} purpose=${purpose} code=${code} channel=${deliveryChannel}`);
   }
 
   return {
