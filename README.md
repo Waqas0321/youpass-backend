@@ -116,12 +116,9 @@ Build runs `prisma generate && tsc` automatically via `vercel-build` script.
 
 ## Twilio OTP implementation
 
-See **[docs/TWILIO_OTP_IMPLEMENTATION.md](./docs/TWILIO_OTP_IMPLEMENTATION.md)** for:
+See **[docs/TWILIO_OTP_IMPLEMENTATION.md](./docs/TWILIO_OTP_IMPLEMENTATION.md)** for backend Twilio setup.
 
-- Send / verify / resend API details and examples
-- Client integration flows (register, login)
-- Twilio SMS vs WhatsApp setup
-- MongoDB verify fix and production test results
+See **[docs/FLUTTER_IMPLEMENTATION.md](./docs/FLUTTER_IMPLEMENTATION.md)** for **Flutter app integration** (send-code, register, login, 6-digit OTP, error handling).
 
 ## Auth API endpoints
 
