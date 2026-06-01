@@ -155,6 +155,48 @@ async function resolveSendCodePurpose(
   return { purpose: 'login', accountExists: true };
 }
 
+function mapTwilioDeliveryError(err: unknown, channel: 'sms' | 'whatsapp'): AppError {
+  const raw = err instanceof Error ? err.message : String(err);
+
+  if (raw.includes('63038')) {
+    return new AppError(
+      429,
+      AUTH_ERROR_CODES.RATE_LIMITED,
+      'Daily WhatsApp message limit reached on Twilio trial. Try again tomorrow or upgrade your Twilio account.',
+    );
+  }
+
+  if (raw.includes('63015')) {
+    return new AppError(
+      400,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      'Join the Twilio WhatsApp sandbox from your phone, then try again.',
+    );
+  }
+
+  if (raw.includes('63007')) {
+    return new AppError(
+      502,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      'WhatsApp sender is not configured correctly. Check TWILIO_WHATSAPP_FROM in Vercel.',
+    );
+  }
+
+  if (raw.includes('21608') || raw.includes('21211')) {
+    return new AppError(
+      400,
+      AUTH_ERROR_CODES.INVALID_PHONE,
+      'This phone number is not verified for Twilio trial delivery.',
+    );
+  }
+
+  return new AppError(
+    502,
+    AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+    `Failed to send the code via ${otpChannelLabel(channel)}. Try again later.`,
+  );
+}
+
 async function createAndSendOtp(
   e164: string,
   countryCode: string,
@@ -220,11 +262,7 @@ async function createAndSendOtp(
     });
   } catch (err) {
     console.error('[OTP delivery failed]', err);
-    throw new AppError(
-      502,
-      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
-      `Failed to send the code via ${otpChannelLabel(deliveryChannel)}. Try again later.`,
-    );
+    throw mapTwilioDeliveryError(err, deliveryChannel);
   }
 
   if (env.TWILIO_MOCK || env.NODE_ENV === 'development') {
