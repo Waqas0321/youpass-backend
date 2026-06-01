@@ -9,7 +9,7 @@ async function main() {
   app.listen(env.PORT, () => {
     console.log(`YOUPASS API running on http://localhost:${env.PORT}${env.API_PREFIX}`);
     console.log(`Environment: ${env.NODE_ENV}`);
-    console.log(`WhatsApp mode: ${env.WHATSAPP_MOCK ? 'MOCK (OTP logged to console)' : 'LIVE'}`);
+    console.log(`OTP delivery: ${env.TWILIO_MOCK ? 'MOCK (logged to console)' : 'LIVE'} via ${env.OTP_DELIVERY_CHANNEL.toUpperCase()}`);
   });
 }
 

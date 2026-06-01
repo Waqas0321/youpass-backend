@@ -23,7 +23,7 @@ export const configService = {
       where: { code: countryCode.toUpperCase(), isActive: true },
     });
     if (!country) {
-      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'País no soportado');
+      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'Country not supported');
     }
     return {
       country_code: country.code,
@@ -38,7 +38,7 @@ export const configService = {
       where: { code: countryCode.toUpperCase(), isActive: true },
     });
     if (!country) {
-      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'País no soportado');
+      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'Country not supported');
     }
     return {
       country_code: country.code,
@@ -51,7 +51,7 @@ export const configService = {
       where: { code: countryCode.toUpperCase(), isActive: true },
     });
     if (!country) {
-      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'País no soportado');
+      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'Country not supported');
     }
     return {
       country_code: country.code,

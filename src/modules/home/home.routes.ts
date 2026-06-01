@@ -13,7 +13,7 @@ export const homeRouter = {
           { id: 'conciertos', name: 'Conciertos' },
           { id: 'bar', name: 'Bar' },
         ],
-        message: 'Feed inicial — conectar módulo de eventos',
+        message: 'Initial feed — connect events module',
       }),
     );
   },

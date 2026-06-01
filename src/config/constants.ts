@@ -1,4 +1,4 @@
-export const WHATSAPP_TEMPLATES = {
+export const OTP_PURPOSE_LABELS = {
   login: 'AUTH_LOGIN',
   register: 'AUTH_REGISTER',
   change_phone: 'AUTH_PHONE_CHANGE',
@@ -20,6 +20,7 @@ export const AUTH_ERROR_CODES = {
   MAX_RESENDS: 'MAX_RESENDS',
   UNAUTHORIZED: 'UNAUTHORIZED',
   SESSION_INVALID: 'SESSION_INVALID',
+  OTP_DELIVERY_FAILED: 'OTP_DELIVERY_FAILED',
 } as const;
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[keyof typeof AUTH_ERROR_CODES];

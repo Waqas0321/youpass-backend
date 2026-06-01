@@ -2,7 +2,7 @@ import type { AuthCodePurpose, User } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../common/errors/app-error.js';
-import { AUTH_ERROR_CODES, WHATSAPP_TEMPLATES } from '../../config/constants.js';
+import { AUTH_ERROR_CODES, OTP_PURPOSE_LABELS } from '../../config/constants.js';
 import {
   addMinutes,
   addSeconds,
@@ -17,7 +17,7 @@ import {
 } from '../../common/utils/crypto.js';
 import { formatPhoneDisplay, parseAndValidatePhone } from '../../common/utils/phone.js';
 import type { AuthRequestContext } from '../../common/types/auth.js';
-import { whatsappService } from './whatsapp.service.js';
+import { otpDeliveryService } from './otp-delivery.service.js';
 import { createSession, revokeSession } from './session.service.js';
 import type {
   ChangePhoneRequestInput,
@@ -29,6 +29,14 @@ import type {
 } from './auth.validators.js';
 
 type OtpContext = AuthRequestContext | undefined;
+
+function otpChannelLabel(channel: 'sms' | 'whatsapp'): string {
+  return channel === 'sms' ? 'SMS' : 'WhatsApp';
+}
+
+function sentViaForChannel(channel: 'sms' | 'whatsapp'): 'sms' | 'whatsapp' {
+  return channel;
+}
 
 async function getOrCreateRateLimit(phone: string) {
   return prisma.authRateLimit.upsert({
@@ -45,7 +53,7 @@ async function assertNotBlocked(phone: string): Promise<void> {
     throw new AppError(
       429,
       AUTH_ERROR_CODES.BLOCKED,
-      `Demasiados intentos. Espera ${minutes} minutos.`,
+      `Too many attempts. Please wait ${minutes} minute(s).`,
       { retry_after_seconds: secondsUntil(limit.blockedUntil) },
     );
   }
@@ -75,7 +83,7 @@ async function incrementFailedAttempt(phone: string): Promise<void> {
     throw new AppError(
       429,
       AUTH_ERROR_CODES.BLOCKED,
-      `Demasiados intentos fallidos. Espera ${env.OTP_BLOCK_MINUTES} minutos.`,
+      `Too many failed attempts. Please wait ${env.OTP_BLOCK_MINUTES} minute(s).`,
       { retry_after_seconds: env.OTP_BLOCK_MINUTES * 60 },
     );
   }
@@ -91,7 +99,7 @@ async function assertResendAllowed(phone: string, isResend: boolean): Promise<vo
       throw new AppError(
         429,
         AUTH_ERROR_CODES.RESEND_COOLDOWN,
-        `Reenviar código en ${secondsUntil(cooldownEnds)} segundos`,
+        `Resend code in ${secondsUntil(cooldownEnds)} second(s)`,
         { retry_after_seconds: secondsUntil(cooldownEnds) },
       );
     }
@@ -109,7 +117,7 @@ async function assertResendAllowed(phone: string, isResend: boolean): Promise<vo
     throw new AppError(
       429,
       AUTH_ERROR_CODES.MAX_RESENDS,
-      `Has alcanzado el máximo de reenvíos. Espera ${minutesUntil(resetAt)} minutos.`,
+      `Maximum resends reached. Please wait ${minutesUntil(resetAt)} minute(s).`,
       { retry_after_seconds: secondsUntil(resetAt) },
     );
   }
@@ -141,7 +149,7 @@ async function resolveSendCodePurpose(
   }
 
   if (existingUser.accountStatus !== 'active') {
-    throw new AppError(403, AUTH_ERROR_CODES.UNAUTHORIZED, 'Esta cuenta no está activa');
+    throw new AppError(403, AUTH_ERROR_CODES.UNAUTHORIZED, 'This account is not active');
   }
 
   return { purpose: 'login', accountExists: true };
@@ -160,7 +168,7 @@ async function createAndSendOtp(
   const existingUser = await prisma.user.findUnique({ where: { phone: e164 } });
 
   if (purpose === 'register' && existingUser) {
-    throw new AppError(409, AUTH_ERROR_CODES.USER_EXISTS, 'Ya existe una cuenta con este número');
+    throw new AppError(409, AUTH_ERROR_CODES.USER_EXISTS, 'An account with this phone number already exists');
   }
 
   const country = await prisma.country.findUnique({ where: { code: countryCode } });
@@ -170,6 +178,8 @@ async function createAndSendOtp(
 
   await invalidatePreviousCodes(e164, purpose);
 
+  const deliveryChannel = otpDeliveryService.getChannel();
+
   await prisma.authCode.create({
     data: {
       phone: e164,
@@ -177,7 +187,8 @@ async function createAndSendOtp(
       purpose,
       countryCode,
       expiresAt,
-      whatsappTemplate: WHATSAPP_TEMPLATES[purpose],
+      sentVia: sentViaForChannel(deliveryChannel),
+      whatsappTemplate: OTP_PURPOSE_LABELS[purpose],
       userId: existingUser?.id,
     },
   });
@@ -200,12 +211,21 @@ async function createAndSendOtp(
     },
   });
 
-  await whatsappService.sendOtp({
-    phone: e164,
-    purpose,
-    code,
-    languageCode: country?.languageCode,
-  });
+  try {
+    await otpDeliveryService.sendOtp({
+      phone: e164,
+      purpose,
+      code,
+      languageCode: country?.languageCode,
+    });
+  } catch (err) {
+    console.error('[OTP delivery failed]', err);
+    throw new AppError(
+      502,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      `Failed to send the code via ${otpChannelLabel(deliveryChannel)}`,
+    );
+  }
 
   if (env.NODE_ENV === 'development') {
     console.log(`[DEV OTP] ${e164} purpose=${purpose} code=${code}`);
@@ -238,11 +258,11 @@ async function verifyOtpCode(
 
   if (!authCode) {
     await incrementFailedAttempt(e164);
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Código inválido');
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Invalid code');
   }
 
   if (authCode.expiresAt <= new Date()) {
-    throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, 'El código expiró. Solicita uno nuevo.');
+    throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, 'Code expired. Please request a new one.');
   }
 
   const isValid = await verifyOtp(code, authCode.codeHash);
@@ -259,7 +279,7 @@ async function verifyOtpCode(
 
   if (!isValid) {
     await incrementFailedAttempt(e164);
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Código incorrecto');
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Incorrect code');
   }
 
   await prisma.authCode.update({
@@ -277,15 +297,16 @@ export const authService = {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
     const { purpose, accountExists } = await resolveSendCodePurpose(e164, input.purpose);
     const result = await createAndSendOtp(e164, countryCode, purpose, context, false);
+    const channel = otpDeliveryService.getChannel();
     return {
       message:
         accountExists === false
-          ? 'Código enviado por WhatsApp. Crea tu cuenta para continuar.'
-          : 'Código enviado por WhatsApp',
+          ? `Code sent via ${otpChannelLabel(channel)}. Create your account to continue.`
+          : `Code sent via ${otpChannelLabel(channel)}`,
       phone: e164,
       purpose,
       ...(accountExists !== undefined ? { account_exists: accountExists } : {}),
-      channel: 'whatsapp' as const,
+      channel,
       ...result,
     };
   },
@@ -294,15 +315,16 @@ export const authService = {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
     const { purpose, accountExists } = await resolveSendCodePurpose(e164, input.purpose);
     const result = await createAndSendOtp(e164, countryCode, purpose, context, true);
+    const channel = otpDeliveryService.getChannel();
     return {
       message:
         accountExists === false
-          ? 'Código reenviado por WhatsApp. Crea tu cuenta para continuar.'
-          : 'Código reenviado por WhatsApp',
+          ? `Code resent via ${otpChannelLabel(channel)}. Create your account to continue.`
+          : `Code resent via ${otpChannelLabel(channel)}`,
       phone: e164,
       purpose,
       ...(accountExists !== undefined ? { account_exists: accountExists } : {}),
-      channel: 'whatsapp' as const,
+      channel,
       ...result,
     };
   },
@@ -314,19 +336,24 @@ export const authService = {
       verified: true,
       phone: e164,
       purpose: input.purpose,
-      message: 'Código verificado correctamente',
+      message: 'Code verified successfully',
     };
   },
 
   async checkWhatsApp(input: { phone: string; country_code: string }) {
     const { e164 } = await parseAndValidatePhone(input.phone, input.country_code);
-    const available = await whatsappService.checkWhatsAppAvailable(e164);
+    const channel = otpDeliveryService.getChannel();
+    const available = await otpDeliveryService.checkWhatsAppAvailable(e164);
     return {
       phone: e164,
-      whatsapp_available: available,
-      message: available
-        ? 'Número compatible con WhatsApp'
-        : 'Asegúrate de tener WhatsApp instalado en tu teléfono',
+      whatsapp_available: channel === 'whatsapp' ? available : false,
+      delivery_channel: channel,
+      message:
+        channel === 'whatsapp'
+          ? available
+            ? 'Number is WhatsApp compatible'
+            : 'Make sure WhatsApp is installed on your phone'
+          : 'Codes are sent via SMS',
     };
   },
 
@@ -336,7 +363,7 @@ export const authService = {
 
     const user = await prisma.user.findUnique({ where: { phone: e164 } });
     if (!user || user.accountStatus !== 'active') {
-      throw new AppError(404, AUTH_ERROR_CODES.USER_NOT_FOUND, 'No encontramos una cuenta con este número');
+      throw new AppError(404, AUTH_ERROR_CODES.USER_NOT_FOUND, 'No account found for this phone number');
     }
 
     const session = await createSession(user, context);
@@ -356,19 +383,19 @@ export const authService = {
 
     const existing = await prisma.user.findUnique({ where: { phone: e164 } });
     if (existing) {
-      throw new AppError(409, AUTH_ERROR_CODES.USER_EXISTS, 'Ya existe una cuenta con este número');
+      throw new AppError(409, AUTH_ERROR_CODES.USER_EXISTS, 'An account with this phone number already exists');
     }
 
     const birthdate = new Date(input.birthdate);
     if (Number.isNaN(birthdate.getTime())) {
-      throw new AppError(400, 'INVALID_BIRTHDATE', 'Fecha de nacimiento inválida');
+      throw new AppError(400, 'INVALID_BIRTHDATE', 'Invalid birthdate');
     }
 
     if (calculateAge(birthdate) < env.MIN_AGE_YEARS) {
       throw new AppError(
         403,
         AUTH_ERROR_CODES.UNDERAGE,
-        'YouPass es una plataforma exclusiva para mayores de 18 años.',
+        'YouPass is only available to users aged 18 and over.',
       );
     }
 
@@ -406,8 +433,8 @@ export const authService = {
       expires_at: session.expiresAt,
       is_new_user: true,
       welcome: {
-        title: `¡Bienvenido a YouPass, ${user.fullName.split(' ')[0]}!`,
-        subtitle: 'Tu acceso a los mejores eventos comienza aquí',
+        title: `Welcome to YouPass, ${user.fullName.split(' ')[0]}!`,
+        subtitle: 'Your access to the best events starts here',
         duration_seconds: 2,
       },
     };
@@ -415,7 +442,7 @@ export const authService = {
 
   async logout(user: User, sessionId: string) {
     await revokeSession(sessionId, user.id);
-    return { message: 'Sesión cerrada correctamente' };
+    return { message: 'Logged out successfully' };
   },
 
   async changePhoneRequest(user: User, input: ChangePhoneRequestInput, context?: OtpContext) {
@@ -425,7 +452,7 @@ export const authService = {
       where: { phone: e164, id: { not: user.id } },
     });
     if (taken) {
-      throw new AppError(409, AUTH_ERROR_CODES.USER_EXISTS, 'Este número ya está registrado');
+      throw new AppError(409, AUTH_ERROR_CODES.USER_EXISTS, 'This phone number is already registered');
     }
 
     await prisma.user.update({
@@ -434,10 +461,12 @@ export const authService = {
     });
 
     const result = await createAndSendOtp(e164, countryCode, 'change_phone', context, false);
+    const channel = otpDeliveryService.getChannel();
 
     return {
-      message: 'Código enviado al nuevo número por WhatsApp',
+      message: `Code sent to the new number via ${otpChannelLabel(channel)}`,
       new_phone: e164,
+      channel,
       ...result,
     };
   },
@@ -446,7 +475,7 @@ export const authService = {
     const { e164, countryCode } = await parseAndValidatePhone(input.new_phone, input.new_country_code);
 
     if (user.pendingPhoneChange !== e164) {
-      throw new AppError(400, 'PHONE_MISMATCH', 'El número no coincide con la solicitud de cambio');
+      throw new AppError(400, 'PHONE_MISMATCH', 'Phone number does not match the change request');
     }
 
     await verifyOtpCode(e164, countryCode, input.code, 'change_phone', context);
@@ -461,7 +490,7 @@ export const authService = {
     });
 
     return {
-      message: 'Número de teléfono actualizado',
+      message: 'Phone number updated successfully',
       user: toPublicUser(updated),
     };
   },
@@ -469,8 +498,8 @@ export const authService = {
   async getWelcomeData(user: User) {
     const firstName = user.fullName.split(' ')[0] ?? user.fullName;
     return {
-      title: `¡Bienvenido a YouPass, ${firstName}!`,
-      subtitle: 'Tu acceso a los mejores eventos comienza aquí',
+      title: `Welcome to YouPass, ${firstName}!`,
+      subtitle: 'Your access to the best events starts here',
       duration_seconds: 2,
       user_name: firstName,
     };

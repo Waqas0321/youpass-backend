@@ -1,7 +1,7 @@
 # YOUPASS Backend — YouAccess Auth API
 
 Node.js + Express + TypeScript + MongoDB Atlas (Prisma)  
-WhatsApp OTP authentication per YOUPASS master document v23.
+Twilio SMS/WhatsApp OTP authentication per YOUPASS master document v23.
 
 ## Stack
 
@@ -75,7 +75,7 @@ npm run dev
 
 API base: `http://localhost:3000/api/v1`
 
-In development, OTP codes are printed to the console when `WHATSAPP_MOCK=true`.
+In development, OTP codes are printed to the console when `TWILIO_MOCK=true`.
 
 ## Deploy to Vercel
 
@@ -97,7 +97,12 @@ Set these in the Vercel project dashboard or via CLI:
 | `DATABASE_URL` | MongoDB Atlas connection string (include `/youpass` database name) |
 | `JWT_SECRET` | Long random secret (min 16 chars) |
 | `API_PREFIX` | `/api/v1` |
-| `WHATSAPP_MOCK` | `true` until Meta WhatsApp is configured |
+| `OTP_DELIVERY_CHANNEL` | `sms` or `whatsapp` |
+| `TWILIO_ACCOUNT_SID` | Twilio Account SID |
+| `TWILIO_AUTH_TOKEN` | Twilio Auth Token |
+| `TWILIO_SMS_FROM` | Twilio phone number for SMS (E.164) |
+| `TWILIO_WHATSAPP_FROM` | Twilio WhatsApp sender (E.164, if using whatsapp channel) |
+| `TWILIO_MOCK` | `true` until Twilio is configured |
 
 ### 3. Deploy
 
@@ -109,20 +114,20 @@ Build runs `prisma generate && tsc` automatically via `vercel-build` script.
 
 ---
 
-## WhatsApp OTP implementation
+## Twilio OTP implementation
 
-See **[docs/WHATSAPP_OTP_IMPLEMENTATION.md](./docs/WHATSAPP_OTP_IMPLEMENTATION.md)** for:
+See **[docs/TWILIO_OTP_IMPLEMENTATION.md](./docs/TWILIO_OTP_IMPLEMENTATION.md)** for:
 
 - Send / verify / resend API details and examples
 - Client integration flows (register, login)
-- WhatsApp mock vs production setup
+- Twilio SMS vs WhatsApp setup
 - MongoDB verify fix and production test results
 
 ## Auth API endpoints
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/auth/send-code` | — | Send OTP via WhatsApp |
+| POST | `/auth/send-code` | — | Send OTP via SMS or WhatsApp (Twilio) |
 | POST | `/auth/resend-code` | — | Resend OTP (60s cooldown, max 5/h) |
 | POST | `/auth/verify-code` | — | Verify OTP without creating session |
 | POST | `/auth/check-whatsapp` | — | Check WhatsApp availability |
@@ -205,17 +210,26 @@ Use `Authorization: Bearer <access_token>` for protected routes.
 - `user_profile_completion` — profile banner state
 - `countries` — LATAM config (seeded)
 
-## WhatsApp production
+## Twilio production
 
-Set in `.env`:
+Set in Vercel (or `.env`):
 
 ```
-WHATSAPP_MOCK=false
-WHATSAPP_PHONE_NUMBER_ID=your_id
-WHATSAPP_ACCESS_TOKEN=your_token
+TWILIO_MOCK=false
+OTP_DELIVERY_CHANNEL=sms
+TWILIO_ACCOUNT_SID=ACxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_SMS_FROM=+1234567890
 ```
 
-Templates must be approved in Meta Business Manager: `AUTH_LOGIN`, `AUTH_REGISTER`, `AUTH_PHONE_CHANGE`, `AUTH_DELETE_ACCOUNT`.
+For WhatsApp OTP instead of SMS:
+
+```
+OTP_DELIVERY_CHANNEL=whatsapp
+TWILIO_WHATSAPP_FROM=+14155238886
+```
+
+See [docs/TWILIO_OTP_IMPLEMENTATION.md](./docs/TWILIO_OTP_IMPLEMENTATION.md) for full setup.
 
 ## Scripts
 

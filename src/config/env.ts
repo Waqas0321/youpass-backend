@@ -13,10 +13,12 @@ const envSchema = z.object({
   OTP_MAX_RESENDS_PER_HOUR: z.coerce.number().default(5),
   OTP_MAX_FAILED_ATTEMPTS: z.coerce.number().default(3),
   OTP_BLOCK_MINUTES: z.coerce.number().default(15),
-  WHATSAPP_API_URL: z.string().url().default('https://graph.facebook.com/v21.0'),
-  WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(''),
-  WHATSAPP_ACCESS_TOKEN: z.string().optional().default(''),
-  WHATSAPP_MOCK: z
+  OTP_DELIVERY_CHANNEL: z.enum(['sms', 'whatsapp']).default('sms'),
+  TWILIO_ACCOUNT_SID: z.string().optional().default(''),
+  TWILIO_AUTH_TOKEN: z.string().optional().default(''),
+  TWILIO_SMS_FROM: z.string().optional().default(''),
+  TWILIO_WHATSAPP_FROM: z.string().optional().default(''),
+  TWILIO_MOCK: z
     .string()
     .optional()
     .transform((v) => v !== 'false' && v !== '0'),

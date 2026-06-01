@@ -18,17 +18,17 @@ export async function parseAndValidatePhone(
   });
 
   if (!country) {
-    throw new AppError(400, AUTH_ERROR_CODES.UNSUPPORTED_COUNTRY, 'YouPass aún no opera en este país');
+    throw new AppError(400, AUTH_ERROR_CODES.UNSUPPORTED_COUNTRY, 'YouPass is not available in this country yet');
   }
 
   const parsed = parsePhoneNumberFromString(phone, countryCode.toUpperCase() as CountryCode);
 
   if (!parsed?.isValid()) {
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Por favor ingresa un número válido');
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Please enter a valid phone number');
   }
 
   if (parsed.country && parsed.country !== countryCode.toUpperCase()) {
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Revisa el formato de tu número');
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Please check your phone number format');
   }
 
   return {

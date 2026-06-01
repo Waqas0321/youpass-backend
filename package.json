@@ -1,7 +1,7 @@
 {
   "name": "youpass-backend",
   "version": "1.0.0",
-  "description": "YOUPASS API — YouAccess authentication (WhatsApp OTP)",
+  "description": "YOUPASS API — YouAccess authentication (Twilio OTP)",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
