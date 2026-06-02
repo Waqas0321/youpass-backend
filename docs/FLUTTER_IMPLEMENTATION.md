@@ -85,7 +85,7 @@ Show a **6-digit PIN input** in Flutter. Validate: `RegExp(r'^\d{6}$')`.
 final body = {
   'phone': '3216548001',       // national number, no country prefix
   'country_code': 'PK',        // ISO code
-  'purpose': 'register',       // register | login | change_phone | delete_account
+  'purpose': 'register',       // register | login (use auth endpoints for change_phone / delete_account)
 };
 ```
 
@@ -292,10 +292,318 @@ headers: {
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/auth/logout` | Revoke session |
-| GET | `/users/me/profile` | User profile |
+| POST | `/auth/logout` | Revoke current session |
+| POST | `/users/me/logout` | Revoke current session (alias) |
+| POST | `/auth/delete-account/request` | Send OTP to confirm account deletion |
+| POST | `/auth/delete-account/verify` | Verify OTP and delete account |
+| POST | `/users/me/delete-account/request` | Same as auth delete request |
+| POST | `/users/me/delete-account/verify` | Same as auth delete verify |
+| GET | `/users/me` | Current user profile |
+| GET | `/users/me/profile` | Current user profile (alias) |
 | GET | `/users/me/welcome-data` | Welcome screen data |
 | GET | `/config/countries` | Supported countries (includes PK) |
+
+---
+
+## 7. Get current user profile
+
+**`GET /users/me`** or **`GET /users/me/profile`**
+
+Call after login/register when the app needs the logged-in user's data (settings screen, profile tab, etc.).
+
+### Request
+
+```dart
+final response = await http.get(
+  Uri.parse('$apiBaseUrl/users/me'),
+  headers: {
+    'Authorization': 'Bearer $accessToken',
+    'Content-Type': 'application/json',
+  },
+);
+```
+
+### Success response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "665f1a2b3c4d5e6f7890abcd",
+    "phone": "+923216548001",
+    "phone_display": "+92 321 6548001",
+    "country_code": "PK",
+    "full_name": "Waqas Akhtar",
+    "email": "user@email.com",
+    "birthdate": "1995-06-15",
+    "gender": "male",
+    "rut_or_passport": "12345678-9",
+    "instagram_username": null,
+    "profile_photo_url": null,
+    "category": "bronze",
+    "account_status": "active",
+    "created_at": "2026-06-01T12:00:00.000Z",
+    "profile_completeness": {
+      "has_photo": false,
+      "has_instagram": false,
+      "completion_percentage": 70,
+      "missing_fields": ["profile_photo", "instagram_username"]
+    }
+  }
+}
+```
+
+### Dart model
+
+```dart
+class UserProfile {
+  final String id;
+  final String phone;
+  final String phoneDisplay;
+  final String countryCode;
+  final String fullName;
+  final String email;
+  final String birthdate;
+  final String gender;
+  final String rutOrPassport;
+  final String? instagramUsername;
+  final String? profilePhotoUrl;
+  final String category;
+  final String accountStatus;
+  final DateTime createdAt;
+  final ProfileCompleteness profileCompleteness;
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    return UserProfile(
+      id: json['id'] as String,
+      phone: json['phone'] as String,
+      phoneDisplay: json['phone_display'] as String,
+      countryCode: json['country_code'] as String,
+      fullName: json['full_name'] as String,
+      email: json['email'] as String,
+      birthdate: json['birthdate'] as String,
+      gender: json['gender'] as String,
+      rutOrPassport: json['rut_or_passport'] as String,
+      instagramUsername: json['instagram_username'] as String?,
+      profilePhotoUrl: json['profile_photo_url'] as String?,
+      category: json['category'] as String,
+      accountStatus: json['account_status'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      profileCompleteness: ProfileCompleteness.fromJson(
+        json['profile_completeness'] as Map<String, dynamic>,
+      ),
+    );
+  }
+}
+
+class ProfileCompleteness {
+  final bool hasPhoto;
+  final bool hasInstagram;
+  final int completionPercentage;
+  final List<String> missingFields;
+
+  factory ProfileCompleteness.fromJson(Map<String, dynamic> json) {
+    return ProfileCompleteness(
+      hasPhoto: json['has_photo'] as bool,
+      hasInstagram: json['has_instagram'] as bool,
+      completionPercentage: json['completion_percentage'] as int,
+      missingFields: (json['missing_fields'] as List).cast<String>(),
+    );
+  }
+}
+```
+
+### Flutter service method
+
+```dart
+Future<UserProfile> getCurrentUserProfile() async {
+  final token = await secureStorage.read(key: 'access_token');
+  if (token == null) throw SessionExpiredException();
+
+  final response = await http.get(
+    Uri.parse('$apiBaseUrl/users/me'),
+    headers: authHeaders(token),
+  );
+  final json = jsonDecode(response.body) as Map<String, dynamic>;
+  if (json['success'] != true) {
+    throw ApiException.fromJson(json['error'] as Map<String, dynamic>);
+  }
+  return UserProfile.fromJson(json['data'] as Map<String, dynamic>);
+}
+```
+
+On `401` / `SESSION_INVALID`, clear stored token and navigate to login.
+
+---
+
+## 8. Logout
+
+**`POST /auth/logout`** or **`POST /users/me/logout`**
+
+Revokes the current session. Always clear local token after success (even if the request fails with network error, clear locally if user tapped logout).
+
+### Request
+
+```dart
+Future<void> logout() async {
+  final token = await secureStorage.read(key: 'access_token');
+  if (token != null) {
+    await http.post(
+      Uri.parse('$apiBaseUrl/auth/logout'),
+      headers: authHeaders(token),
+    );
+  }
+  await secureStorage.delete(key: 'access_token');
+  // Navigate to phone/login screen
+}
+```
+
+### Success response
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Logged out successfully"
+  }
+}
+```
+
+---
+
+## 9. Delete account
+
+Two-step flow (OTP confirmation). **Do not** use `POST /auth/send-code` with `purpose: delete_account` — use the authenticated endpoints below.
+
+```
+Settings → Delete account
+       │
+       ▼
+POST /auth/delete-account/request   (Bearer token)
+       │
+       ▼
+User enters 6-digit OTP from WhatsApp/SMS
+       │
+       ▼
+POST /auth/delete-account/verify    (Bearer token + code)
+       │
+       ▼
+Clear token → navigate to welcome/login
+```
+
+### Step 1 — Request deletion OTP
+
+**`POST /auth/delete-account/request`**
+
+```dart
+Future<void> requestAccountDeletion() async {
+  final token = await secureStorage.read(key: 'access_token');
+  final response = await http.post(
+    Uri.parse('$apiBaseUrl/auth/delete-account/request'),
+    headers: authHeaders(token!),
+  );
+  final json = jsonDecode(response.body) as Map<String, dynamic>;
+  if (json['success'] != true) {
+    throw ApiException.fromJson(json['error'] as Map<String, dynamic>);
+  }
+  // Show OTP input screen; message in json['data']['message']
+}
+```
+
+Success:
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Account deletion code sent via WhatsApp",
+    "phone": "+923216548001",
+    "phone_display": "+92 321 6548001",
+    "channel": "whatsapp",
+    "expires_in_seconds": 180,
+    "resend_available_in_seconds": 60
+  }
+}
+```
+
+### Step 2 — Confirm with OTP
+
+**`POST /auth/delete-account/verify`**
+
+```dart
+Future<void> confirmAccountDeletion(String otpCode) async {
+  final token = await secureStorage.read(key: 'access_token');
+  final response = await http.post(
+    Uri.parse('$apiBaseUrl/auth/delete-account/verify'),
+    headers: authHeaders(token!),
+    body: jsonEncode({'code': otpCode}),
+  );
+  final json = jsonDecode(response.body) as Map<String, dynamic>;
+  if (json['success'] != true) {
+    throw ApiException.fromJson(json['error'] as Map<String, dynamic>);
+  }
+
+  await secureStorage.delete(key: 'access_token');
+  // Show success: json['data']['message']
+  // Navigate to login / onboarding
+}
+```
+
+Success:
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Your account has been deleted successfully",
+    "deleted_at": "2026-06-02T05:30:00.000Z"
+  }
+}
+```
+
+After deletion, all sessions are invalid. The same phone can register again later as a new account.
+
+---
+
+## 10. Reusable API helper
+
+```dart
+Map<String, String> authHeaders(String token) => {
+  'Authorization': 'Bearer $token',
+  'Content-Type': 'application/json',
+};
+
+class ApiException implements Exception {
+  final String code;
+  final String message;
+  final Map<String, dynamic>? details;
+
+  ApiException({required this.code, required this.message, this.details});
+
+  factory ApiException.fromJson(Map<String, dynamic> json) {
+    return ApiException(
+      code: json['code'] as String,
+      message: json['message'] as String,
+      details: json['details'] as Map<String, dynamic>?,
+    );
+  }
+}
+
+class SessionExpiredException implements Exception {}
+```
+
+Suggested `AuthRepository` methods:
+
+| Method | Endpoint |
+|--------|----------|
+| `sendCode(...)` | `POST /auth/send-code` |
+| `resendCode(...)` | `POST /auth/resend-code` |
+| `register(...)` | `POST /auth/register` |
+| `login(...)` | `POST /auth/login` |
+| `getProfile()` | `GET /users/me` |
+| `logout()` | `POST /auth/logout` |
+| `requestDeleteAccount()` | `POST /auth/delete-account/request` |
+| `confirmDeleteAccount(code)` | `POST /auth/delete-account/verify` |
 
 ---
 
@@ -313,6 +621,9 @@ headers: {
 | `BLOCKED` | 429 | Too many wrong attempts |
 | `OTP_DELIVERY_FAILED` | 502 | Twilio failed (check backend config) |
 | `VALIDATION_ERROR` | 400 | Invalid request body |
+| `UNAUTHORIZED` | 401 | Missing Bearer token |
+| `SESSION_INVALID` | 401 | Expired or revoked token — logout locally |
+| `INVALID_PURPOSE` | 400 | Used public send-code for delete/change-phone |
 
 ---
 
@@ -388,8 +699,12 @@ Future<void> registerFlow() async {
 - [ ] Route to **register** or **login** based on `purpose`
 - [ ] Show WhatsApp message when `channel == "whatsapp"`
 - [ ] Load countries from `GET /config/countries` (PK supported)
-- [ ] Store `access_token` after login/register
+- [ ] Store `access_token` in secure storage after login/register
 - [ ] Send `Authorization: Bearer` on protected routes
+- [ ] Load profile with `GET /users/me` on app start if token exists
+- [ ] Logout via `POST /auth/logout` and clear local token
+- [ ] Delete account: request OTP → verify → clear token
+- [ ] Handle `SESSION_INVALID` by redirecting to login
 - [ ] Display English `error.message` from API
 
 ---

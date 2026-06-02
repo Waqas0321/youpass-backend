@@ -28,7 +28,10 @@ function buildOtpMessage(purpose: AuthCodePurpose, code: string): string {
 }
 
 function normalizeE164(value: string): string {
-  const trimmed = value.trim();
+  const trimmed = value
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/[\s\r\n]+/g, '');
   if (!trimmed) return '';
   return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
 }

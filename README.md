@@ -131,6 +131,8 @@ See **[docs/FLUTTER_IMPLEMENTATION.md](./docs/FLUTTER_IMPLEMENTATION.md)** for *
 | POST | `/auth/login` | — | Login existing user (OTP → JWT) |
 | POST | `/auth/register` | — | Create account (OTP → JWT) |
 | POST | `/auth/logout` | Bearer | Revoke current session |
+| POST | `/auth/delete-account/request` | Bearer | Send OTP to confirm deletion |
+| POST | `/auth/delete-account/verify` | Bearer | Verify OTP and delete account |
 | POST | `/auth/change-phone/request` | Bearer | OTP to new number |
 | POST | `/auth/change-phone/verify` | Bearer | Confirm phone change |
 
@@ -147,10 +149,13 @@ See **[docs/FLUTTER_IMPLEMENTATION.md](./docs/FLUTTER_IMPLEMENTATION.md)** for *
 
 | Method | Endpoint |
 |--------|----------|
+| GET | `/users/me` |
 | GET | `/users/me/profile` |
 | GET | `/users/me/welcome-data` |
 | GET | `/users/me/profile-completeness` |
 | POST | `/users/me/logout` |
+| POST | `/users/me/delete-account/request` |
+| POST | `/users/me/delete-account/verify` |
 | GET | `/home/initial-feed` |
 
 ---

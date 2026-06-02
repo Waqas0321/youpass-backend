@@ -54,9 +54,14 @@ export const changePhoneVerifySchema = z.object({
   code: z.string().length(6).regex(/^\d{6}$/),
 });
 
+export const deleteAccountVerifySchema = z.object({
+  code: z.string().length(6).regex(/^\d{6}$/, 'Code must be 6 digits'),
+});
+
 export type SendCodeInput = z.infer<typeof sendCodeSchema>;
 export type VerifyCodeInput = z.infer<typeof verifyCodeSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type ChangePhoneRequestInput = z.infer<typeof changePhoneRequestSchema>;
 export type ChangePhoneVerifyInput = z.infer<typeof changePhoneVerifySchema>;
+export type DeleteAccountVerifyInput = z.infer<typeof deleteAccountVerifySchema>;

@@ -38,4 +38,22 @@ export const usersController = {
       next(err);
     }
   },
+
+  deleteAccountRequest: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.deleteAccountRequest(req.user!, req.authContext);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  deleteAccountVerify: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.deleteAccountVerify(req.user!, req.body, req.authContext);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
 };

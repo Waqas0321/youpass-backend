@@ -11,6 +11,7 @@ import {
   registerSchema,
   changePhoneRequestSchema,
   changePhoneVerifySchema,
+  deleteAccountVerifySchema,
 } from './auth.validators.js';
 
 export const authRouter = Router();
@@ -22,5 +23,7 @@ authRouter.post('/check-whatsapp', validate(checkWhatsAppSchema), authController
 authRouter.post('/login', validate(loginSchema), authController.login);
 authRouter.post('/register', validate(registerSchema), authController.register);
 authRouter.post('/logout', authenticate, authController.logout);
+authRouter.post('/delete-account/request', authenticate, authController.deleteAccountRequest);
+authRouter.post('/delete-account/verify', authenticate, validate(deleteAccountVerifySchema), authController.deleteAccountVerify);
 authRouter.post('/change-phone/request', authenticate, validate(changePhoneRequestSchema), authController.changePhoneRequest);
 authRouter.post('/change-phone/verify', authenticate, validate(changePhoneVerifySchema), authController.changePhoneVerify);

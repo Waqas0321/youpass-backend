@@ -18,10 +18,11 @@ import {
 import { formatPhoneDisplay, parseAndValidatePhone } from '../../common/utils/phone.js';
 import type { AuthRequestContext } from '../../common/types/auth.js';
 import { otpDeliveryService } from './otp-delivery.service.js';
-import { createSession, revokeSession } from './session.service.js';
+import { createSession, revokeAllUserSessions, revokeSession } from './session.service.js';
 import type {
   ChangePhoneRequestInput,
   ChangePhoneVerifyInput,
+  DeleteAccountVerifyInput,
   LoginInput,
   RegisterInput,
   SendCodeInput,
@@ -158,6 +159,14 @@ async function resolveSendCodePurpose(
 function mapTwilioDeliveryError(err: unknown, channel: 'sms' | 'whatsapp'): AppError {
   const raw = err instanceof Error ? err.message : String(err);
 
+  if (raw.includes('credentials missing')) {
+    return new AppError(
+      503,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      'Twilio is not configured on the server. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Vercel, then redeploy.',
+    );
+  }
+
   if (raw.includes('63038')) {
     return new AppError(
       429,
@@ -178,7 +187,7 @@ function mapTwilioDeliveryError(err: unknown, channel: 'sms' | 'whatsapp'): AppE
     return new AppError(
       502,
       AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
-      'WhatsApp sender is not configured correctly. Check TWILIO_WHATSAPP_FROM in Vercel.',
+      'WhatsApp sender not found in your Twilio account. In Twilio Console go to Messaging → Try it out → Send a WhatsApp message, copy the sandbox number into TWILIO_WHATSAPP_FROM (e.g. +14155238886), and use SID/token from the same account.',
     );
   }
 
@@ -332,6 +341,14 @@ async function verifyOtpCode(
 
 export const authService = {
   async sendCode(input: SendCodeInput, context?: OtpContext) {
+    if (input.purpose === 'delete_account' || input.purpose === 'change_phone') {
+      throw new AppError(
+        400,
+        'INVALID_PURPOSE',
+        'This action requires authentication. Use the dedicated account endpoint instead.',
+      );
+    }
+
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
     const { purpose, accountExists } = await resolveSendCodePurpose(e164, input.purpose);
     const result = await createAndSendOtp(e164, countryCode, purpose, context, false);
@@ -350,6 +367,14 @@ export const authService = {
   },
 
   async resendCode(input: SendCodeInput, context?: OtpContext) {
+    if (input.purpose === 'delete_account' || input.purpose === 'change_phone') {
+      throw new AppError(
+        400,
+        'INVALID_PURPOSE',
+        'This action requires authentication. Use the dedicated account endpoint instead.',
+      );
+    }
+
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
     const { purpose, accountExists } = await resolveSendCodePurpose(e164, input.purpose);
     const result = await createAndSendOtp(e164, countryCode, purpose, context, true);
@@ -481,6 +506,51 @@ export const authService = {
   async logout(user: User, sessionId: string) {
     await revokeSession(sessionId, user.id);
     return { message: 'Logged out successfully' };
+  },
+
+  async deleteAccountRequest(user: User, context?: OtpContext) {
+    if (user.accountStatus !== 'active') {
+      throw new AppError(403, AUTH_ERROR_CODES.UNAUTHORIZED, 'This account cannot be deleted');
+    }
+
+    const result = await createAndSendOtp(user.phone, user.countryCode, 'delete_account', context, false);
+    const channel = otpDeliveryService.getChannel();
+
+    return {
+      message: `Account deletion code sent via ${otpChannelLabel(channel)}`,
+      phone: user.phone,
+      phone_display: result.phone_display,
+      channel,
+      expires_in_seconds: result.expires_in_seconds,
+      resend_available_in_seconds: result.resend_available_in_seconds,
+    };
+  },
+
+  async deleteAccountVerify(user: User, input: DeleteAccountVerifyInput, context?: OtpContext) {
+    if (user.accountStatus !== 'active') {
+      throw new AppError(403, AUTH_ERROR_CODES.UNAUTHORIZED, 'This account cannot be deleted');
+    }
+
+    await verifyOtpCode(user.phone, user.countryCode, input.code, 'delete_account', context);
+
+    const deletedAt = new Date();
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        accountStatus: 'deleted',
+        deletionRequestedAt: deletedAt,
+        deletionScheduledAt: deletedAt,
+        pendingPhoneChange: null,
+      },
+    });
+
+    await revokeAllUserSessions(user.id);
+
+    return {
+      message: 'Your account has been deleted successfully',
+      deleted_at: deletedAt.toISOString(),
+    };
   },
 
   async changePhoneRequest(user: User, input: ChangePhoneRequestInput, context?: OtpContext) {

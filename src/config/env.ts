@@ -14,10 +14,10 @@ const envSchema = z.object({
   OTP_MAX_FAILED_ATTEMPTS: z.coerce.number().default(3),
   OTP_BLOCK_MINUTES: z.coerce.number().default(15),
   OTP_DELIVERY_CHANNEL: z.enum(['sms', 'whatsapp']).default('whatsapp'),
-  TWILIO_ACCOUNT_SID: z.string().optional().default(''),
-  TWILIO_AUTH_TOKEN: z.string().optional().default(''),
-  TWILIO_SMS_FROM: z.string().optional().default(''),
-  TWILIO_WHATSAPP_FROM: z.string().optional().default(''),
+  TWILIO_ACCOUNT_SID: z.string().optional().default('').transform((v) => v.trim()),
+  TWILIO_AUTH_TOKEN: z.string().optional().default('').transform((v) => v.trim()),
+  TWILIO_SMS_FROM: z.string().optional().default('').transform((v) => v.trim()),
+  TWILIO_WHATSAPP_FROM: z.string().optional().default('').transform((v) => v.trim()),
   TWILIO_MOCK: z
     .string()
     .optional()

@@ -87,4 +87,22 @@ export const authController = {
       next(err);
     }
   },
+
+  deleteAccountRequest: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await authService.deleteAccountRequest(req.user!, getContext(req));
+      res.status(200).json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  deleteAccountVerify: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await authService.deleteAccountVerify(req.user!, req.body, getContext(req));
+      res.status(200).json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
 };
