@@ -3,7 +3,7 @@
 **Base URL:** `https://youpass-backend.vercel.app/api/v1`  
 **Auth:** `Authorization: Bearer <access_token>`
 
-Backend implements the [Invitations API Specification](./INVITATIONS_API.md). Set `useInvitationsMockData = false` in Flutter.
+Backend implements the Flutter Invitations API Specification v1.0. Set `useInvitationsMockData = false` in Flutter.
 
 ---
 
@@ -194,5 +194,5 @@ Seeded for the first active user (e.g. Waqas Akhtar):
 
 ## Related
 
-- [INVITATIONS_API.md](./INVITATIONS_API.md) — Full specification
 - [FLUTTER_SESSION_TOKEN_FIX.md](./FLUTTER_SESSION_TOKEN_FIX.md) — Auth token handling
+- [FLUTTER_IMPLEMENTATION.md](./FLUTTER_IMPLEMENTATION.md) — Auth & profile
