@@ -145,7 +145,28 @@ final response = await http.get(uri, headers: authHeadersIfLoggedIn());
 
 ---
 
-## Get event by ID
+## See all events (non-featured + featured)
+
+**`GET /events?country_code=CL`**
+
+The home screen **"See all >"** link should call this endpoint. It returns **all published events** (featured and non-featured), paginated.
+
+```dart
+final uri = Uri.parse('$apiBaseUrl/events').replace(
+  queryParameters: {
+    'country_code': 'CL',
+    'page': '1',
+    'limit': '20',
+    if (selectedType != null) 'event_type': selectedType,
+  },
+);
+```
+
+To show **only non-featured** events, filter client-side where `is_featured == false`, or omit featured items already shown on the home screen.
+
+Optional: **`featured=false`** is not a query param — use full list and filter in UI, or show all events on the See all screen.
+
+---
 
 **`GET /events/:id`**
 
@@ -211,10 +232,12 @@ Returns array of events with **`is_favorite: true`**.
 
 **`POST /users/me/favorites/events/:eventId`**
 
+No request body. **Do not** send `Content-Type: application/json` with an empty body — use headers only:
+
 ```dart
 await http.post(
   Uri.parse('$apiBaseUrl/users/me/favorites/events/$eventId'),
-  headers: authHeaders(token),
+  headers: authHeaders(token), // Authorization only — no Content-Type if no body
 );
 ```
 

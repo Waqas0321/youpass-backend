@@ -17,7 +17,8 @@ export function createApp() {
 
   app.use(helmet());
   app.use(cors());
-  app.use(express.json({ limit: '1mb' }));
+  // strict: false — Flutter sends Content-Type: application/json with an empty/null body on POST
+  app.use(express.json({ limit: '1mb', strict: false }));
   app.use(attachRequestContext);
 
   const api = express.Router();

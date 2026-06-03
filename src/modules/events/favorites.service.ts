@@ -29,11 +29,13 @@ export const favoritesService = {
       throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
     }
 
-    await prisma.eventFavorite.upsert({
+    const existing = await prisma.eventFavorite.findUnique({
       where: { userId_eventId: { userId, eventId } },
-      create: { userId, eventId },
-      update: {},
     });
+
+    if (!existing) {
+      await prisma.eventFavorite.create({ data: { userId, eventId } });
+    }
 
     return formatEvent(event, true);
   },
