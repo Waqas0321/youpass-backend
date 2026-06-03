@@ -226,6 +226,9 @@ async function main() {
     }
   }
   console.log(`Seeded ${SAMPLE_EVENTS.length} sample events`);
+
+  const { seedInvitations } = await import('./seed-invitations.js');
+  await seedInvitations(prisma);
 }
 
 main()

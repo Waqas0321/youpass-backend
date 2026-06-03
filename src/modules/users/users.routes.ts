@@ -5,6 +5,7 @@ import { uploadProfilePhoto } from '../../common/middleware/upload-profile-photo
 import { deleteAccountVerifySchema } from '../auth/auth.validators.js';
 import { updateProfileSchema } from './users.validators.js';
 import { favoritesController } from '../events/favorites.controller.js';
+import { invitationsController, paymentMethodsController } from '../invitations/invitations.controller.js';
 import { usersController } from './users.controller.js';
 
 export const usersRouter = Router();
@@ -20,6 +21,10 @@ usersRouter.post('/me/profile-photo', uploadProfilePhoto, usersController.upload
 usersRouter.get('/me/favorites/events', favoritesController.list);
 usersRouter.post('/me/favorites/events/:eventId', favoritesController.add);
 usersRouter.delete('/me/favorites/events/:eventId', favoritesController.remove);
+usersRouter.get('/me/invitations', invitationsController.list);
+usersRouter.get('/me/invitations/summary', invitationsController.summary);
+usersRouter.get('/me/payment-methods', paymentMethodsController.list);
+usersRouter.post('/me/payment-methods', paymentMethodsController.save);
 usersRouter.post('/me/logout', usersController.logout);
 usersRouter.post('/me/delete-account/request', usersController.deleteAccountRequest);
 usersRouter.post('/me/delete-account/verify', validate(deleteAccountVerifySchema), usersController.deleteAccountVerify);

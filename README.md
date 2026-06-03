@@ -188,6 +188,22 @@ See **[docs/CLOUDINARY_PROFILE_PHOTO.md](./docs/CLOUDINARY_PROFILE_PHOTO.md)** f
 
 See **[docs/FLUTTER_EVENTS_API.md](./docs/FLUTTER_EVENTS_API.md)** for Flutter integration.
 
+## Invitations endpoints
+
+| Method | Endpoint | Auth |
+|--------|----------|------|
+| GET | `/invitations` | Bearer |
+| GET | `/users/me/invitations` | Bearer (alias) |
+| GET | `/invitations/:id` | Bearer |
+| POST | `/invitations/:id/confirm` | Bearer |
+| POST | `/invitations/:id/reject` | Bearer |
+| GET | `/invitations/:id/ticket` | Bearer |
+| GET | `/users/me/invitations/summary` | Bearer |
+| GET | `/users/me/payment-methods` | Bearer |
+| POST | `/users/me/payment-methods` | Bearer |
+
+See **[docs/FLUTTER_INVITATIONS_API.md](./docs/FLUTTER_INVITATIONS_API.md)** for Flutter integration.
+
 ---
 
 ## Example flows
