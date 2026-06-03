@@ -7,8 +7,9 @@ import { attachRequestContext } from './common/middleware/request-context.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { configRouter } from './modules/config/config.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
+import { eventsRouter } from './modules/events/events.routes.js';
 import { homeRouter } from './modules/home/home.routes.js';
-import { authenticate } from './common/middleware/authenticate.js';
+import { optionalAuthenticate } from './common/middleware/authenticate.js';
 import { prisma } from './config/database.js';
 
 export function createApp() {
@@ -37,7 +38,8 @@ export function createApp() {
   api.use('/auth', authRouter);
   api.use('/config', configRouter);
   api.use('/users', usersRouter);
-  api.get('/home/initial-feed', authenticate, homeRouter.getInitialFeed);
+  api.use('/events', eventsRouter);
+  api.get('/home/initial-feed', optionalAuthenticate, homeRouter.getInitialFeed);
 
   app.use(env.API_PREFIX, api);
   app.use(errorHandler);

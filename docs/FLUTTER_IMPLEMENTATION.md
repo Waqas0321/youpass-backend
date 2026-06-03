@@ -1,8 +1,53 @@
 # Flutter — YouPass API Implementation Guide
 
-**Production base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Production base URL:** `https://youpass-backend.vercel.app/api/v1`  
+**Last updated:** June 2026
 
-This guide is for the **Flutter mobile app** integrating YouPass authentication (Twilio WhatsApp OTP, 6 digits).
+This guide is for the **Flutter mobile app** integrating YouPass authentication (Twilio WhatsApp OTP, 6 digits), profile, and profile photo upload (Cloudinary).
+
+---
+
+## Quick reference — all endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/auth/send-code` | — | Send OTP |
+| POST | `/auth/resend-code` | — | Resend OTP |
+| POST | `/auth/verify-code` | — | Verify OTP only |
+| POST | `/auth/login` | — | Login → `access_token` |
+| POST | `/auth/register` | — | Register → `access_token` |
+| POST | `/auth/logout` | Bearer | Logout |
+| GET | `/users/me` | Bearer | Get profile |
+| GET | `/users/me/profile` | Bearer | Get profile (alias) |
+| PATCH | `/users/me/profile` | Bearer | Update profile fields |
+| POST | `/users/me/profile-photo` | Bearer | Upload photo (multipart `photo`) |
+| GET | `/users/me/profile-completeness` | Bearer | Profile completion % |
+| GET | `/users/me/welcome-data` | Bearer | Welcome screen data |
+| GET | `/config/countries` | — | Country list (includes PK) |
+| GET | `/health` | — | API health check |
+| GET | `/events/types` | — | Event type filters |
+| GET | `/events/featured` | Optional | Featured carousel + list |
+| GET | `/events` | Optional | Event list (paginated) |
+| GET | `/events/:id` | Optional | Event detail |
+| POST | `/events` | Bearer | Create event |
+| PATCH | `/events/:id` | Bearer | Update event |
+| DELETE | `/events/:id` | Bearer | Delete event |
+| GET | `/home/initial-feed` | Optional | Home screen bundle |
+| GET | `/users/me/favorites/events` | Bearer | Favorite events |
+| POST | `/users/me/favorites/events/:eventId` | Bearer | Add favorite |
+| DELETE | `/users/me/favorites/events/:eventId` | Bearer | Remove favorite |
+
+---
+
+## Important — auth token rules
+
+1. After login/register, save **`data.access_token`** (not `session_id`).
+2. Send **`Authorization: Bearer <access_token>`** on every protected route.
+3. Use the token from login **immediately** for the first profile/photo call (avoid stale storage race).
+4. Multipart photo upload **still requires** the Bearer header.
+5. On `SESSION_INVALID`, clear token and go to login.
+
+> **Backend note:** A MongoDB session lookup bug caused false `SESSION_INVALID` errors — fixed in production. If issues persist, see [FLUTTER_SESSION_TOKEN_FIX.md](./FLUTTER_SESSION_TOKEN_FIX.md).
 
 ---
 
@@ -300,6 +345,8 @@ headers: {
 | POST | `/users/me/delete-account/verify` | Same as auth delete verify |
 | GET | `/users/me` | Current user profile |
 | GET | `/users/me/profile` | Current user profile (alias) |
+| PATCH | `/users/me/profile` | Update profile fields (JSON) |
+| POST | `/users/me/profile-photo` | Upload profile photo (multipart `photo`) |
 | GET | `/users/me/welcome-data` | Welcome screen data |
 | GET | `/config/countries` | Supported countries (includes PK) |
 
@@ -433,6 +480,227 @@ Future<UserProfile> getCurrentUserProfile() async {
 ```
 
 On `401` / `SESSION_INVALID`, clear stored token and navigate to login.
+
+---
+
+## 7.1 Upload profile photo
+
+**`POST /users/me/profile-photo`**
+
+Upload or replace the logged-in user's profile photo. The backend stores the image on **Cloudinary** and saves the CDN URL on the user record.
+
+### Flutter packages
+
+```yaml
+dependencies:
+  image_picker: ^1.1.2
+  http: ^1.2.2
+  http_parser: ^4.0.2
+```
+
+### Pick image (gallery or camera)
+
+```dart
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+
+Future<File?> pickProfilePhoto(ImageSource source) async {
+  final picker = ImagePicker();
+  final picked = await picker.pickImage(
+    source: source,
+    maxWidth: 1200,
+    maxHeight: 1200,
+    imageQuality: 85,
+  );
+  if (picked == null) return null;
+  return File(picked.path);
+}
+```
+
+### Upload (multipart)
+
+**Do not** set `Content-Type: application/json` for this request. Use `multipart/form-data` with field name **`photo`**.
+
+```dart
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+
+Future<UserProfile> uploadProfilePhoto(File imageFile) async {
+  final token = await secureStorage.read(key: 'access_token');
+  if (token == null) throw SessionExpiredException();
+
+  final request = http.MultipartRequest(
+    'POST',
+    Uri.parse('$apiBaseUrl/users/me/profile-photo'),
+  );
+  request.headers['Authorization'] = 'Bearer $token';
+
+  final mime = _mimeFromPath(imageFile.path); // image/jpeg, image/png, etc.
+  request.files.add(
+    await http.MultipartFile.fromPath(
+      'photo',
+      imageFile.path,
+      contentType: MediaType.parse(mime),
+    ),
+  );
+
+  final streamed = await request.send();
+  final response = await http.Response.fromStream(streamed);
+  final json = jsonDecode(response.body) as Map<String, dynamic>;
+
+  if (json['success'] != true) {
+    throw ApiException.fromJson(json['error'] as Map<String, dynamic>);
+  }
+
+  return UserProfile.fromJson(json['data'] as Map<String, dynamic>);
+}
+
+String _mimeFromPath(String path) {
+  final lower = path.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
+  return 'image/jpeg';
+}
+```
+
+### Success response
+
+Same shape as **`GET /users/me`**, with updated `profile_photo_url` and `profile_completeness`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "profile_photo_url": "https://res.cloudinary.com/your-cloud/image/upload/.../youpass/profile-photos/userId.jpg",
+    "profile_completeness": {
+      "has_photo": true,
+      "completion_percentage": 85,
+      "missing_fields": ["instagram_username"]
+    }
+  }
+}
+```
+
+### Limits and errors
+
+| Rule | Value |
+|------|-------|
+| Field name | `photo` |
+| Max size | 5 MB |
+| Formats | JPEG, PNG, WebP, HEIC |
+
+| Code | When |
+|------|------|
+| `FILE_REQUIRED` | No file in request |
+| `INVALID_FILE_TYPE` | Unsupported image type |
+| `FILE_TOO_LARGE` | Over 5 MB |
+| `CLOUDINARY_NOT_CONFIGURED` | Backend missing Cloudinary env vars |
+| `UPLOAD_FAILED` | Cloudinary upload error |
+
+### iOS / Android permissions
+
+**iOS** — add to `ios/Runner/Info.plist`:
+
+```xml
+<key>NSPhotoLibraryUsageDescription</key>
+<string>We need access to choose your profile photo.</string>
+<key>NSCameraUsageDescription</key>
+<string>We need camera access to take your profile photo.</string>
+```
+
+**Android** — for Android 13+, `image_picker` handles photo permissions; for older versions you may need `READ_EXTERNAL_STORAGE` in `AndroidManifest.xml`.
+
+---
+
+## 7.2 Update profile fields
+
+**`PATCH /users/me/profile`**
+
+Update one or more profile fields. Send only the fields you want to change. Phone number uses a separate OTP flow (`/auth/change-phone/*`).
+
+### Editable fields
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `full_name` | string | 2–200 chars |
+| `email` | string | Valid email |
+| `rut_or_passport` | string | 3–50 chars |
+| `birthdate` | string | `YYYY-MM-DD`, user must be 18+ |
+| `gender` | string | `male`, `female`, `other`, `prefer_not_to_say` |
+| `instagram_username` | string \| null | Strips leading `@`; send `""` or `null` to remove |
+
+### Request
+
+```dart
+Future<UserProfile> updateProfile({
+  String? fullName,
+  String? email,
+  String? rutOrPassport,
+  String? birthdate,
+  String? gender,
+  String? instagramUsername,
+}) async {
+  final token = await secureStorage.read(key: 'access_token');
+  if (token == null) throw SessionExpiredException();
+
+  final body = <String, dynamic>{};
+  if (fullName != null) body['full_name'] = fullName;
+  if (email != null) body['email'] = email;
+  if (rutOrPassport != null) body['rut_or_passport'] = rutOrPassport;
+  if (birthdate != null) body['birthdate'] = birthdate;
+  if (gender != null) body['gender'] = gender;
+  if (instagramUsername != null) body['instagram_username'] = instagramUsername;
+
+  final response = await http.patch(
+    Uri.parse('$apiBaseUrl/users/me/profile'),
+    headers: authHeaders(token),
+    body: jsonEncode(body),
+  );
+
+  final json = jsonDecode(response.body) as Map<String, dynamic>;
+  if (json['success'] != true) {
+    throw ApiException.fromJson(json['error'] as Map<String, dynamic>);
+  }
+
+  return UserProfile.fromJson(json['data'] as Map<String, dynamic>);
+}
+```
+
+### Example — update name and Instagram
+
+```json
+PATCH /users/me/profile
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "full_name": "Waqas Akhtar",
+  "instagram_username": "waqas.dev"
+}
+```
+
+### Success response
+
+Same shape as **`GET /users/me`** (full updated profile).
+
+### Errors
+
+| Code | When |
+|------|------|
+| `VALIDATION_ERROR` | Invalid or empty body |
+| `INVALID_BIRTHDATE` | Bad date format |
+| `UNDERAGE` | User under 18 |
+| `UNAUTHORIZED` | Missing token |
+| `SESSION_INVALID` | Expired session |
+
+### Profile update summary
+
+| Action | Endpoint | Content-Type |
+|--------|----------|--------------|
+| Read profile | `GET /users/me` | — |
+| Update text fields | `PATCH /users/me/profile` | `application/json` |
+| Update photo | `POST /users/me/profile-photo` | `multipart/form-data` (`photo`) |
 
 ---
 
@@ -601,6 +869,8 @@ Suggested `AuthRepository` methods:
 | `register(...)` | `POST /auth/register` |
 | `login(...)` | `POST /auth/login` |
 | `getProfile()` | `GET /users/me` |
+| `updateProfile(...)` | `PATCH /users/me/profile` |
+| `uploadProfilePhoto(File)` | `POST /users/me/profile-photo` |
 | `logout()` | `POST /auth/logout` |
 | `requestDeleteAccount()` | `POST /auth/delete-account/request` |
 | `confirmDeleteAccount(code)` | `POST /auth/delete-account/verify` |
@@ -623,6 +893,11 @@ Suggested `AuthRepository` methods:
 | `VALIDATION_ERROR` | 400 | Invalid request body |
 | `UNAUTHORIZED` | 401 | Missing Bearer token |
 | `SESSION_INVALID` | 401 | Expired or revoked token — logout locally |
+| `FILE_REQUIRED` | 400 | Profile photo upload missing file |
+| `INVALID_FILE_TYPE` | 400 | Not JPEG/PNG/WebP/HEIC |
+| `FILE_TOO_LARGE` | 400 | Photo over 5 MB |
+| `CLOUDINARY_NOT_CONFIGURED` | 503 | Set Cloudinary env on backend |
+| `UPLOAD_FAILED` | 502 | Cloudinary upload failed |
 | `INVALID_PURPOSE` | 400 | Used public send-code for delete/change-phone |
 
 ---
@@ -699,16 +974,42 @@ Future<void> registerFlow() async {
 - [ ] Route to **register** or **login** based on `purpose`
 - [ ] Show WhatsApp message when `channel == "whatsapp"`
 - [ ] Load countries from `GET /config/countries` (PK supported)
-- [ ] Store `access_token` in secure storage after login/register
+- [ ] Store `access_token` in secure storage after login/register (`.trim()`)
 - [ ] Send `Authorization: Bearer` on protected routes
+- [ ] Use fresh login token for first API call after auth (`tokenOverride`)
 - [ ] Load profile with `GET /users/me` on app start if token exists
-- [ ] Logout via `POST /auth/logout` and clear local token
+- [ ] Update profile with `PATCH /users/me/profile` (JSON)
+- [ ] Upload photo with `POST /users/me/profile-photo` (multipart field `photo`)
+- [ ] Logout via `POST /auth/logout` and clear local token (even if API fails)
 - [ ] Delete account: request OTP → verify → clear token
 - [ ] Handle `SESSION_INVALID` by redirecting to login
 - [ ] Display English `error.message` from API
 
 ---
 
+## Profile integration summary
+
+| Action | Method | Content-Type | Field / body |
+|--------|--------|--------------|--------------|
+| Read profile | `GET /users/me` | — | — |
+| Update name, email, Instagram, etc. | `PATCH /users/me/profile` | `application/json` | See §7.2 |
+| Upload / change photo | `POST /users/me/profile-photo` | `multipart/form-data` | `photo` = image file |
+
+**Packages for profile photo:**
+
+```yaml
+dependencies:
+  image_picker: ^1.1.2
+  http: ^1.2.2
+  http_parser: ^4.0.2
+  flutter_secure_storage: ^9.2.2
+```
+
+---
+
 ## Related docs
 
+- [FLUTTER_EVENTS_API.md](./FLUTTER_EVENTS_API.md) — Events, featured, favorites (YouHome)
+- [FLUTTER_SESSION_TOKEN_FIX.md](./FLUTTER_SESSION_TOKEN_FIX.md) — Fix `SESSION_INVALID` / token handling
+- [CLOUDINARY_PROFILE_PHOTO.md](./CLOUDINARY_PROFILE_PHOTO.md) — Backend Cloudinary setup
 - [TWILIO_OTP_IMPLEMENTATION.md](./TWILIO_OTP_IMPLEMENTATION.md) — Backend Twilio setup, env vars, deployment

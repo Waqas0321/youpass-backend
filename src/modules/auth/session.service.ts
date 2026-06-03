@@ -1,8 +1,10 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'node:crypto';
 import { env } from '../../config/env.js';
 import { prisma } from '../../config/database.js';
 import type { User } from '@prisma/client';
 import { hashToken } from '../../common/utils/crypto.js';
+import { activeSessionWhere } from '../../common/utils/session-query.js';
 import type { JwtPayload } from '../../common/types/auth.js';
 import type { AuthRequestContext } from '../../common/types/auth.js';
 
@@ -16,19 +18,11 @@ export async function createSession(
   user: User,
   context?: AuthRequestContext,
 ): Promise<SessionResult> {
-  const session = await prisma.userSession.create({
-    data: {
-      userId: user.id,
-      tokenHash: 'pending',
-      deviceInfo: (context?.deviceInfo ?? undefined) as object | undefined,
-      ipAddress: context?.ipAddress,
-      expiresAt: null,
-    },
-  });
+  const sessionId = crypto.randomBytes(12).toString('hex');
 
   const payload: JwtPayload = {
     sub: user.id,
-    sessionId: session.id,
+    sessionId,
     phone: user.phone,
   };
 
@@ -36,9 +30,15 @@ export async function createSession(
     expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
   });
 
-  await prisma.userSession.update({
-    where: { id: session.id },
-    data: { tokenHash: hashToken(accessToken) },
+  const session = await prisma.userSession.create({
+    data: {
+      id: sessionId,
+      userId: user.id,
+      tokenHash: hashToken(accessToken),
+      deviceInfo: (context?.deviceInfo ?? undefined) as object | undefined,
+      ipAddress: context?.ipAddress,
+      expiresAt: null,
+    },
   });
 
   return {
@@ -50,7 +50,7 @@ export async function createSession(
 
 export async function revokeSession(sessionId: string, userId: string): Promise<void> {
   await prisma.userSession.updateMany({
-    where: { id: sessionId, userId, revokedAt: null },
+    where: { id: sessionId, userId, ...activeSessionWhere },
     data: { revokedAt: new Date() },
   });
 }
@@ -59,7 +59,7 @@ export async function revokeAllUserSessions(userId: string, exceptSessionId?: st
   await prisma.userSession.updateMany({
     where: {
       userId,
-      revokedAt: null,
+      ...activeSessionWhere,
       ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}),
     },
     data: { revokedAt: new Date() },

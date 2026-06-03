@@ -23,6 +23,11 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v !== 'false' && v !== '0'),
   MIN_AGE_YEARS: z.coerce.number().default(18),
+  CLOUDINARY_CLOUD_NAME: z.string().optional().default('').transform((v) => v.trim()),
+  CLOUDINARY_API_KEY: z.string().optional().default('').transform((v) => v.trim()),
+  CLOUDINARY_API_SECRET: z.string().optional().default('').transform((v) => v.trim()),
+  CLOUDINARY_PROFILE_FOLDER: z.string().default('youpass/profile-photos'),
+  PROFILE_PHOTO_MAX_BYTES: z.coerce.number().default(5 * 1024 * 1024),
 });
 
 export type Env = z.infer<typeof envSchema>;

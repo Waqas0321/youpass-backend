@@ -103,6 +103,13 @@ Set these in the Vercel project dashboard or via CLI:
 | `TWILIO_SMS_FROM` | Twilio phone number for SMS (E.164) |
 | `TWILIO_WHATSAPP_FROM` | Twilio WhatsApp sender (E.164, if using whatsapp channel) |
 | `TWILIO_MOCK` | `true` until Twilio is configured |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret |
+| `CLOUDINARY_PROFILE_FOLDER` | Upload folder (default `youpass/profile-photos`) |
+| `PROFILE_PHOTO_MAX_BYTES` | Max upload size in bytes (default 5 MB) |
+
+See **[docs/CLOUDINARY_PROFILE_PHOTO.md](./docs/CLOUDINARY_PROFILE_PHOTO.md)** for Cloudinary setup.
 
 ### 3. Deploy
 
@@ -118,7 +125,11 @@ Build runs `prisma generate && tsc` automatically via `vercel-build` script.
 
 See **[docs/TWILIO_OTP_IMPLEMENTATION.md](./docs/TWILIO_OTP_IMPLEMENTATION.md)** for backend Twilio setup.
 
-See **[docs/FLUTTER_IMPLEMENTATION.md](./docs/FLUTTER_IMPLEMENTATION.md)** for **Flutter app integration** (send-code, register, login, 6-digit OTP, error handling).
+See **[docs/FLUTTER_IMPLEMENTATION.md](./docs/FLUTTER_IMPLEMENTATION.md)** for **Flutter app integration** (auth, profile, photo upload, logout, delete account).
+
+See **[docs/FLUTTER_SESSION_TOKEN_FIX.md](./docs/FLUTTER_SESSION_TOKEN_FIX.md)** for **`SESSION_INVALID`** troubleshooting.
+
+See **[docs/CLOUDINARY_PROFILE_PHOTO.md](./docs/CLOUDINARY_PROFILE_PHOTO.md)** for profile photo backend setup.
 
 ## Auth API endpoints
 
@@ -151,12 +162,31 @@ See **[docs/FLUTTER_IMPLEMENTATION.md](./docs/FLUTTER_IMPLEMENTATION.md)** for *
 |--------|----------|
 | GET | `/users/me` |
 | GET | `/users/me/profile` |
+| PATCH | `/users/me/profile` |
 | GET | `/users/me/welcome-data` |
 | GET | `/users/me/profile-completeness` |
+| POST | `/users/me/profile-photo` |
 | POST | `/users/me/logout` |
 | POST | `/users/me/delete-account/request` |
 | POST | `/users/me/delete-account/verify` |
 | GET | `/home/initial-feed` |
+
+## Events endpoints
+
+| Method | Endpoint | Auth |
+|--------|----------|------|
+| GET | `/events/types` | — |
+| GET | `/events/featured` | Optional |
+| GET | `/events` | Optional |
+| GET | `/events/:id` | Optional |
+| POST | `/events` | Bearer |
+| PATCH | `/events/:id` | Bearer |
+| DELETE | `/events/:id` | Bearer |
+| GET | `/users/me/favorites/events` | Bearer |
+| POST | `/users/me/favorites/events/:eventId` | Bearer |
+| DELETE | `/users/me/favorites/events/:eventId` | Bearer |
+
+See **[docs/FLUTTER_EVENTS_API.md](./docs/FLUTTER_EVENTS_API.md)** for Flutter integration.
 
 ---
 
@@ -199,6 +229,23 @@ curl -X POST http://localhost:3000/api/v1/auth/login \
 ```
 
 Use `Authorization: Bearer <access_token>` for protected routes.
+
+### Update profile
+
+```bash
+curl -X PATCH https://youpass-backend.vercel.app/api/v1/users/me/profile \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"full_name":"Waqas Akhtar","instagram_username":"waqas.dev"}'
+```
+
+```bash
+curl -X POST https://youpass-backend.vercel.app/api/v1/users/me/profile-photo \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -F "photo=@/path/to/photo.jpg"
+```
+
+See **[docs/FLUTTER_IMPLEMENTATION.md](./docs/FLUTTER_IMPLEMENTATION.md)** sections **7**, **7.1**, and **7.2** for full profile API docs.
 
 ---
 

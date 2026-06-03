@@ -6,6 +6,7 @@ import { AppError } from '../errors/app-error.js';
 import { AUTH_ERROR_CODES } from '../../config/constants.js';
 import type { JwtPayload } from '../types/auth.js';
 import { hashToken } from '../utils/crypto.js';
+import { activeSessionWhere, isSessionActive, isSessionExpired } from '../utils/session-query.js';
 
 export async function authenticate(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
@@ -14,7 +15,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       throw new AppError(401, AUTH_ERROR_CODES.UNAUTHORIZED, 'Authentication required');
     }
 
-    const token = header.slice(7);
+    const token = header.slice(7).trim();
     let payload: JwtPayload;
 
     try {
@@ -29,13 +30,17 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
         id: payload.sessionId,
         userId: payload.sub,
         tokenHash,
-        revokedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        ...activeSessionWhere,
       },
       include: { user: true },
     });
 
-    if (!session || session.user.accountStatus !== 'active') {
+    if (
+      !session ||
+      !isSessionActive(session.revokedAt) ||
+      isSessionExpired(session.expiresAt) ||
+      session.user.accountStatus !== 'active'
+    ) {
       throw new AppError(401, AUTH_ERROR_CODES.SESSION_INVALID, 'Session is no longer valid');
     }
 
