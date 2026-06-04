@@ -309,13 +309,15 @@ model Invitation {
 }
 
 model InvitationTicket {
-  id            String    @id @default(auto()) @map("_id") @db.ObjectId
-  invitationId  String    @unique @map("invitation_id") @db.ObjectId
-  manualEntryId String    @map("manual_entry_id")
-  qrPayload     String    @map("qr_payload")
-  unlockAt      DateTime  @map("unlock_at")
-  validatedAt   DateTime? @map("validated_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  invitationId     String    @unique @map("invitation_id") @db.ObjectId
+  manualEntryId    String    @map("manual_entry_id")
+  qrPayload        String    @map("qr_payload")
+  unlockAt         DateTime  @map("unlock_at")
+  validatedAt      DateTime? @map("validated_at")
+  consumptionCount Int?      @map("consumption_count")
+  stayMinutes      Int?      @map("stay_minutes")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
   invitation Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
 

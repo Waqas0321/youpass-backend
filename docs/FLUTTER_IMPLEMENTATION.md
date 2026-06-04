@@ -41,6 +41,11 @@ This guide is for the **Flutter mobile app** integrating YouPass authentication 
 | POST | `/invitations/:id/confirm` | Bearer | Confirm invitation |
 | POST | `/invitations/:id/reject` | Bearer | Reject invitation |
 | GET | `/invitations/:id/ticket` | Bearer | QR ticket |
+| GET | `/users/me/tickets/upcoming` | Bearer | My Tickets — upcoming |
+| GET | `/users/me/tickets/past` | Bearer | My Tickets — past |
+| GET | `/users/me/tickets/yearly-summary` | Bearer | Past tab yearly summary |
+| GET | `/users/me/tickets/:id` | Bearer | Ticket detail |
+| GET | `/users/me/tickets/:id/qr` | Bearer | View QR (same as invitation ticket) |
 | GET | `/users/me/invitations/summary` | Bearer | Drawer badge count |
 | POST | `/users/me/payment-methods` | Bearer | Save payment method |
 
@@ -1018,6 +1023,7 @@ dependencies:
 
 - [FLUTTER_EVENTS_API.md](./FLUTTER_EVENTS_API.md) — Events, featured, favorites (YouHome)
 - [FLUTTER_INVITATIONS_API.md](./FLUTTER_INVITATIONS_API.md) — Invitations, confirm, QR, payment methods
+- [FLUTTER_TICKETS_API.md](./FLUTTER_TICKETS_API.md) — My Tickets (upcoming, past, QR, yearly summary)
 - [FLUTTER_SESSION_TOKEN_FIX.md](./FLUTTER_SESSION_TOKEN_FIX.md) — Fix `SESSION_INVALID` / token handling
 - [CLOUDINARY_PROFILE_PHOTO.md](./CLOUDINARY_PROFILE_PHOTO.md) — Backend Cloudinary setup
 - [TWILIO_OTP_IMPLEMENTATION.md](./TWILIO_OTP_IMPLEMENTATION.md) — Backend Twilio setup, env vars, deployment

@@ -9,6 +9,7 @@ import { configRouter } from './modules/config/config.routes.js';
 import { usersRouter } from './modules/users/users.routes.js';
 import { eventsRouter } from './modules/events/events.routes.js';
 import { invitationsRouter } from './modules/invitations/invitations.routes.js';
+import { ticketsRouter } from './modules/tickets/tickets.routes.js';
 import { homeRouter } from './modules/home/home.routes.js';
 import { optionalAuthenticate } from './common/middleware/authenticate.js';
 import { prisma } from './config/database.js';
@@ -42,6 +43,7 @@ export function createApp() {
   api.use('/users', usersRouter);
   api.use('/events', eventsRouter);
   api.use('/invitations', invitationsRouter);
+  api.use('/tickets', ticketsRouter);
   api.get('/home/initial-feed', optionalAuthenticate, homeRouter.getInitialFeed);
 
   app.use(env.API_PREFIX, api);

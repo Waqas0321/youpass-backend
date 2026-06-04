@@ -454,6 +454,57 @@ async function addExtraInvitations() {
   console.log(`Extra invitations: ${added} added, ${skipped} already existed`);
 }
 
+/** Mark past confirmed tickets as validated with entry/consumption/stay stats for Past tab UI. */
+async function seedPastValidatedTickets() {
+  const user = await prisma.user.findFirst({ where: { accountStatus: 'active' } });
+  if (!user) return;
+
+  const pastValidated = [
+    {
+      eventTitle: 'Festival Verano 2026',
+      eventCity: 'Santiago',
+      entryOffsetMinutes: 41,
+      consumptionCount: 6,
+      stayMinutes: 314,
+    },
+  ];
+
+  for (const item of pastValidated) {
+    const event = await prisma.event.findFirst({
+      where: { title: item.eventTitle, city: item.eventCity },
+    });
+    if (!event) continue;
+
+    const invitation = await prisma.invitation.findFirst({
+      where: {
+        recipientUserId: user.id,
+        eventId: event.id,
+        status: { in: ['confirmed', 'validated'] },
+      },
+      include: { ticket: true },
+    });
+    if (!invitation?.ticket) continue;
+
+    const validatedAt = new Date(event.startsAt.getTime() + item.entryOffsetMinutes * 60_000);
+
+    await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { status: 'validated' },
+    });
+
+    await prisma.invitationTicket.update({
+      where: { id: invitation.ticket.id },
+      data: {
+        validatedAt,
+        consumptionCount: item.consumptionCount,
+        stayMinutes: item.stayMinutes,
+      },
+    });
+
+    console.log(`  Past validated ticket: ${item.eventTitle} (entry +${item.entryOffsetMinutes}m)`);
+  }
+}
+
 async function main() {
   console.log('Patching dummy data...\n');
 
@@ -463,6 +514,7 @@ async function main() {
   await fixAllQrPayloads();
   await addExtraInvitations();
   await fixAllQrPayloads();
+  await seedPastValidatedTickets();
 
   const [eventCount, invitationCount, ticketCount] = await Promise.all([
     prisma.event.count(),

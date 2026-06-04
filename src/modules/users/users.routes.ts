@@ -6,11 +6,14 @@ import { deleteAccountVerifySchema } from '../auth/auth.validators.js';
 import { updateProfileSchema } from './users.validators.js';
 import { favoritesController } from '../events/favorites.controller.js';
 import { invitationsController, paymentMethodsController } from '../invitations/invitations.controller.js';
+import { ticketsRouter } from '../tickets/tickets.routes.js';
 import { usersController } from './users.controller.js';
 
 export const usersRouter = Router();
 
 usersRouter.use(authenticate);
+
+usersRouter.use('/me/tickets', ticketsRouter);
 
 usersRouter.get('/me', usersController.getProfile);
 usersRouter.get('/me/profile', usersController.getProfile);

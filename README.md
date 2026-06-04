@@ -204,6 +204,20 @@ See **[docs/FLUTTER_EVENTS_API.md](./docs/FLUTTER_EVENTS_API.md)** for Flutter i
 
 See **[docs/FLUTTER_INVITATIONS_API.md](./docs/FLUTTER_INVITATIONS_API.md)** for Flutter integration.
 
+## My Tickets endpoints
+
+| Method | Endpoint | Auth |
+|--------|----------|------|
+| GET | `/users/me/tickets/upcoming` | Bearer |
+| GET | `/users/me/tickets/past` | Bearer |
+| GET | `/users/me/tickets/yearly-summary` | Bearer |
+| GET | `/users/me/tickets/:id` | Bearer |
+| GET | `/users/me/tickets/:id/qr` | Bearer |
+| GET | `/tickets/:id` | Bearer (alias) |
+| GET | `/tickets/:id/qr` | Bearer (alias) |
+
+See **[docs/FLUTTER_TICKETS_API.md](./docs/FLUTTER_TICKETS_API.md)** for Flutter integration.
+
 ---
 
 ## Example flows
