@@ -1,4 +1,4 @@
-import type { Event, Invitation, InvitationTicket, Producer } from '@prisma/client';
+import type { Event, Invitation, InvitationTicket, Producer, User } from '@prisma/client';
 import {
   formatDateTimeLabel,
   formatDeadlineLabel,
@@ -10,6 +10,7 @@ type InvitationWithRelations = Invitation & {
   event: Event;
   producer: Producer;
   ticket: InvitationTicket | null;
+  inviter?: User | null;
 };
 
 function locationLabel(event: Event): string {
@@ -61,6 +62,7 @@ function baseFields(invitation: InvitationWithRelations, timezone: string) {
     image_url: invitation.event.imageUrl,
     tier: invitation.tier,
     type: invitation.type,
+    source: invitation.source,
     status: mapStatusForApi(invitation.status),
     requires_payment_method: invitation.requiresPaymentMethod,
     entry_code: qr.entry_code,
@@ -113,10 +115,16 @@ export function formatInvitationDetail(
       name: invitation.producer.name,
       logo_url: invitation.producer.logoUrl,
     },
-    invited_by: {
-      name: invitation.producer.name,
-      role: 'producer' as const,
-    },
+    invited_by:
+      invitation.source === 'guest' && invitation.inviter
+        ? {
+            name: invitation.inviter.fullName,
+            role: 'guest' as const,
+          }
+        : {
+            name: invitation.producer.name,
+            role: 'producer' as const,
+          },
     custom_message: invitation.customMessage,
     assigned_slot: invitation.assignedSlot,
     cancellation_deadline: invitation.cancellationDeadline?.toISOString() ?? null,

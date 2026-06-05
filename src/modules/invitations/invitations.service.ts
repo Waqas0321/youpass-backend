@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { buildClaimUrl } from '../messaging/invitation-delivery.service.js';
 import {
   formatInvitationDetail,
   formatInvitationListItem,
@@ -22,14 +23,36 @@ const invitationInclude = {
   event: true,
   producer: true,
   ticket: true,
+  inviter: true,
 } as const;
+
+type InvitationRow = Prisma.InvitationGetPayload<{ include: typeof invitationInclude }>;
 
 async function userHasPaymentMethod(userId: string): Promise<boolean> {
   const count = await prisma.userPaymentMethod.count({ where: { userId, isDefault: true } });
   return count > 0;
 }
 
-async function getInvitationForUser(id: string, userId: string) {
+async function ensureRecipientAccess(invitation: InvitationRow, userId: string, userPhone: string) {
+  const phoneMatch =
+    invitation.recipientUserId === userId ||
+    (invitation.recipientPhone === userPhone &&
+      (invitation.recipientUserId == null || invitation.recipientUserId === userId));
+
+  if (!phoneMatch) {
+    throw new AppError(403, 'INVITATION_FORBIDDEN', 'Invitation not found');
+  }
+
+  if (!invitation.recipientUserId && invitation.recipientPhone === userPhone) {
+    await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { recipientUserId: userId },
+    });
+    invitation.recipientUserId = userId;
+  }
+}
+
+async function getInvitationForUser(id: string, userId: string, userPhone: string) {
   const invitation = await prisma.invitation.findUnique({
     where: { id },
     include: invitationInclude,
@@ -39,16 +62,13 @@ async function getInvitationForUser(id: string, userId: string) {
     throw new AppError(404, 'INVITATION_NOT_FOUND', 'Invitation not found');
   }
 
-  if (invitation.recipientUserId !== userId) {
-    throw new AppError(403, 'INVITATION_FORBIDDEN', 'Invitation not found');
-  }
-
+  await ensureRecipientAccess(invitation, userId, userPhone);
   return invitation;
 }
 
-function buildListWhere(userId: string, query: ListInvitationsQuery): Prisma.InvitationWhereInput {
+function buildListWhere(userId: string, userPhone: string, query: ListInvitationsQuery): Prisma.InvitationWhereInput {
   const where: Prisma.InvitationWhereInput = {
-    recipientUserId: userId,
+    OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null }],
     status: { notIn: ['expired', 'canceled'] },
   };
 
@@ -65,13 +85,22 @@ function buildListWhere(userId: string, query: ListInvitationsQuery): Prisma.Inv
     where.type = query.type;
   }
 
+  if (query.source) {
+    where.source = query.source;
+  }
+
   if (query.search) {
     const term = query.search.trim();
-    where.OR = [
-      { event: { title: { contains: term } } },
-      { event: { city: { contains: term } } },
-      { event: { venueName: { contains: term } } },
-      { producer: { name: { contains: term } } },
+    where.AND = [
+      {
+        OR: [
+          { event: { title: { contains: term } } },
+          { event: { city: { contains: term } } },
+          { event: { venueName: { contains: term } } },
+          { producer: { name: { contains: term } } },
+          { inviter: { fullName: { contains: term } } },
+        ],
+      },
     ];
   }
 
@@ -92,9 +121,9 @@ function sortInvitations<T extends { status: string; sentAt: Date; event: { star
 }
 
 export const invitationsService = {
-  async listInvitations(userId: string, query: ListInvitationsQuery) {
+  async listInvitations(userId: string, userPhone: string, query: ListInvitationsQuery) {
     const invitations = await prisma.invitation.findMany({
-      where: buildListWhere(userId, query),
+      where: buildListWhere(userId, userPhone, query),
       include: invitationInclude,
     });
 
@@ -114,8 +143,8 @@ export const invitationsService = {
     };
   },
 
-  async getInvitationDetail(userId: string, id: string) {
-    const invitation = await getInvitationForUser(id, userId);
+  async getInvitationDetail(userId: string, userPhone: string, id: string) {
+    const invitation = await getInvitationForUser(id, userId, userPhone);
     const hasPaymentMethod = await userHasPaymentMethod(userId);
 
     if (!invitation.viewedAt) {
@@ -128,20 +157,24 @@ export const invitationsService = {
     return formatInvitationDetail(invitation, hasPaymentMethod);
   },
 
-  async getSummary(userId: string) {
+  async getSummary(userId: string, userPhone: string) {
+    const recipientFilter: Prisma.InvitationWhereInput = {
+      OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null }],
+    };
+
     const [pending, total, newCount] = await Promise.all([
       prisma.invitation.count({
-        where: { recipientUserId: userId, status: 'pending' },
+        where: { ...recipientFilter, status: 'pending' },
       }),
       prisma.invitation.count({
         where: {
-          recipientUserId: userId,
+          ...recipientFilter,
           status: { in: ['pending', 'confirmed'] },
         },
       }),
       prisma.invitation.count({
         where: {
-          recipientUserId: userId,
+          ...recipientFilter,
           status: 'pending',
           viewedAt: null,
         },
@@ -155,8 +188,46 @@ export const invitationsService = {
     };
   },
 
-  async confirmInvitation(userId: string, id: string, _input: ConfirmInvitationInput) {
-    const invitation = await getInvitationForUser(id, userId);
+  async getClaimPreview(token: string) {
+    const invitation = await prisma.invitation.findFirst({
+      where: { claimToken: token, source: 'guest', status: 'pending' },
+      include: { event: true, inviter: true, producer: true },
+    });
+
+    if (!invitation) {
+      throw new AppError(404, 'CLAIM_NOT_FOUND', 'Invitation link is invalid or expired');
+    }
+
+    const timezone = getTimezone(invitation.event.countryCode);
+
+    return {
+      claim_token: token,
+      event_title: invitation.event.title,
+      event_starts_at: invitation.event.startsAt.toISOString(),
+      location: `${invitation.event.venueName}, ${invitation.event.city}`,
+      date_time_label: invitation.event.startsAt.toLocaleString('en-GB', {
+        timeZone: timezone,
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }),
+      invited_by: invitation.inviter?.fullName ?? 'A YouPass user',
+      guest_name: invitation.recipientName,
+      guest_phone_hint: invitation.recipientPhone?.slice(-4) ?? null,
+      claim_url: buildClaimUrl(token),
+      steps: [
+        'Download the YouPass app',
+        'Register or log in with the invited phone number',
+        'Open Invitations and accept your ticket',
+      ],
+    };
+  },
+
+  async confirmInvitation(userId: string, userPhone: string, id: string, _input: ConfirmInvitationInput) {
+    const invitation = await getInvitationForUser(id, userId, userPhone);
 
     if (invitation.status === 'confirmed') {
       throw new AppError(409, 'INVITATION_ALREADY_CONFIRMED', 'Already confirmed');
@@ -193,6 +264,7 @@ export const invitationsService = {
         data: {
           status: 'confirmed',
           respondedAt: new Date(),
+          recipientUserId: userId,
         },
       });
 
@@ -206,6 +278,16 @@ export const invitationsService = {
         },
       });
 
+      if (invitation.source === 'guest') {
+        const slot = await tx.ticketSlot.findFirst({ where: { invitationId: id } });
+        if (slot) {
+          await tx.ticketSlot.update({
+            where: { id: slot.id },
+            data: { status: 'claimed' },
+          });
+        }
+      }
+
       return tx.invitation.findUniqueOrThrow({
         where: { id },
         include: invitationInclude,
@@ -215,8 +297,8 @@ export const invitationsService = {
     return formatInvitationListItem(updated);
   },
 
-  async rejectInvitation(userId: string, id: string) {
-    const invitation = await getInvitationForUser(id, userId);
+  async rejectInvitation(userId: string, userPhone: string, id: string) {
+    const invitation = await getInvitationForUser(id, userId, userPhone);
 
     if (invitation.status === 'confirmed') {
       throw new AppError(409, 'INVITATION_ALREADY_CONFIRMED', 'Already confirmed');
@@ -226,20 +308,43 @@ export const invitationsService = {
       throw new AppError(409, 'INVITATION_EXPIRED', 'Response deadline passed');
     }
 
-    const updated = await prisma.invitation.update({
-      where: { id },
-      data: {
-        status: 'rejected',
-        respondedAt: new Date(),
-      },
-      include: invitationInclude,
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.invitation.update({
+        where: { id },
+        data: {
+          status: 'rejected',
+          respondedAt: new Date(),
+          recipientUserId: userId,
+        },
+      });
+
+      if (invitation.source === 'guest') {
+        const slot = await tx.ticketSlot.findFirst({ where: { invitationId: id } });
+        if (slot) {
+          await tx.ticketSlot.update({
+            where: { id: slot.id },
+            data: {
+              status: 'available',
+              guestName: null,
+              guestPhone: null,
+              guestCountryCode: null,
+              invitationId: null,
+            },
+          });
+        }
+      }
+
+      return tx.invitation.findUniqueOrThrow({
+        where: { id },
+        include: invitationInclude,
+      });
     });
 
     return formatInvitationListItem(updated);
   },
 
-  async getTicket(userId: string, id: string) {
-    const invitation = await getInvitationForUser(id, userId);
+  async getTicket(userId: string, userPhone: string, id: string) {
+    const invitation = await getInvitationForUser(id, userId, userPhone);
 
     if (invitation.status !== 'confirmed' || !invitation.ticket) {
       throw new AppError(404, 'INVITATION_NOT_FOUND', 'Ticket not found');

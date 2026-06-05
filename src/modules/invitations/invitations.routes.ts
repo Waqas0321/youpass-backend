@@ -4,6 +4,8 @@ import { invitationsController } from './invitations.controller.js';
 
 export const invitationsRouter = Router();
 
+invitationsRouter.get('/claim/:token', invitationsController.claimPreview);
+
 invitationsRouter.use(authenticate);
 
 invitationsRouter.get('/', invitationsController.list);

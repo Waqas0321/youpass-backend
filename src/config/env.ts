@@ -28,6 +28,12 @@ const envSchema = z.object({
   CLOUDINARY_API_SECRET: z.string().optional().default('').transform((v) => v.trim()),
   CLOUDINARY_PROFILE_FOLDER: z.string().default('youpass/profile-photos'),
   PROFILE_PHOTO_MAX_BYTES: z.coerce.number().default(5 * 1024 * 1024),
+  APP_CLAIM_BASE_URL: z.string().default('https://youpass.app/claim'),
+  TWILIO_WHATSAPP_INVITATION_CONTENT_SID: z.string().optional().default('').transform((v) => v.trim()),
+  CHECKOUT_MOCK_PAYMENT: z
+    .string()
+    .optional()
+    .transform((v) => v !== 'false' && v !== '0'),
 });
 
 export type Env = z.infer<typeof envSchema>;

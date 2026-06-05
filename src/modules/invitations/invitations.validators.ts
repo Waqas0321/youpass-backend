@@ -7,6 +7,7 @@ export const listInvitationsQuerySchema = z.object({
     .enum(['courtesy', 'free', 'general', 'vip', 'vip_table', 'discounted'])
     .optional(),
   search: z.string().max(200).optional(),
+  source: z.enum(['producer', 'guest']).optional(),
 });
 
 export const confirmInvitationSchema = z

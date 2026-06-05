@@ -505,6 +505,134 @@ async function seedPastValidatedTickets() {
   }
 }
 
+/** Sample 10-ticket purchase order for Assign Tickets UI testing. */
+async function seedSampleTicketOrder() {
+  const user = await prisma.user.findFirst({ where: { accountStatus: 'active' } });
+  if (!user) return;
+
+  const event = await prisma.event.findFirst({
+    where: { title: 'Santiago Live Tonight', city: 'Santiago' },
+  });
+  if (!event) return;
+
+  const existing = await prisma.ticketOrder.findFirst({
+    where: { buyerUserId: user.id, eventId: event.id, quantity: 10 },
+  });
+  if (existing) {
+    console.log('  Sample ticket order already exists');
+    return;
+  }
+
+  const producer = await prisma.producer.findFirst({ where: { name: 'YouPass' } })
+    ?? await prisma.producer.create({ data: { name: 'YouPass', logoUrl: null } });
+
+  const unitPrice = 48000;
+  const quantity = 10;
+
+  await prisma.$transaction(async (tx) => {
+    const order = await tx.ticketOrder.create({
+      data: {
+        buyerUserId: user.id,
+        eventId: event.id,
+        quantity,
+        tier: 'vip',
+        type: 'general',
+        unitPrice,
+        totalAmount: unitPrice * quantity,
+        currency: 'CLP',
+        status: 'paid',
+        paymentReference: `mock_seed_${Date.now()}`,
+      },
+    });
+
+    const existingInvite = await tx.invitation.findFirst({
+      where: {
+        recipientUserId: user.id,
+        eventId: event.id,
+        status: 'confirmed',
+        ticket: { isNot: null },
+      },
+      include: { ticket: true },
+    });
+
+    for (let i = 1; i <= quantity; i += 1) {
+      await tx.ticketSlot.create({
+        data: {
+          orderId: order.id,
+          slotNumber: i,
+          status: i === 1 ? 'owner' : 'available',
+        },
+      });
+    }
+
+    const slot1 = await tx.ticketSlot.findFirst({
+      where: { orderId: order.id, slotNumber: 1 },
+    });
+
+    const linkedSlot = existingInvite
+      ? await tx.ticketSlot.findFirst({ where: { invitationId: existingInvite.id } })
+      : null;
+
+    if (slot1 && existingInvite && !linkedSlot) {
+      await tx.ticketSlot.update({
+        where: { id: slot1.id },
+        data: { invitationId: existingInvite.id },
+      });
+    } else if (slot1 && !existingInvite) {
+        const ticketId = crypto.randomBytes(12).toString('hex');
+        const timezone = 'America/Santiago';
+        const unlockAt = eventDayStart(event.startsAt, timezone);
+        const invitation = await tx.invitation.create({
+          data: {
+            eventId: event.id,
+            producerId: producer.id,
+            recipientUserId: user.id,
+            inviterUserId: user.id,
+            source: 'guest',
+            type: 'general',
+            tier: 'vip',
+            status: 'confirmed',
+            assignedSlot: 'Entrada 1',
+            respondedAt: new Date(),
+            sentAt: new Date(),
+          },
+        });
+        await tx.invitationTicket.create({
+          data: {
+            id: ticketId,
+            invitationId: invitation.id,
+            manualEntryId: generateEntryCode(),
+            qrPayload: generateQrPayload(ticketId, event.id),
+            unlockAt,
+          },
+        });
+        await tx.ticketSlot.update({
+          where: { id: slot1.id },
+          data: { invitationId: invitation.id },
+        });
+    }
+  });
+
+  console.log('  Sample ticket order: 10 VIP tickets → Santiago Live Tonight');
+}
+
+async function ensureInvitationSourceDefaults() {
+  const invitations = await prisma.invitation.findMany({ select: { id: true, source: true } });
+  let updated = 0;
+  for (const inv of invitations) {
+    if (!inv.source) {
+      await prisma.invitation.update({
+        where: { id: inv.id },
+        data: { source: 'producer' },
+      });
+      updated += 1;
+    }
+  }
+  if (updated > 0) {
+    console.log(`  Set source=producer on ${updated} legacy invitations`);
+  }
+}
+
 async function main() {
   console.log('Patching dummy data...\n');
 
@@ -515,14 +643,17 @@ async function main() {
   await addExtraInvitations();
   await fixAllQrPayloads();
   await seedPastValidatedTickets();
+  await ensureInvitationSourceDefaults();
+  await seedSampleTicketOrder();
 
-  const [eventCount, invitationCount, ticketCount] = await Promise.all([
+  const [eventCount, invitationCount, ticketCount, orderCount] = await Promise.all([
     prisma.event.count(),
     prisma.invitation.count(),
     prisma.invitationTicket.count(),
+    prisma.ticketOrder.count(),
   ]);
 
-  console.log(`\nDone — ${eventCount} events, ${invitationCount} invitations, ${ticketCount} tickets`);
+  console.log(`\nDone — ${eventCount} events, ${invitationCount} invitations, ${ticketCount} tickets, ${orderCount} orders`);
 }
 
 main()

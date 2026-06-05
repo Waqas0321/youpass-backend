@@ -18,6 +18,7 @@ import {
 import { formatPhoneDisplay, parseAndValidatePhone } from '../../common/utils/phone.js';
 import type { AuthRequestContext } from '../../common/types/auth.js';
 import { otpDeliveryService } from './otp-delivery.service.js';
+import { linkPendingInvitationsByPhone } from '../invitations/invitation-link.service.js';
 import { createSession, revokeAllUserSessions, revokeSession } from './session.service.js';
 import type {
   ChangePhoneRequestInput,
@@ -429,6 +430,7 @@ export const authService = {
       throw new AppError(404, AUTH_ERROR_CODES.USER_NOT_FOUND, 'No account found for this phone number');
     }
 
+    const linkedInvitations = await linkPendingInvitationsByPhone(user.id, e164);
     const session = await createSession(user, context);
 
     return {
@@ -437,6 +439,7 @@ export const authService = {
       session_id: session.sessionId,
       expires_at: session.expiresAt,
       is_new_user: false,
+      linked_invitations: linkedInvitations,
     };
   },
 
@@ -487,6 +490,7 @@ export const authService = {
       },
     });
 
+    const linkedInvitations = await linkPendingInvitationsByPhone(user.id, e164);
     const session = await createSession(user, context);
 
     return {
@@ -495,6 +499,7 @@ export const authService = {
       session_id: session.sessionId,
       expires_at: session.expiresAt,
       is_new_user: true,
+      linked_invitations: linkedInvitations,
       welcome: {
         title: `Welcome to YouPass, ${user.fullName.split(' ')[0]}!`,
         subtitle: 'Your access to the best events starts here',

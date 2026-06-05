@@ -46,10 +46,16 @@ function formatStatistics(row: InvitationTicketRow, status: TicketDisplayStatus)
   };
 }
 
+type AssignMeta = {
+  order_id: string;
+  available_count: number;
+};
+
 function baseTicketFields(
   row: InvitationTicketRow,
   isFavorite: boolean,
   status: TicketDisplayStatus,
+  assignMeta?: AssignMeta | null,
 ) {
   const typeLabel = ticketTypeLabel(row.tier, row.type);
   const qrStatus = resolveQrStatus(
@@ -70,8 +76,11 @@ function baseTicketFields(
     ticket_count: 1,
     tier: row.tier,
     type: row.type,
-    origin: 'invitation' as const,
+    origin: row.source === 'guest' && assignMeta ? ('purchase' as const) : ('invitation' as const),
+    source: row.source,
     invitation_id: row.id,
+    ticket_order_id: assignMeta?.order_id ?? null,
+    assignable_count: assignMeta?.available_count ?? 0,
     producer: {
       id: row.producer.id,
       name: row.producer.name,
@@ -83,28 +92,40 @@ function baseTicketFields(
     assigned_slot: row.assignedSlot,
     is_favorite: isFavorite,
     can_view_qr: canViewQr(row),
-    can_assign_tickets: false,
+    can_assign_tickets: (assignMeta?.available_count ?? 0) > 0,
     qr_status: qrStatus,
     entry_code: row.ticket.manualEntryId,
     statistics: formatStatistics(row, status),
   };
 }
 
-export function formatUpcomingTicket(row: InvitationTicketRow, isFavorite: boolean) {
+export function formatUpcomingTicket(
+  row: InvitationTicketRow,
+  isFavorite: boolean,
+  assignMeta?: AssignMeta | null,
+) {
   const status = resolveTicketStatus(row, row.event, row.ticket);
-  return baseTicketFields(row, isFavorite, status);
+  return baseTicketFields(row, isFavorite, status, assignMeta);
 }
 
-export function formatPastTicket(row: InvitationTicketRow, isFavorite: boolean) {
+export function formatPastTicket(
+  row: InvitationTicketRow,
+  isFavorite: boolean,
+  assignMeta?: AssignMeta | null,
+) {
   const status = resolveTicketStatus(row, row.event, row.ticket);
-  return baseTicketFields(row, isFavorite, status);
+  return baseTicketFields(row, isFavorite, status, assignMeta);
 }
 
-export function formatTicketDetail(row: InvitationTicketRow, isFavorite: boolean) {
+export function formatTicketDetail(
+  row: InvitationTicketRow,
+  isFavorite: boolean,
+  assignMeta?: AssignMeta | null,
+) {
   const status = resolveTicketStatus(row, row.event, row.ticket);
 
   return {
-    ...baseTicketFields(row, isFavorite, status),
+    ...baseTicketFields(row, isFavorite, status, assignMeta),
     event_description: row.event.description,
     starts_at: row.event.startsAt.toISOString(),
     venue_name: row.event.venueName,

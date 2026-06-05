@@ -1,6 +1,7 @@
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { invitationsService } from '../invitations/invitations.service.js';
+import { ticketOrdersService } from '../ticket-orders/ticket-orders.service.js';
 import { formatPastTicket, formatTicketDetail, formatUpcomingTicket } from './tickets.formatter.js';
 import type { InvitationTicketRow } from './tickets.utils.js';
 import { isPastTicket, isUpcomingTicket, resolveTicketStatus } from './tickets.utils.js';
@@ -100,6 +101,7 @@ async function getTicketRowForUser(userId: string, ticketId: string): Promise<In
 export const ticketsService = {
   async listUpcoming(userId: string, query: ListUpcomingTicketsQuery) {
     const favoriteIds = await getFavoriteIds(userId);
+    const assignMap = await ticketOrdersService.getAssignabilityByEvent(userId);
     const now = new Date();
     const upcoming = (await fetchTicketRows(userId))
       .filter((row) => isUpcomingTicket(row, now))
@@ -108,7 +110,13 @@ export const ticketsService = {
     const { items, meta } = paginate(upcoming, query.page, query.limit);
 
     return {
-      tickets: items.map((row) => formatUpcomingTicket(row, favoriteIds.has(row.eventId))),
+      tickets: items.map((row) => {
+        const assign = assignMap.get(row.eventId);
+        const assignMeta = assign
+          ? { order_id: assign.orderId, available_count: assign.available }
+          : null;
+        return formatUpcomingTicket(row, favoriteIds.has(row.eventId), assignMeta);
+      }),
       meta: {
         ...meta,
         active_count: upcoming.filter(
@@ -142,11 +150,16 @@ export const ticketsService = {
   async getTicketDetail(userId: string, ticketId: string) {
     const row = await getTicketRowForUser(userId, ticketId);
     const favoriteIds = await getFavoriteIds(userId);
-    return formatTicketDetail(row, favoriteIds.has(row.eventId));
+    const assignMap = await ticketOrdersService.getAssignabilityByEvent(userId);
+    const assign = assignMap.get(row.eventId);
+    const assignMeta = assign
+      ? { order_id: assign.orderId, available_count: assign.available }
+      : null;
+    return formatTicketDetail(row, favoriteIds.has(row.eventId), assignMeta);
   },
 
-  async getTicketQr(userId: string, ticketId: string) {
-    return invitationsService.getTicket(userId, ticketId);
+  async getTicketQr(userId: string, userPhone: string, ticketId: string) {
+    return invitationsService.getTicket(userId, userPhone, ticketId);
   },
 
   async getYearlySummary(userId: string) {

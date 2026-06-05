@@ -1024,6 +1024,7 @@ dependencies:
 - [FLUTTER_EVENTS_API.md](./FLUTTER_EVENTS_API.md) — Events, featured, favorites (YouHome)
 - [FLUTTER_INVITATIONS_API.md](./FLUTTER_INVITATIONS_API.md) — Invitations, confirm, QR, payment methods
 - [FLUTTER_TICKETS_API.md](./FLUTTER_TICKETS_API.md) — My Tickets (upcoming, past, QR, yearly summary)
+- [FLUTTER_GUEST_TICKETS_API.md](./FLUTTER_GUEST_TICKETS_API.md) — Purchase, assign to contacts, WhatsApp claim
 - [FLUTTER_SESSION_TOKEN_FIX.md](./FLUTTER_SESSION_TOKEN_FIX.md) — Fix `SESSION_INVALID` / token handling
 - [CLOUDINARY_PROFILE_PHOTO.md](./CLOUDINARY_PROFILE_PHOTO.md) — Backend Cloudinary setup
 - [TWILIO_OTP_IMPLEMENTATION.md](./TWILIO_OTP_IMPLEMENTATION.md) — Backend Twilio setup, env vars, deployment

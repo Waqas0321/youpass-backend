@@ -38,7 +38,11 @@ export const ticketsController = {
 
   getQr: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await ticketsService.getTicketQr(req.user!.id, String(req.params.id));
+      const data = await ticketsService.getTicketQr(
+        req.user!.id,
+        req.user!.phone,
+        String(req.params.id),
+      );
       res.json(successResponse(data));
     } catch (err) {
       next(err);

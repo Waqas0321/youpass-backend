@@ -218,6 +218,19 @@ See **[docs/FLUTTER_INVITATIONS_API.md](./docs/FLUTTER_INVITATIONS_API.md)** for
 
 See **[docs/FLUTTER_TICKETS_API.md](./docs/FLUTTER_TICKETS_API.md)** for Flutter integration.
 
+## Guest ticket assignment (purchase → assign → WhatsApp)
+
+| Method | Endpoint | Auth |
+|--------|----------|------|
+| POST | `/events/:eventId/checkout` | Bearer |
+| GET | `/users/me/ticket-orders/:orderId/assignments` | Bearer |
+| POST | `/users/me/ticket-orders/:orderId/slots/:slotId/assign` | Bearer |
+| DELETE | `/users/me/ticket-orders/:orderId/slots/:slotId/assign` | Bearer |
+| POST | `/users/me/ticket-orders/:orderId/slots/:slotId/resend` | Bearer |
+| GET | `/invitations/claim/:token` | Public |
+
+See **[docs/FLUTTER_GUEST_TICKETS_API.md](./docs/FLUTTER_GUEST_TICKETS_API.md)** for Flutter integration.
+
 ---
 
 ## Example flows
