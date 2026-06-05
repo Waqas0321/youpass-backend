@@ -6,6 +6,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { parseAndValidatePhone } from '../../common/utils/phone.js';
 import {
   buildClaimUrl,
+  invitationDeliveryMeta,
   invitationDeliveryService,
 } from '../messaging/invitation-delivery.service.js';
 import {
@@ -402,7 +403,10 @@ export const ticketOrdersService = {
         },
       }),
       claim_url: claimUrl,
-      message: 'Invitation sent via WhatsApp from YouPass',
+      ...invitationDeliveryMeta(),
+      message: invitationDeliveryMeta().delivery_mode === 'mock'
+        ? 'Invitation saved (WhatsApp mock mode — no real message sent). Configure Twilio on the server for live delivery.'
+        : 'Invitation sent via WhatsApp from YouPass',
     };
   },
 
@@ -488,7 +492,10 @@ export const ticketOrdersService = {
     return {
       slot: formatAssignmentSlot(slot),
       claim_url: claimUrl,
-      message: 'Invitation resent via WhatsApp from YouPass',
+      ...invitationDeliveryMeta(),
+      message: invitationDeliveryMeta().delivery_mode === 'mock'
+        ? 'Invitation saved (WhatsApp mock mode — no real message sent). Configure Twilio on the server for live delivery.'
+        : 'Invitation resent via WhatsApp from YouPass',
     };
   },
 

@@ -94,6 +94,17 @@ class TwilioInvitationDeliveryService implements InvitationDeliveryService {
   }
 }
 
+export function isInvitationDeliveryMock(): boolean {
+  return env.TWILIO_MOCK;
+}
+
+export function invitationDeliveryMeta() {
+  return {
+    delivery_mode: env.TWILIO_MOCK ? ('mock' as const) : ('live' as const),
+    whatsapp_sent: !env.TWILIO_MOCK,
+  };
+}
+
 export const invitationDeliveryService: InvitationDeliveryService = env.TWILIO_MOCK
   ? new MockInvitationDeliveryService()
   : new TwilioInvitationDeliveryService();
