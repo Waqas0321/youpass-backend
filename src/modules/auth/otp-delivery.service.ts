@@ -1,6 +1,10 @@
 import { env } from '../../config/env.js';
 import type { AuthCodePurpose } from '@prisma/client';
 import { OTP_PURPOSE_LABELS } from '../../config/constants.js';
+import {
+  normalizeE164,
+  sendTwilioWhatsApp,
+} from '../messaging/twilio-whatsapp.service.js';
 
 export type OtpDeliveryChannel = 'sms' | 'whatsapp';
 
@@ -27,13 +31,8 @@ function buildOtpMessage(purpose: AuthCodePurpose, code: string): string {
   return messages[purpose];
 }
 
-function normalizeE164(value: string): string {
-  const trimmed = value
-    .trim()
-    .replace(/^["']|["']$/g, '')
-    .replace(/[\s\r\n]+/g, '');
-  if (!trimmed) return '';
-  return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
+function normalizeE164Phone(value: string): string {
+  return normalizeE164(value);
 }
 
 class MockOtpDeliveryService implements OtpDeliveryService {
@@ -65,7 +64,7 @@ class TwilioOtpDeliveryService implements OtpDeliveryService {
 
   private getFromAddress(): string {
     if (this.channel === 'whatsapp') {
-      const from = normalizeE164(env.TWILIO_WHATSAPP_FROM.replace(/^whatsapp:/, ''));
+      const from = normalizeE164Phone(env.TWILIO_WHATSAPP_FROM.replace(/^whatsapp:/, ''));
       if (!from) {
         throw new Error(
           'TWILIO_WHATSAPP_FROM is not set. Use your Twilio WhatsApp sandbox number, e.g. +14155238886',
@@ -73,7 +72,7 @@ class TwilioOtpDeliveryService implements OtpDeliveryService {
       }
       return `whatsapp:${from}`;
     }
-    const smsFrom = normalizeE164(env.TWILIO_SMS_FROM);
+    const smsFrom = normalizeE164Phone(env.TWILIO_SMS_FROM);
     if (!smsFrom) {
       throw new Error('TWILIO_SMS_FROM is not set');
     }
@@ -88,6 +87,14 @@ class TwilioOtpDeliveryService implements OtpDeliveryService {
   }
 
   async sendOtp(params: OtpSendParams): Promise<void> {
+    if (this.channel === 'whatsapp') {
+      await sendTwilioWhatsApp({
+        toE164: params.phone,
+        body: buildOtpMessage(params.purpose, params.code),
+      });
+      return;
+    }
+
     if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) {
       throw new Error('Twilio credentials missing: set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN');
     }

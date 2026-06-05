@@ -288,8 +288,16 @@ Then POST assign with parsed `country_code` + national number.
 | `TWILIO_ACCOUNT_SID` | Production | Twilio account |
 | `TWILIO_AUTH_TOKEN` | Production | Twilio auth |
 | `TWILIO_WHATSAPP_FROM` | Production | Official WhatsApp sender (E.164) |
-| `TWILIO_MOCK` | Dev | `true` = log only (default) |
-| `TWILIO_WHATSAPP_INVITATION_CONTENT_SID` | Recommended prod | Approved WhatsApp template SID |
+| `TWILIO_MOCK` | **Must be `false` on Vercel** (same as OTP) |
+| `TWILIO_WHATSAPP_INVITATION_CONTENT_SID` | Recommended prod — approved invite template |
+| `TWILIO_WHATSAPP_OTP_CONTENT_SID` | Optional fallback — reuse OTP template for invites |
+
+Invitations use the **same Twilio WhatsApp API path as OTP**. If OTP arrives but invites do not, check the API response:
+
+```json
+"delivery_mode": "mock"   → TWILIO_MOCK still true on server
+"delivery_mode": "live"   → Twilio accepted; guest number must have WhatsApp + be verified on trial
+```
 | `APP_CLAIM_BASE_URL` | Yes | e.g. `https://youpass.app/claim` |
 | `CHECKOUT_MOCK_PAYMENT` | Dev | `true` = skip Stripe/Klap (default) |
 

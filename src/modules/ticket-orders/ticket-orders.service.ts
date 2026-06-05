@@ -353,8 +353,9 @@ export const ticketOrdersService = {
 
     const claimUrl = buildClaimUrl(claimToken);
 
+    let deliveryResult;
     try {
-      await invitationDeliveryService.sendGuestInvitation({
+      deliveryResult = await invitationDeliveryService.sendGuestInvitation({
         guestPhone: e164,
         guestName: input.guest_name.trim(),
         inviterName: buyer.fullName,
@@ -403,9 +404,9 @@ export const ticketOrdersService = {
         },
       }),
       claim_url: claimUrl,
-      ...invitationDeliveryMeta(),
-      message: invitationDeliveryMeta().delivery_mode === 'mock'
-        ? 'Invitation saved (WhatsApp mock mode — no real message sent). Configure Twilio on the server for live delivery.'
+      ...invitationDeliveryMeta(deliveryResult),
+      message: deliveryResult.delivery_mode === 'mock'
+        ? 'Invitation saved (WhatsApp mock mode — set TWILIO_MOCK=false on server for live delivery).'
         : 'Invitation sent via WhatsApp from YouPass',
     };
   },
@@ -476,7 +477,7 @@ export const ticketOrdersService = {
     const claimUrl = buildClaimUrl(invitation.claimToken);
     const inviterName = invitation.inviter?.fullName ?? 'Un amigo';
 
-    await invitationDeliveryService.sendGuestInvitation({
+    const deliveryResult = await invitationDeliveryService.sendGuestInvitation({
       guestPhone: slot.guestPhone!,
       guestName: slot.guestName ?? invitation.recipientName ?? 'Invitado',
       inviterName,
@@ -492,9 +493,9 @@ export const ticketOrdersService = {
     return {
       slot: formatAssignmentSlot(slot),
       claim_url: claimUrl,
-      ...invitationDeliveryMeta(),
-      message: invitationDeliveryMeta().delivery_mode === 'mock'
-        ? 'Invitation saved (WhatsApp mock mode — no real message sent). Configure Twilio on the server for live delivery.'
+      ...invitationDeliveryMeta(deliveryResult),
+      message: deliveryResult.delivery_mode === 'mock'
+        ? 'Invitation saved (WhatsApp mock mode — set TWILIO_MOCK=false on server for live delivery).'
         : 'Invitation resent via WhatsApp from YouPass',
     };
   },
