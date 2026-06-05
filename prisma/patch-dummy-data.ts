@@ -505,21 +505,21 @@ async function seedPastValidatedTickets() {
   }
 }
 
-/** Sample 10-ticket purchase order for Assign Tickets UI testing. */
-async function seedSampleTicketOrder() {
-  const user = await prisma.user.findFirst({ where: { accountStatus: 'active' } });
-  if (!user) return;
-
-  const event = await prisma.event.findFirst({
-    where: { title: 'Santiago Live Tonight', city: 'Santiago' },
-  });
+/** Sample multi-ticket purchase orders for Assign Tickets UI testing. */
+async function seedTicketOrderForEvent(
+  userId: string,
+  eventTitle: string,
+  city: string,
+  quantity = 10,
+) {
+  const event = await prisma.event.findFirst({ where: { title: eventTitle, city } });
   if (!event) return;
 
   const existing = await prisma.ticketOrder.findFirst({
-    where: { buyerUserId: user.id, eventId: event.id, quantity: 10 },
+    where: { buyerUserId: userId, eventId: event.id, status: 'paid' },
   });
   if (existing) {
-    console.log('  Sample ticket order already exists');
+    console.log(`  Ticket order exists: ${eventTitle}`);
     return;
   }
 
@@ -527,12 +527,11 @@ async function seedSampleTicketOrder() {
     ?? await prisma.producer.create({ data: { name: 'YouPass', logoUrl: null } });
 
   const unitPrice = 48000;
-  const quantity = 10;
 
   await prisma.$transaction(async (tx) => {
     const order = await tx.ticketOrder.create({
       data: {
-        buyerUserId: user.id,
+        buyerUserId: userId,
         eventId: event.id,
         quantity,
         tier: 'vip',
@@ -541,29 +540,26 @@ async function seedSampleTicketOrder() {
         totalAmount: unitPrice * quantity,
         currency: 'CLP',
         status: 'paid',
-        paymentReference: `mock_seed_${Date.now()}`,
+        paymentReference: `mock_seed_${Date.now()}_${event.id.slice(-6)}`,
       },
     });
 
     const existingInvite = await tx.invitation.findFirst({
       where: {
-        recipientUserId: user.id,
+        recipientUserId: userId,
         eventId: event.id,
         status: 'confirmed',
         ticket: { isNot: null },
       },
-      include: { ticket: true },
     });
 
-    for (let i = 1; i <= quantity; i += 1) {
-      await tx.ticketSlot.create({
-        data: {
-          orderId: order.id,
-          slotNumber: i,
-          status: i === 1 ? 'owner' : 'available',
-        },
-      });
-    }
+    await tx.ticketSlot.createMany({
+      data: Array.from({ length: quantity }, (_, i) => ({
+        orderId: order.id,
+        slotNumber: i + 1,
+        status: i === 0 ? ('owner' as const) : ('available' as const),
+      })),
+    });
 
     const slot1 = await tx.ticketSlot.findFirst({
       where: { orderId: order.id, slotNumber: 1 },
@@ -579,41 +575,50 @@ async function seedSampleTicketOrder() {
         data: { invitationId: existingInvite.id },
       });
     } else if (slot1 && !existingInvite) {
-        const ticketId = crypto.randomBytes(12).toString('hex');
-        const timezone = 'America/Santiago';
-        const unlockAt = eventDayStart(event.startsAt, timezone);
-        const invitation = await tx.invitation.create({
-          data: {
-            eventId: event.id,
-            producerId: producer.id,
-            recipientUserId: user.id,
-            inviterUserId: user.id,
-            source: 'guest',
-            type: 'general',
-            tier: 'vip',
-            status: 'confirmed',
-            assignedSlot: 'Entrada 1',
-            respondedAt: new Date(),
-            sentAt: new Date(),
-          },
-        });
-        await tx.invitationTicket.create({
-          data: {
-            id: ticketId,
-            invitationId: invitation.id,
-            manualEntryId: generateEntryCode(),
-            qrPayload: generateQrPayload(ticketId, event.id),
-            unlockAt,
-          },
-        });
-        await tx.ticketSlot.update({
-          where: { id: slot1.id },
-          data: { invitationId: invitation.id },
-        });
+      const ticketId = crypto.randomBytes(12).toString('hex');
+      const timezone =
+        event.countryCode === 'CL' ? 'America/Santiago' : 'UTC';
+      const unlockAt = eventDayStart(event.startsAt, timezone);
+      const invitation = await tx.invitation.create({
+        data: {
+          eventId: event.id,
+          producerId: producer.id,
+          recipientUserId: userId,
+          inviterUserId: userId,
+          source: 'guest',
+          type: 'general',
+          tier: 'vip',
+          status: 'confirmed',
+          assignedSlot: 'Entrada 1',
+          respondedAt: new Date(),
+          sentAt: new Date(),
+        },
+      });
+      await tx.invitationTicket.create({
+        data: {
+          id: ticketId,
+          invitationId: invitation.id,
+          manualEntryId: generateEntryCode(),
+          qrPayload: generateQrPayload(ticketId, event.id),
+          unlockAt,
+        },
+      });
+      await tx.ticketSlot.update({
+        where: { id: slot1.id },
+        data: { invitationId: invitation.id },
+      });
     }
   });
 
-  console.log('  Sample ticket order: 10 VIP tickets → Santiago Live Tonight');
+  console.log(`  Sample ticket order: ${quantity} VIP tickets → ${eventTitle}`);
+}
+
+async function seedSampleTicketOrders() {
+  const user = await prisma.user.findFirst({ where: { accountStatus: 'active' } });
+  if (!user) return;
+
+  await seedTicketOrderForEvent(user.id, 'URBAN NIGHT LIVE', 'Santiago');
+  await seedTicketOrderForEvent(user.id, 'Santiago Live Tonight', 'Santiago');
 }
 
 async function ensureInvitationSourceDefaults() {
@@ -644,7 +649,7 @@ async function main() {
   await fixAllQrPayloads();
   await seedPastValidatedTickets();
   await ensureInvitationSourceDefaults();
-  await seedSampleTicketOrder();
+  await seedSampleTicketOrders();
 
   const [eventCount, invitationCount, ticketCount, orderCount] = await Promise.all([
     prisma.event.count(),

@@ -54,7 +54,46 @@ async function attachInvitations(slots: TicketSlot[]): Promise<SlotWithInvitatio
   }));
 }
 
-async function getOrderForBuyer(orderId: string, buyerUserId: string): Promise<OrderWithRelations> {
+/**
+ * Accepts ticket order id, ticket/invitation id, or event id (Flutter may pass any of these).
+ */
+async function resolveOrderIdForBuyer(buyerUserId: string, refId: string): Promise<string> {
+  const direct = await prisma.ticketOrder.findFirst({
+    where: { id: refId, buyerUserId, status: 'paid' },
+    select: { id: true },
+  });
+  if (direct) return direct.id;
+
+  const invitation = await prisma.invitation.findFirst({
+    where: {
+      id: refId,
+      recipientUserId: buyerUserId,
+      status: { in: ['confirmed', 'validated'] },
+    },
+    select: { eventId: true },
+  });
+
+  const eventId = invitation?.eventId
+    ?? (await prisma.event.findFirst({ where: { id: refId }, select: { id: true } }))?.id;
+
+  if (eventId) {
+    const byEvent = await prisma.ticketOrder.findFirst({
+      where: { buyerUserId, eventId, status: 'paid' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (byEvent) return byEvent.id;
+  }
+
+  throw new AppError(
+    404,
+    'TICKET_ORDER_NOT_FOUND',
+    'No assignable ticket order for this event. Purchase multiple tickets first, or use ticket_order_id from My Tickets.',
+  );
+}
+
+async function getOrderForBuyer(refId: string, buyerUserId: string): Promise<OrderWithRelations> {
+  const orderId = await resolveOrderIdForBuyer(buyerUserId, refId);
   const order = await prisma.ticketOrder.findFirst({
     where: { id: orderId, buyerUserId, status: 'paid' },
     include: {
@@ -226,8 +265,8 @@ export const ticketOrdersService = {
     };
   },
 
-  async listAssignments(buyerUserId: string, orderId: string) {
-    const order = await getOrderForBuyer(orderId, buyerUserId);
+  async listAssignments(buyerUserId: string, orderRef: string) {
+    const order = await getOrderForBuyer(orderRef, buyerUserId);
     const slots = order.slots.map(formatAssignmentSlot);
     const availableCount = slots.filter((s) => s.status === 'available').length;
     const pendingCount = slots.filter((s) => s.status === 'pending').length;

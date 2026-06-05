@@ -252,11 +252,14 @@ Upcoming tickets from a purchase include:
 }
 ```
 
-Navigate to assign screen:
+Navigate to assign screen (any of these work):
 
 ```
 GET /users/me/ticket-orders/{ticket_order_id}/assignments
+GET /users/me/tickets/{ticket_id}/assignments
 ```
+
+Use `ticket_order_id` from My Tickets when available, or the ticket `id` — the API resolves both.
 
 ---
 
