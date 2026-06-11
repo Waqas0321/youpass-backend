@@ -7,8 +7,19 @@ export const listEventsQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),
+  q: z.string().trim().min(1).max(200).optional(),
+  search: z.string().trim().min(1).max(200).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export const homeFeedQuerySchema = z.object({
+  country_code: z.string().min(2).max(5).optional(),
+  country: z.string().min(2).max(5).optional(),
+  event_type: z.string().min(1).max(50).optional(),
+  context: z.string().optional(),
+  upcoming_page: z.coerce.number().int().min(1).default(1),
+  upcoming_limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
 export const featuredEventsQuerySchema = z.object({
@@ -41,6 +52,7 @@ export const eventIdParamSchema = z.object({
 });
 
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
+export type HomeFeedQuery = z.infer<typeof homeFeedQuerySchema>;
 export type FeaturedEventsQuery = z.infer<typeof featuredEventsQuerySchema>;
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;

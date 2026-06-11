@@ -1,12 +1,16 @@
 import { env } from '../../config/env.js';
 import type { AuthCodePurpose } from '@prisma/client';
 import { OTP_PURPOSE_LABELS } from '../../config/constants.js';
+import { SUPPORT_EMAIL } from '../../common/constants/auth-messages.js';
+import { buildWhatsAppOtpBody } from '../../common/constants/whatsapp-templates.js';
 import {
-  normalizeE164,
+  isWhatsAppSandboxSender,
+  sendAndConfirmWhatsApp,
   sendTwilioWhatsApp,
+  pollTwilioMessageDelivery,
 } from '../messaging/twilio-whatsapp.service.js';
 
-export type OtpDeliveryChannel = 'sms' | 'whatsapp';
+export type OtpDeliveryChannel = 'whatsapp';
 
 export type OtpSendParams = {
   phone: string;
@@ -21,110 +25,69 @@ export interface OtpDeliveryService {
   checkWhatsAppAvailable(phone: string): Promise<boolean>;
 }
 
-function buildOtpMessage(purpose: AuthCodePurpose, code: string): string {
-  const messages: Record<AuthCodePurpose, string> = {
-    register: `Your YouPass verification code is ${code}. Valid for 3 minutes.`,
-    login: `Your YouPass login code is ${code}. Valid for 3 minutes.`,
-    change_phone: `Your YouPass phone change code is ${code}. Valid for 3 minutes.`,
-    delete_account: `Your YouPass account deletion code is ${code}. Valid for 3 minutes.`,
+function contentSidForPurpose(purpose: AuthCodePurpose): string {
+  const byPurpose: Record<AuthCodePurpose, string | undefined> = {
+    login: env.TWILIO_WHATSAPP_TEMPLATE_LOGIN_SID,
+    register: env.TWILIO_WHATSAPP_TEMPLATE_REGISTER_SID,
+    change_phone: env.TWILIO_WHATSAPP_TEMPLATE_PHONE_CHANGE_SID,
+    delete_account: env.TWILIO_WHATSAPP_TEMPLATE_DELETE_ACCOUNT_SID,
   };
-  return messages[purpose];
-}
-
-function normalizeE164Phone(value: string): string {
-  return normalizeE164(value);
+  return (byPurpose[purpose] || env.TWILIO_WHATSAPP_OTP_CONTENT_SID).trim();
 }
 
 class MockOtpDeliveryService implements OtpDeliveryService {
-  constructor(private readonly channel: OtpDeliveryChannel) {}
-
   getChannel(): OtpDeliveryChannel {
-    return this.channel;
+    return 'whatsapp';
   }
 
   async sendOtp(params: OtpSendParams): Promise<void> {
     const label = OTP_PURPOSE_LABELS[params.purpose];
-    const body = buildOtpMessage(params.purpose, params.code);
+    const body = buildWhatsAppOtpBody(params.purpose, params.code, params.languageCode);
     console.log(
-      `[Twilio MOCK/${this.channel}] → ${params.phone} | ${label} | code=${params.code} | body="${body}"`,
+      `[Twilio MOCK/whatsapp] → ${params.phone} | ${label} | code=${params.code} | body="${body}"`,
     );
   }
 
   async checkWhatsAppAvailable(_phone: string): Promise<boolean> {
-    return this.channel === 'whatsapp';
+    return true;
   }
 }
 
-class TwilioOtpDeliveryService implements OtpDeliveryService {
-  constructor(private readonly channel: OtpDeliveryChannel) {}
-
+class TwilioWhatsAppOtpService implements OtpDeliveryService {
   getChannel(): OtpDeliveryChannel {
-    return this.channel;
-  }
-
-  private getFromAddress(): string {
-    if (this.channel === 'whatsapp') {
-      const from = normalizeE164Phone(env.TWILIO_WHATSAPP_FROM.replace(/^whatsapp:/, ''));
-      if (!from) {
-        throw new Error(
-          'TWILIO_WHATSAPP_FROM is not set. Use your Twilio WhatsApp sandbox number, e.g. +14155238886',
-        );
-      }
-      return `whatsapp:${from}`;
-    }
-    const smsFrom = normalizeE164Phone(env.TWILIO_SMS_FROM);
-    if (!smsFrom) {
-      throw new Error('TWILIO_SMS_FROM is not set');
-    }
-    return smsFrom;
-  }
-
-  private getToAddress(phone: string): string {
-    if (this.channel === 'whatsapp') {
-      return `whatsapp:${phone}`;
-    }
-    return phone;
+    return 'whatsapp';
   }
 
   async sendOtp(params: OtpSendParams): Promise<void> {
-    if (this.channel === 'whatsapp') {
-      await sendTwilioWhatsApp({
+    const body = buildWhatsAppOtpBody(params.purpose, params.code, params.languageCode);
+    const contentSid = contentSidForPurpose(params.purpose);
+
+    if (isWhatsAppSandboxSender()) {
+      const queued = await sendTwilioWhatsApp({ toE164: params.phone, body });
+      await pollTwilioMessageDelivery(queued.sid);
+      return;
+    }
+
+    if (contentSid) {
+      await sendAndConfirmWhatsApp({
         toE164: params.phone,
-        body: buildOtpMessage(params.purpose, params.code),
+        contentSid,
+        contentVariables: { '1': params.code },
+        fallbackBody: body,
       });
       return;
     }
 
-    if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) {
-      throw new Error('Twilio credentials missing: set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN');
-    }
-
-    const body = buildOtpMessage(params.purpose, params.code);
-    const url = `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`;
-    const auth = Buffer.from(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`).toString('base64');
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        To: this.getToAddress(params.phone),
-        From: this.getFromAddress(),
-        Body: body,
-      }).toString(),
+    await sendAndConfirmWhatsApp({
+      toE164: params.phone,
+      body,
+      fallbackBody: body,
     });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Twilio API error: ${response.status} ${errorBody}`);
-    }
   }
 
   async checkWhatsAppAvailable(phone: string): Promise<boolean> {
-    if (this.channel !== 'whatsapp') {
-      return false;
+    if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) {
+      return true;
     }
 
     try {
@@ -146,5 +109,27 @@ class TwilioOtpDeliveryService implements OtpDeliveryService {
 }
 
 export const otpDeliveryService: OtpDeliveryService = env.TWILIO_MOCK
-  ? new MockOtpDeliveryService(env.OTP_DELIVERY_CHANNEL)
-  : new TwilioOtpDeliveryService(env.OTP_DELIVERY_CHANNEL);
+  ? new MockOtpDeliveryService()
+  : new TwilioWhatsAppOtpService();
+
+export function whatsAppUnavailableMessage(languageCode = 'es'): string {
+  switch (languageCode) {
+    case 'pt':
+      return `Este número não pode receber WhatsApp. O YouPass usa apenas WhatsApp Business para login — use um número com WhatsApp ativo. Precisa de ajuda? ${SUPPORT_EMAIL}`;
+    case 'en':
+      return `This number cannot receive WhatsApp. YouPass uses WhatsApp Business only for sign-in — use a number with active WhatsApp. Need help? ${SUPPORT_EMAIL}`;
+    default:
+      return `Este número no puede recibir WhatsApp. YouPass usa solo WhatsApp Business para iniciar sesión — usa un número con WhatsApp activo. ¿Necesitas ayuda? ${SUPPORT_EMAIL}`;
+  }
+}
+
+export function whatsAppReadyMessage(languageCode = 'es'): string {
+  switch (languageCode) {
+    case 'pt':
+      return 'Enviaremos seu código de verificação pelo WhatsApp Business.';
+    case 'en':
+      return 'We will send your verification code via WhatsApp Business.';
+    default:
+      return 'Te enviaremos tu código de verificación por WhatsApp Business.';
+  }
+}

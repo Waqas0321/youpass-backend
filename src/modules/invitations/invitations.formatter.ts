@@ -17,16 +17,9 @@ function locationLabel(event: Event): string {
   return `${event.venueName}, ${event.city}`;
 }
 
-function getTimezone(countryCode: string): string {
-  const map: Record<string, string> = {
-    CL: 'America/Santiago',
-    CO: 'America/Bogota',
-    AR: 'America/Argentina/Buenos_Aires',
-    MX: 'America/Mexico_City',
-    PK: 'Asia/Karachi',
-  };
-  return map[countryCode] ?? 'UTC';
-}
+import { getTimezone } from '../../common/services/country-config.service.js';
+
+export { getTimezone };
 
 function mapStatusForApi(status: Invitation['status']): string {
   return status === 'canceled' ? 'rejected' : status;
@@ -161,5 +154,3 @@ export function formatInvitationTicket(
     instruction: 'Show this code at the entrance to access the event',
   };
 }
-
-export { getTimezone };

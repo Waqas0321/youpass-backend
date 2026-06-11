@@ -289,15 +289,38 @@ Then POST assign with parsed `country_code` + national number.
 | `TWILIO_AUTH_TOKEN` | Production | Twilio auth |
 | `TWILIO_WHATSAPP_FROM` | Production | Official WhatsApp sender (E.164) |
 | `TWILIO_MOCK` | **Must be `false` on Vercel** (same as OTP) |
-| `TWILIO_WHATSAPP_INVITATION_CONTENT_SID` | Recommended prod — approved invite template |
-| `TWILIO_WHATSAPP_OTP_CONTENT_SID` | Optional fallback — reuse OTP template for invites |
+| `TWILIO_WHATSAPP_INVITATION_CONTENT_SID` | **Required for live invites** — approved WhatsApp template (Content SID `HX…`) |
+| `TWILIO_WHATSAPP_OTP_CONTENT_SID` | Optional fallback if invite template not set yet (single `{{1}}` variable) |
 
-Invitations use the **same Twilio WhatsApp API path as OTP**. If OTP arrives but invites do not, check the API response:
+### Why OTP works but invitations do not
+
+OTP and invitations both use Twilio WhatsApp, but **invitations are business-initiated** messages to a **third-party guest number**. Meta blocks free-form invite text (Twilio error **63016**) unless you send an **approved Content Template**.
+
+The API now **polls Twilio after send** and returns `502 WHATSAPP_SEND_FAILED` if the message stays `queued`, fails, or is undelivered — instead of returning `success: true` when nothing arrived.
+
+**Create the invite template (Twilio Console → Messaging → Content Template Builder):**
+
+- Category: **Utility** (or Marketing if approved)
+- Body example: `Hola {{1}}, {{2}} te invitó a {{3}} en YouPass. Reclama tu entrada: {{4}}`
+- Variables: `1` = guest name, `2` = inviter name, `3` = event title, `4` = claim URL
+- After approval, copy the **Content SID** → set `TWILIO_WHATSAPP_INVITATION_CONTENT_SID` on Vercel → redeploy
+
+**Twilio trial / sandbox checklist for the guest phone:**
+
+1. Guest number must be **verified** in Twilio Console (trial accounts).
+2. Guest must send `join <sandbox-code>` to your Twilio WhatsApp sandbox number once.
+3. Guest number must be a real **WhatsApp** number (E.164, e.g. `+923216548001` — not a typo like `+922…`).
+
+Response fields when delivery succeeds:
 
 ```json
-"delivery_mode": "mock"   → TWILIO_MOCK still true on server
-"delivery_mode": "live"   → Twilio accepted; guest number must have WhatsApp + be verified on trial
+"delivery_mode": "live",
+"whatsapp_sent": true,
+"twilio_status": "delivered",
+"twilio_message_sid": "SM…"
 ```
+
+If delivery fails, the assign/resend call returns `502` with `code: "WHATSAPP_SEND_FAILED"` and `details.reason` explaining template/sandbox/number issues.
 | `APP_CLAIM_BASE_URL` | Yes | e.g. `https://youpass.app/claim` |
 | `CHECKOUT_MOCK_PAYMENT` | Dev | `true` = skip Stripe/Klap (default) |
 

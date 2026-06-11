@@ -1,30 +1,106 @@
 import { prisma } from '../../config/database.js';
-import { AppError } from '../../common/errors/app-error.js';
+import {
+  getActiveCountry,
+  listActiveCountries,
+  warmCountryCache,
+} from '../../common/services/country-config.service.js';
+import { formatCountryConfig } from './config.formatter.js';
+import {
+  getSecurityPolicy,
+  getAuthConfigBundle,
+} from '../../common/services/security-policy.service.js';
 
 export const configService = {
   async listCountries() {
-    return prisma.country.findMany({
-      where: { isActive: true },
-      orderBy: { displayOrder: 'asc' },
-      select: {
-        code: true,
-        name: true,
-        dialCode: true,
-        flagEmoji: true,
-        currencyCode: true,
-        languageCode: true,
-        paymentGateway: true,
-      },
-    });
+    const countries = await listActiveCountries();
+    return countries.map(formatCountryConfig);
+  },
+
+  async getAppConfig() {
+    await warmCountryCache();
+    const countries = await this.listCountries();
+    const languages = [...new Set(countries.map((c) => c.defaultLanguage))].sort();
+
+    return {
+      defaultCountryCode: countries[0]?.code ?? 'CL',
+      default_country_code: countries[0]?.code ?? 'CL',
+      supportedLanguages: languages,
+      supported_languages: languages,
+      ...getAuthConfigBundle(),
+      countries,
+    };
+  },
+
+  getAuthConfig(languageCode = 'es') {
+    return getAuthConfigBundle(languageCode);
+  },
+
+  getSecurityConfig() {
+    return getSecurityPolicy();
+  },
+
+  async getBrowseCategories() {
+    const [countries, eventTypes] = await Promise.all([
+      listActiveCountries(),
+      prisma.eventType.findMany({
+        where: { isActive: true },
+        orderBy: { displayOrder: 'asc' },
+      }),
+    ]);
+
+    return [
+      { id: 'all', label: 'All' },
+      ...countries.map((country) => ({
+        id: `country:${country.code}`,
+        label: country.name,
+        countryCode: country.code,
+        country_code: country.code,
+      })),
+      ...eventTypes.map((type) => ({
+        id: type.slug,
+        label: type.name,
+        eventTypeSlug: type.slug,
+        event_type_slug: type.slug,
+      })),
+    ];
+  },
+
+  async getHomeCategories(selectedCountryCode?: string) {
+    const [countries, eventTypes] = await Promise.all([
+      listActiveCountries(),
+      prisma.eventType.findMany({
+        where: { isActive: true },
+        orderBy: { displayOrder: 'asc' },
+      }),
+    ]);
+
+    const selected =
+      countries.find((c) => c.code === selectedCountryCode?.toUpperCase()) ?? countries[0] ?? null;
+
+    return {
+      selected_country_code: selected?.code ?? null,
+      country: selected
+        ? {
+            code: selected.code,
+            label: selected.name.toUpperCase(),
+            name: selected.name,
+            flag_emoji: selected.flagEmoji,
+            prefix_icon: '📍',
+          }
+        : null,
+      event_types: eventTypes.map((type) => ({
+        id: type.id,
+        slug: type.slug,
+        name: type.name,
+        label: type.name,
+        icon: type.icon,
+      })),
+      scrollable: true,
+    };
   },
 
   async getCurrency(countryCode: string) {
-    const country = await prisma.country.findFirst({
-      where: { code: countryCode.toUpperCase(), isActive: true },
-    });
-    if (!country) {
-      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'Country not supported');
-    }
+    const country = await getActiveCountry(countryCode);
     return {
       country_code: country.code,
       currency_code: country.currencyCode,
@@ -34,12 +110,7 @@ export const configService = {
   },
 
   async getLanguage(countryCode: string) {
-    const country = await prisma.country.findFirst({
-      where: { code: countryCode.toUpperCase(), isActive: true },
-    });
-    if (!country) {
-      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'Country not supported');
-    }
+    const country = await getActiveCountry(countryCode);
     return {
       country_code: country.code,
       language_code: country.languageCode,
@@ -47,12 +118,7 @@ export const configService = {
   },
 
   async getPaymentGateway(countryCode: string) {
-    const country = await prisma.country.findFirst({
-      where: { code: countryCode.toUpperCase(), isActive: true },
-    });
-    if (!country) {
-      throw new AppError(404, 'COUNTRY_NOT_FOUND', 'Country not supported');
-    }
+    const country = await getActiveCountry(countryCode);
     return {
       country_code: country.code,
       payment_gateway: country.paymentGateway,

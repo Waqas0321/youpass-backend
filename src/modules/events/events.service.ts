@@ -1,13 +1,15 @@
 import type { Event, EventType, Prisma } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
-import { formatEvent, formatEventType } from './events.formatter.js';
+import { formatEvent, formatEventType, formatUpcomingEventCard, formatBannerSlide } from './events.formatter.js';
 import type {
   CreateEventInput,
   FeaturedEventsQuery,
   ListEventsQuery,
   UpdateEventInput,
 } from './events.validators.js';
+import { vipVenueService } from '../vip-venue/vip-venue.service.js';
+import { getCountrySync, getEventCurrencyMeta } from '../../common/services/country-config.service.js';
 
 const eventInclude = { eventType: true } as const;
 
@@ -41,20 +43,39 @@ function buildPublishedWhere(
     country_code?: string;
     event_type?: string;
     featured?: boolean;
+    search?: string;
+    exclude_ids?: string[];
   },
   eventTypeId?: string,
 ): Prisma.EventWhereInput {
+  const searchTerm = query.search?.trim();
   return {
     status: 'published',
     startsAt: { gte: new Date() },
     ...(query.country_code ? { countryCode: query.country_code.toUpperCase() } : {}),
     ...(eventTypeId ? { eventTypeId } : {}),
     ...(query.featured === true ? { isFeatured: true } : {}),
+    ...(query.exclude_ids?.length ? { id: { notIn: query.exclude_ids } } : {}),
+    ...(searchTerm
+      ? {
+          OR: [
+            { title: { contains: searchTerm, mode: 'insensitive' } },
+            { venueName: { contains: searchTerm, mode: 'insensitive' } },
+            { city: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
   };
 }
 
 function mapEvents(events: EventWithType[], favoriteIds: Set<string>) {
-  return events.map((event) => formatEvent(event, favoriteIds.has(event.id)));
+  return events.map((event) => {
+    const country = getCountrySync(event.countryCode);
+    return formatEvent(event, favoriteIds.has(event.id), {
+      timezone: country?.timezone,
+      languageCode: country?.languageCode,
+    });
+  });
 }
 
 export const eventsService = {
@@ -70,7 +91,8 @@ export const eventsService = {
   async listEvents(query: ListEventsQuery, userId?: string) {
     const eventType = query.event_type ? await resolveEventType(query.event_type) : undefined;
     const favoriteIds = await getFavoriteIds(userId);
-    const where = buildPublishedWhere(query, eventType?.id);
+    const search = query.q ?? query.search;
+    const where = buildPublishedWhere({ ...query, search }, eventType?.id);
 
     const skip = (query.page - 1) * query.limit;
 
@@ -109,10 +131,68 @@ export const eventsService = {
     });
 
     const formatted = mapEvents(events, favoriteIds);
+    const slides = events.map((event) => {
+      const country = getCountrySync(event.countryCode);
+      return formatBannerSlide(event, favoriteIds.has(event.id), {
+        timezone: country?.timezone,
+        languageCode: country?.languageCode,
+      });
+    });
 
     return {
-      carousel: formatted.slice(0, 5),
+      carousel: slides.slice(0, 5),
       events: formatted,
+      slides,
+    };
+  },
+
+  async listUpcomingEvents(
+    query: {
+      country_code?: string;
+      event_type?: string;
+      page?: number;
+      limit?: number;
+      exclude_ids?: string[];
+    },
+    userId?: string,
+  ) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const eventType = query.event_type ? await resolveEventType(query.event_type) : undefined;
+    const favoriteIds = await getFavoriteIds(userId);
+    const where = buildPublishedWhere(
+      { country_code: query.country_code, event_type: query.event_type, exclude_ids: query.exclude_ids },
+      eventType?.id,
+    );
+    const skip = (page - 1) * limit;
+
+    const [events, total] = await Promise.all([
+      prisma.event.findMany({
+        where,
+        include: eventInclude,
+        orderBy: { startsAt: 'asc' },
+        skip,
+        take: limit,
+      }),
+      prisma.event.count({ where }),
+    ]);
+
+    const items = events.map((event) => {
+      const country = getCountrySync(event.countryCode);
+      return formatUpcomingEventCard(event, favoriteIds.has(event.id), {
+        timezone: country?.timezone,
+        languageCode: country?.languageCode,
+      });
+    });
+
+    return {
+      items,
+      pagination: {
+        page,
+        limit,
+        total,
+        total_pages: Math.ceil(total / limit) || 1,
+      },
     };
   },
 
@@ -127,7 +207,22 @@ export const eventsService = {
     }
 
     const favoriteIds = await getFavoriteIds(userId);
-    return formatEvent(event, favoriteIds.has(event.id));
+    const currencyMeta = getEventCurrencyMeta(event.countryCode);
+    const purchase = await vipVenueService.getPurchaseMeta(id).catch(() => ({
+      service_fee_rate: 0.05,
+      ...currencyMeta,
+      has_ticket_offerings: false,
+      has_venue_layout: false,
+    }));
+
+    const country = getCountrySync(event.countryCode);
+    return {
+      ...formatEvent(event, favoriteIds.has(event.id), {
+        timezone: country?.timezone,
+        languageCode: country?.languageCode,
+      }),
+      purchase,
+    };
   },
 
   async createEvent(input: CreateEventInput) {

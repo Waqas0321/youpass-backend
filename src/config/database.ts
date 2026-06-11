@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { env } from './env.js';
+import { warmCountryCache } from '../common/services/country-config.service.js';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -17,7 +18,7 @@ globalForPrisma.prisma = prisma;
 /** Connect once per serverless instance (Vercel reuses warm lambdas). */
 export function connectDatabase(): Promise<void> {
   if (!globalForPrisma.prismaConnect) {
-    globalForPrisma.prismaConnect = prisma.$connect().catch((err) => {
+    globalForPrisma.prismaConnect = prisma.$connect().then(() => warmCountryCache()).catch((err) => {
       globalForPrisma.prismaConnect = undefined;
       throw err;
     });

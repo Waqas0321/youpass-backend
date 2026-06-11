@@ -59,6 +59,7 @@ export function toPublicUser(user: User): PublicUser {
     id: user.id,
     phone: user.phone,
     countryCode: user.countryCode,
+    preferredLanguage: user.preferredLanguage ?? null,
     fullName: user.fullName,
     email: user.email,
     birthdate: user.birthdate.toISOString().split('T')[0]!,

@@ -16,9 +16,23 @@ import {
   verifyOtp,
 } from '../../common/utils/crypto.js';
 import { formatPhoneDisplay, parseAndValidatePhone } from '../../common/utils/phone.js';
+import { getActiveCountry } from '../../common/services/country-config.service.js';
+import { verifyRecaptchaToken } from '../../common/services/recaptcha.service.js';
 import type { AuthRequestContext } from '../../common/types/auth.js';
-import { otpDeliveryService } from './otp-delivery.service.js';
+import {
+  blockedMessage,
+  bruteForceBlockedMessage,
+  codeExpiredMessage,
+  maxResendsMessage,
+  underageMessage,
+} from '../../common/constants/auth-messages.js';
+import { otpDeliveryService, whatsAppReadyMessage, whatsAppUnavailableMessage } from './otp-delivery.service.js';
 import { linkPendingInvitationsByPhone } from '../invitations/invitation-link.service.js';
+import {
+  buildPostRegistrationNavigation,
+  buildWelcomePayload,
+} from '../../common/constants/post-registration-policy.js';
+import { migrateUserPhoneData } from './phone-migration.service.js';
 import { createSession, revokeAllUserSessions, revokeSession } from './session.service.js';
 import type {
   ChangePhoneRequestInput,
@@ -32,12 +46,24 @@ import type {
 
 type OtpContext = AuthRequestContext | undefined;
 
-function otpChannelLabel(channel: 'sms' | 'whatsapp'): string {
-  return channel === 'sms' ? 'SMS' : 'WhatsApp';
+function otpChannelLabel(_channel: 'whatsapp'): string {
+  return 'WhatsApp';
 }
 
-function sentViaForChannel(channel: 'sms' | 'whatsapp'): 'sms' | 'whatsapp' {
-  return channel;
+function sentViaForChannel(_channel: 'whatsapp'): 'whatsapp' {
+  return 'whatsapp';
+}
+
+function otpPolicyMeta() {
+  return {
+    channel: 'whatsapp' as const,
+    otp_length: env.OTP_LENGTH,
+    expires_in_seconds: env.OTP_TTL_MINUTES * 60,
+    resend_available_in_seconds: env.OTP_RESEND_COOLDOWN_SECONDS,
+    max_resends_per_hour: env.OTP_MAX_RESENDS_PER_HOUR,
+    max_failed_attempts: env.OTP_MAX_FAILED_ATTEMPTS,
+    block_minutes: env.OTP_BLOCK_MINUTES,
+  };
 }
 
 async function getOrCreateRateLimit(phone: string) {
@@ -55,7 +81,7 @@ async function assertNotBlocked(phone: string): Promise<void> {
     throw new AppError(
       429,
       AUTH_ERROR_CODES.BLOCKED,
-      `Too many attempts. Please wait ${minutes} minute(s).`,
+      blockedMessage(minutes),
       { retry_after_seconds: secondsUntil(limit.blockedUntil) },
     );
   }
@@ -85,7 +111,7 @@ async function incrementFailedAttempt(phone: string): Promise<void> {
     throw new AppError(
       429,
       AUTH_ERROR_CODES.BLOCKED,
-      `Too many failed attempts. Please wait ${env.OTP_BLOCK_MINUTES} minute(s).`,
+      bruteForceBlockedMessage(),
       { retry_after_seconds: env.OTP_BLOCK_MINUTES * 60 },
     );
   }
@@ -119,7 +145,7 @@ async function assertResendAllowed(phone: string, isResend: boolean): Promise<vo
     throw new AppError(
       429,
       AUTH_ERROR_CODES.MAX_RESENDS,
-      `Maximum resends reached. Please wait ${minutesUntil(resetAt)} minute(s).`,
+      maxResendsMessage(minutesUntil(resetAt)),
       { retry_after_seconds: secondsUntil(resetAt) },
     );
   }
@@ -157,7 +183,7 @@ async function resolveSendCodePurpose(
   return { purpose: 'login', accountExists: true };
 }
 
-function mapTwilioDeliveryError(err: unknown, channel: 'sms' | 'whatsapp'): AppError {
+function mapTwilioDeliveryError(err: unknown): AppError {
   const raw = err instanceof Error ? err.message : String(err);
 
   if (raw.includes('credentials missing')) {
@@ -173,6 +199,14 @@ function mapTwilioDeliveryError(err: unknown, channel: 'sms' | 'whatsapp'): AppE
       429,
       AUTH_ERROR_CODES.RATE_LIMITED,
       'Daily WhatsApp message limit reached on Twilio trial. Try again tomorrow or upgrade your Twilio account.',
+    );
+  }
+
+  if (raw.includes('63016')) {
+    return new AppError(
+      502,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      'WhatsApp template not approved yet. Join the Twilio sandbox from your phone (send join <code> to +1 415 523 8886), then try again.',
     );
   }
 
@@ -203,7 +237,7 @@ function mapTwilioDeliveryError(err: unknown, channel: 'sms' | 'whatsapp'): AppE
   return new AppError(
     502,
     AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
-    `Failed to send the code via ${otpChannelLabel(channel)}. Try again later.`,
+    `Failed to send the code via WhatsApp. Try again later.`,
   );
 }
 
@@ -272,7 +306,7 @@ async function createAndSendOtp(
     });
   } catch (err) {
     console.error('[OTP delivery failed]', err);
-    throw mapTwilioDeliveryError(err, deliveryChannel);
+    throw mapTwilioDeliveryError(err);
   }
 
   if (env.TWILIO_MOCK || env.NODE_ENV === 'development') {
@@ -280,9 +314,8 @@ async function createAndSendOtp(
   }
 
   return {
-    expires_in_seconds: env.OTP_TTL_MINUTES * 60,
-    resend_available_in_seconds: env.OTP_RESEND_COOLDOWN_SECONDS,
     phone_display: formatPhoneDisplay(e164, countryCode),
+    ...otpPolicyMeta(),
   };
 }
 
@@ -305,12 +338,17 @@ async function verifyOtpCode(
   });
 
   if (!authCode) {
+    const limit = await getOrCreateRateLimit(e164);
+    const attemptsAfter = limit.failedAttempts + 1;
+    const remainingAttempts = Math.max(0, env.OTP_MAX_FAILED_ATTEMPTS - attemptsAfter);
     await incrementFailedAttempt(e164);
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Invalid code');
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Invalid code', {
+      remaining_attempts: remainingAttempts,
+    });
   }
 
   if (authCode.expiresAt <= new Date()) {
-    throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, 'Code expired. Please request a new one.');
+    throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, codeExpiredMessage());
   }
 
   const isValid = await verifyOtp(code, authCode.codeHash);
@@ -326,8 +364,13 @@ async function verifyOtpCode(
   });
 
   if (!isValid) {
+    const limit = await getOrCreateRateLimit(e164);
+    const attemptsAfter = limit.failedAttempts + 1;
+    const remainingAttempts = Math.max(0, env.OTP_MAX_FAILED_ATTEMPTS - attemptsAfter);
     await incrementFailedAttempt(e164);
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Incorrect code');
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Incorrect code', {
+      remaining_attempts: remainingAttempts,
+    });
   }
 
   await prisma.authCode.update({
@@ -350,19 +393,30 @@ export const authService = {
       );
     }
 
+    await verifyRecaptchaToken(input.recaptcha_token, 'send_code');
+
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    const country = await getActiveCountry(countryCode);
+    const whatsappAvailable = await otpDeliveryService.checkWhatsAppAvailable(e164);
+    if (!whatsappAvailable) {
+      throw new AppError(
+        422,
+        AUTH_ERROR_CODES.WHATSAPP_NOT_AVAILABLE,
+        whatsAppUnavailableMessage(country.languageCode),
+        { auth_channel: 'whatsapp_only' },
+      );
+    }
+
     const { purpose, accountExists } = await resolveSendCodePurpose(e164, input.purpose);
     const result = await createAndSendOtp(e164, countryCode, purpose, context, false);
     const channel = otpDeliveryService.getChannel();
     return {
-      message:
-        accountExists === false
-          ? `Code sent via ${otpChannelLabel(channel)}. Create your account to continue.`
-          : `Code sent via ${otpChannelLabel(channel)}`,
+      message: `Code sent via ${otpChannelLabel(channel)}. ${whatsAppReadyMessage(country.languageCode)}`,
       phone: e164,
       purpose,
       ...(accountExists !== undefined ? { account_exists: accountExists } : {}),
       channel,
+      whatsapp_available: true,
       ...result,
     };
   },
@@ -376,19 +430,30 @@ export const authService = {
       );
     }
 
+    await verifyRecaptchaToken(input.recaptcha_token, 'resend_code');
+
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    const country = await getActiveCountry(countryCode);
+    const whatsappAvailable = await otpDeliveryService.checkWhatsAppAvailable(e164);
+    if (!whatsappAvailable) {
+      throw new AppError(
+        422,
+        AUTH_ERROR_CODES.WHATSAPP_NOT_AVAILABLE,
+        whatsAppUnavailableMessage(country.languageCode),
+        { auth_channel: 'whatsapp_only' },
+      );
+    }
+
     const { purpose, accountExists } = await resolveSendCodePurpose(e164, input.purpose);
     const result = await createAndSendOtp(e164, countryCode, purpose, context, true);
     const channel = otpDeliveryService.getChannel();
     return {
-      message:
-        accountExists === false
-          ? `Code resent via ${otpChannelLabel(channel)}. Create your account to continue.`
-          : `Code resent via ${otpChannelLabel(channel)}`,
+      message: `Code resent via ${otpChannelLabel(channel)}`,
       phone: e164,
       purpose,
       ...(accountExists !== undefined ? { account_exists: accountExists } : {}),
       channel,
+      whatsapp_available: true,
       ...result,
     };
   },
@@ -405,23 +470,26 @@ export const authService = {
   },
 
   async checkWhatsApp(input: { phone: string; country_code: string }) {
-    const { e164 } = await parseAndValidatePhone(input.phone, input.country_code);
-    const channel = otpDeliveryService.getChannel();
+    const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    const country = await getActiveCountry(countryCode);
     const available = await otpDeliveryService.checkWhatsAppAvailable(e164);
     return {
       phone: e164,
-      whatsapp_available: channel === 'whatsapp' ? available : false,
-      delivery_channel: channel,
-      message:
-        channel === 'whatsapp'
-          ? available
-            ? 'Number is WhatsApp compatible'
-            : 'Make sure WhatsApp is installed on your phone'
-          : 'Codes are sent via SMS',
+      whatsapp_available: available,
+      can_receive_otp: available,
+      delivery_channel: 'whatsapp',
+      auth_channel: 'whatsapp_only',
+      sms_enabled: false,
+      message: available
+        ? whatsAppReadyMessage(country.languageCode)
+        : whatsAppUnavailableMessage(country.languageCode),
+      message_key: available ? 'WHATSAPP_READY' : 'WHATSAPP_REQUIRED',
     };
   },
 
   async login(input: LoginInput, context?: OtpContext) {
+    await verifyRecaptchaToken(input.recaptcha_token, 'login');
+
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
     await verifyOtpCode(e164, countryCode, input.code, 'login', context);
 
@@ -438,12 +506,15 @@ export const authService = {
       access_token: session.accessToken,
       session_id: session.sessionId,
       expires_at: session.expiresAt,
+      session_indefinite: env.JWT_SESSION_INDEFINITE,
       is_new_user: false,
       linked_invitations: linkedInvitations,
     };
   },
 
   async register(input: RegisterInput, context?: OtpContext) {
+    await verifyRecaptchaToken(input.recaptcha_token, 'register');
+
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
     await verifyOtpCode(e164, countryCode, input.code, 'register', context);
 
@@ -461,17 +532,19 @@ export const authService = {
       throw new AppError(
         403,
         AUTH_ERROR_CODES.UNDERAGE,
-        'YouPass is only available to users aged 18 and over.',
+        underageMessage(),
       );
     }
 
     const instagram = input.instagram_username?.replace(/^@/, '') ?? null;
     const hasInstagram = Boolean(instagram);
+    const country = await getActiveCountry(countryCode);
 
     const user = await prisma.user.create({
       data: {
         phone: e164,
         countryCode,
+        preferredLanguage: input.preferred_language ?? country.languageCode,
         fullName: input.full_name.trim(),
         rutOrPassport: input.rut_or_passport.trim(),
         email: input.email.toLowerCase().trim(),
@@ -498,13 +571,11 @@ export const authService = {
       access_token: session.accessToken,
       session_id: session.sessionId,
       expires_at: session.expiresAt,
+      session_indefinite: env.JWT_SESSION_INDEFINITE,
       is_new_user: true,
       linked_invitations: linkedInvitations,
-      welcome: {
-        title: `Welcome to YouPass, ${user.fullName.split(' ')[0]}!`,
-        subtitle: 'Your access to the best events starts here',
-        duration_seconds: 2,
-      },
+      welcome: buildWelcomePayload(user.fullName),
+      navigation: buildPostRegistrationNavigation(linkedInvitations),
     };
   },
 
@@ -593,29 +664,28 @@ export const authService = {
 
     await verifyOtpCode(e164, countryCode, input.code, 'change_phone', context);
 
+    const oldPhone = user.phone;
+    const migration = await migrateUserPhoneData(user.id, oldPhone, e164);
+
     const updated = await prisma.user.update({
       where: { id: user.id },
       data: {
         phone: e164,
         countryCode,
         pendingPhoneChange: null,
+        preferredLanguage: user.preferredLanguage ?? (await getActiveCountry(countryCode)).languageCode,
       },
     });
 
     return {
       message: 'Phone number updated successfully',
       user: toPublicUser(updated),
+      migration,
     };
   },
 
   async getWelcomeData(user: User) {
-    const firstName = user.fullName.split(' ')[0] ?? user.fullName;
-    return {
-      title: `Welcome to YouPass, ${firstName}!`,
-      subtitle: 'Your access to the best events starts here',
-      duration_seconds: 2,
-      user_name: firstName,
-    };
+    return buildWelcomePayload(user.fullName);
   },
 };
 

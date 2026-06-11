@@ -14,6 +14,29 @@ type CountrySeed = {
   paymentGateway: PaymentGateway;
   timezone: string;
   displayOrder: number;
+  phoneHint?: string;
+};
+
+const PHONE_HINTS: Record<string, string> = {
+  CL: '9 1234 5678',
+  AR: '11 1234 5678',
+  MX: '55 1234 5678',
+  PE: '912 345 678',
+  CO: '300 123 4567',
+  UY: '99 123 456',
+  PY: '981 123456',
+  BO: '71234567',
+  EC: '99 123 4567',
+  VE: '412 1234567',
+  BR: '11 91234 5678',
+  CR: '8312 3456',
+  PA: '6123 4567',
+  GT: '5123 4567',
+  SV: '7123 4567',
+  HN: '9123 4567',
+  NI: '8123 4567',
+  DO: '809 123 4567',
+  PK: '321 6548001',
 };
 
 const LATAM_COUNTRIES: CountrySeed[] = [
@@ -231,10 +254,11 @@ const SAMPLE_EVENTS = [
 async function main() {
   for (const country of LATAM_COUNTRIES) {
     const { code, ...data } = country;
+    const phoneHint = PHONE_HINTS[code] ?? null;
     await prisma.country.upsert({
       where: { code },
-      update: data,
-      create: country,
+      update: { ...data, phoneHint },
+      create: { ...country, phoneHint },
     });
   }
   console.log(`Seeded ${LATAM_COUNTRIES.length} countries`);

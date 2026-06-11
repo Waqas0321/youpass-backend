@@ -25,13 +25,27 @@ export const rejectInvitationSchema = z
   .optional()
   .default({});
 
-export const savePaymentMethodSchema = z.object({
+const tokenizedPaymentMethodSchema = z.object({
+  payment_method_id: z.string().min(1),
+  gateway: z.enum(['klap', 'stripe']),
+  brand: z.string().min(2).max(30),
+  last_four: z.string().regex(/^\d{4}$/),
+  cardholder_name: z.string().min(2).max(200),
+});
+
+const legacyPaymentMethodSchema = z.object({
   card_number: z.string().min(13).max(19),
   expiry: z.string().regex(/^\d{2}\/\d{2}$/, 'Use MM/YY format'),
   cvv: z.string().min(3).max(4),
   cardholder_name: z.string().min(2).max(200),
 });
 
+export const savePaymentMethodSchema = z.union([
+  tokenizedPaymentMethodSchema,
+  legacyPaymentMethodSchema,
+]);
+
 export type ListInvitationsQuery = z.infer<typeof listInvitationsQuerySchema>;
 export type ConfirmInvitationInput = z.infer<typeof confirmInvitationSchema>;
 export type SavePaymentMethodInput = z.infer<typeof savePaymentMethodSchema>;
+export type TokenizedPaymentMethodInput = z.infer<typeof tokenizedPaymentMethodSchema>;

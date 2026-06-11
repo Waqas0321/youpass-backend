@@ -13,7 +13,7 @@ APIs for **YouHome** — featured carousel, event list, filters (country + event
 | GET | `/events/types` | — | Filter chips (Parties, Concerts, Bar) |
 | GET | `/events/featured` | Optional | Hero carousel + featured list |
 | GET | `/events` | Optional | Paginated event list |
-| GET | `/events/:id` | Optional | Event details |
+| GET | `/events/:id` | Optional | Event details + purchase meta |
 | POST | `/events` | Bearer | Create event |
 | PATCH | `/events/:id` | Bearer | Update event |
 | DELETE | `/events/:id` | Bearer | Delete event |
@@ -106,6 +106,7 @@ final response = await http.get(uri, headers: authHeadersIfLoggedIn());
 |-------|---------|-------------|
 | `country_code` | `CL` | Country filter |
 | `event_type` | `parties` | Type slug |
+| `q` or `search` | `football` | Search title, venue, city |
 | `featured` | `true` | Featured only |
 | `page` | `1` | Page number |
 | `limit` | `20` | Page size |
@@ -136,12 +137,25 @@ final response = await http.get(uri, headers: authHeadersIfLoggedIn());
 | `venue_name` | string | Venue |
 | `city` | string | City |
 | `country_code` | string | Country filter |
-| `location_display` | string | "Club Océano, Viña del Mar" |
+| `location_display` | string | "Club Deportivo Huachipato" or "Avenida Collao 481, Concepción" |
+| `date_display` | string? | Upcoming card: "Monday Sept 8 2025" (on `layout.upcoming_events.items`) |
 | `image_url` | string? | Card / carousel image |
 | `event_type` | object | Filter chip type |
 | `is_featured` | bool | Featured badge |
 | `is_favorite` | bool | Heart icon state |
 | `status` | string | `published`, `draft`, `cancelled` |
+| `purchase` | object? | VIP purchase flags (see below) |
+
+### `purchase` object (event detail)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `service_fee_rate` | number | e.g. `0.05` (5%) |
+| `currency` | string | e.g. `CLP` |
+| `has_ticket_offerings` | bool | Load ticket types from API |
+| `has_venue_layout` | bool | Show VIP floor plan |
+
+See **[FLUTTER_VIP_VENUE_API.md](./FLUTTER_VIP_VENUE_API.md)** for ticket-types, venue-layout, table lock, and checkout.
 
 ---
 
@@ -258,11 +272,148 @@ Tap heart again → call when **`is_favorite` is true**.
 
 ---
 
-## Home initial feed (all-in-one)
+## Home initial feed (YouHome layout)
 
-**`GET /home/initial-feed?country_code=CL`**
+**`GET /home/initial-feed`**
 
-Optional Bearer token.
+Optional Bearer token. Returns the full **top-to-bottom YouHome layout** in one call.
+
+Query params:
+
+| Param | Example | Description |
+|-------|---------|-------------|
+| `country_code` | `CL` | Country filter (defaults to user country) |
+| `event_type` | `concerts` | Active category chip filter |
+| `context` | `post_register` | Post-registration Home load |
+| `upcoming_page` | `1` | Upcoming list pagination |
+| `upcoming_limit` | `20` | Upcoming list page size |
+
+### Screen layout → API mapping
+
+| UI section (top → bottom) | API field |
+|---------------------------|-----------|
+| ☰ + **Hi, Alejandro R.!** | `layout.header.greeting` |
+| **📍 CHILE**, Party, Concerts, Comedy | `layout.categories` |
+| **Main banner** (featured carousel + dots) | `layout.main_banner` |
+| **Search events...** + Filters | `layout.search` |
+| **UPCOMING EVENTS** list cards | `layout.upcoming_events` |
+
+### Response structure
+
+```json
+{
+  "success": true,
+  "data": {
+    "country_code": "CL",
+    "layout": {
+      "header": {
+        "greeting": "Hi, Alejandro R.!",
+        "menu_enabled": true
+      },
+      "categories": {
+        "selected_country_code": "CL",
+        "country": {
+          "code": "CL",
+          "label": "CHILE",
+          "name": "Chile",
+          "flag_emoji": "🇨🇱",
+          "prefix_icon": "📍"
+        },
+        "event_types": [
+          { "slug": "parties", "name": "Parties", "label": "Parties", "icon": "🎉" },
+          { "slug": "concerts", "name": "Concerts", "label": "Concerts", "icon": "🎵" }
+        ],
+        "scrollable": true
+      },
+      "main_banner": {
+        "curated_by": "youpass",
+        "title": "Featured events curated by YouPass",
+        "slides": [
+          {
+            "id": "...",
+            "title": "URBAN NIGHT LIVE",
+            "image_url": "https://...",
+            "date_display": "Friday Nov 21 2026",
+            "location_display": "Bicentennial Park, Santiago"
+          }
+        ],
+        "indicators": { "total": 3, "active_index": 0 }
+      },
+      "search": {
+        "placeholder": "Search events...",
+        "filters_enabled": true,
+        "filters": {
+          "country_code": "CL",
+          "event_type": null,
+          "event_types": []
+        },
+        "search_endpoint": "/events",
+        "search_param": "q"
+      },
+      "upcoming_events": {
+        "title": "UPCOMING EVENTS",
+        "items": [
+          {
+            "id": "...",
+            "title": "Gym Members",
+            "image_url": "https://...",
+            "date_display": "Monday Sept 8 2025",
+            "location_display": "Club Deportivo Huachipato",
+            "is_favorite": false
+          },
+          {
+            "id": "...",
+            "title": "Zapping - Football Plan",
+            "date_display": "Wednesday Mar 11 2026",
+            "location_display": "Avenida Collao 481, Concepción"
+          }
+        ],
+        "pagination": { "page": 1, "limit": 20, "total": 12, "total_pages": 1 }
+      }
+    },
+    "party_mode": { "enabled": false, "banner_visible": false },
+    "post_registration": false,
+    "invitations": null
+  }
+}
+```
+
+**Greeting format:** first name + last initial — `"Alejandro Rodriguez"` → `"Hi, Alejandro R.!"`
+
+**Upcoming card fields:** `title`, `image_url`, `date_display` (weekday + short date), `location_display` (venue or full address).
+
+**Banner slides** are excluded from `upcoming_events` to avoid duplicates.
+
+Legacy top-level fields (`carousel`, `featured_events`, `event_types`, `greeting`) are still included for older clients.
+
+---
+
+## Search events
+
+**`GET /events?q=football&country_code=CL`**
+
+| Param | Description |
+|-------|-------------|
+| `q` or `search` | Search title, venue, or city |
+| `country_code` | Country filter |
+| `event_type` | Type slug filter |
+| `page`, `limit` | Pagination |
+
+```dart
+final uri = Uri.parse('$apiBaseUrl/events').replace(queryParameters: {
+  'q': searchQuery,
+  'country_code': 'CL',
+  if (selectedType != null) 'event_type': selectedType,
+});
+```
+
+Use with the home **Search bar** and **Filters** button (`layout.search.filters`).
+
+---
+
+## Home initial feed (legacy note)
+
+Older docs referenced flat `carousel` + `featured_events`. Prefer **`data.layout`** for new YouHome screens.
 
 ```json
 {
@@ -284,12 +435,19 @@ Use on app launch to populate filters + carousel + featured list in one call.
 
 | UI element | API |
 |------------|-----|
-| Chile location chip | `country_code=CL` on featured/list |
-| Parties / Concerts chips | `event_type=parties` or `concerts` |
-| Hero carousel | `GET /events/featured` → `carousel` |
-| Featured events list | `GET /events/featured` → `events` |
+| Header greeting | `layout.header.greeting` |
+| Hamburger ☰ | `layout.header.menu_enabled` (UI only) |
+| 📍 CHILE chip | `layout.categories.country` |
+| Party / Concerts / Comedy chips | `layout.categories.event_types` |
+| Filter by type | `GET /home/initial-feed?event_type=concerts` |
+| Main banner carousel | `layout.main_banner.slides` |
+| Banner dot indicators | `layout.main_banner.indicators.total` |
+| Search placeholder | `layout.search.placeholder` |
+| Search submit | `GET /events?q=...` |
+| Filters sheet | `layout.search.filters` |
+| Upcoming events list | `layout.upcoming_events.items` |
 | Heart icon | `POST` or `DELETE` favorites |
-| BUY TICKETS | Navigate to `GET /events/:id` (tickets API later) |
+| BUY TICKETS | Navigate to `GET /events/:id` |
 
 ---
 

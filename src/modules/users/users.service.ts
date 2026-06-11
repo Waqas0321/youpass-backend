@@ -30,6 +30,7 @@ function formatUserProfile(user: User) {
     phone: user.phone,
     phone_display: formatPhoneDisplay(user.phone, user.countryCode),
     country_code: user.countryCode,
+    preferred_language: user.preferredLanguage ?? null,
     full_name: user.fullName,
     email: user.email,
     birthdate: user.birthdate.toISOString().split('T')[0]!,
@@ -86,6 +87,7 @@ export const usersService = {
       birthdate?: Date;
       gender?: User['gender'];
       instagramUsername?: string | null;
+      preferredLanguage?: string;
     } = {};
 
     if (input.full_name !== undefined) {
@@ -123,6 +125,10 @@ export const usersService = {
 
     if (input.instagram_username !== undefined) {
       data.instagramUsername = input.instagram_username;
+    }
+
+    if (input.preferred_language !== undefined) {
+      data.preferredLanguage = input.preferred_language;
     }
 
     const user = await prisma.user.update({

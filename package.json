@@ -11,6 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:vip": "tsx prisma/seed-vip-venue.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate && npm run build"

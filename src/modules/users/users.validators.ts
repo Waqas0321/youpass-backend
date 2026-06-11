@@ -15,6 +15,7 @@ export const updateProfileSchema = z
         if (value === '' || value === null) return null;
         return value.replace(/^@/, '').trim() || null;
       }),
+    preferred_language: z.enum(['es', 'pt', 'en']).optional(),
   })
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
     message: 'At least one profile field is required',

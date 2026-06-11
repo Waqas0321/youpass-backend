@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { Prisma } from '@prisma/client';
+import { env } from '../../config/env.js';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { buildClaimUrl } from '../messaging/invitation-delivery.service.js';
@@ -17,7 +18,12 @@ import {
   maskCardLastFour,
   resolveQrStatus,
 } from './invitations.utils.js';
-import type { ConfirmInvitationInput, ListInvitationsQuery, SavePaymentMethodInput } from './invitations.validators.js';
+import type {
+  ConfirmInvitationInput,
+  ListInvitationsQuery,
+  SavePaymentMethodInput,
+  TokenizedPaymentMethodInput,
+} from './invitations.validators.js';
 
 const invitationInclude = {
   event: true,
@@ -185,6 +191,27 @@ export const invitationsService = {
       pending_count: pending,
       new_count: newCount,
       total_count: total,
+    };
+  },
+
+  async getHomeInvitationHighlight(userId: string, userPhone: string) {
+    const summary = await this.getSummary(userId, userPhone);
+    if (summary.pending_count === 0) {
+      return {
+        highlight: false,
+        pending_count: 0,
+        featured: null,
+      };
+    }
+
+    const { invitations } = await this.listInvitations(userId, userPhone, { status: 'pending' });
+    const featured = invitations[0] ?? null;
+
+    return {
+      highlight: true,
+      pending_count: summary.pending_count,
+      new_count: summary.new_count,
+      featured,
     };
   },
 
@@ -387,10 +414,23 @@ export const paymentMethodsService = {
       last_four: m.lastFour,
       is_default: m.isDefault,
       cardholder_name: m.cardholderName,
+      gateway: m.gateway ?? 'stripe',
     }));
   },
 
   async savePaymentMethod(userId: string, input: SavePaymentMethodInput) {
+    if ('payment_method_id' in input) {
+      return this.saveTokenizedPaymentMethod(userId, input);
+    }
+
+    if (!env.ALLOW_LEGACY_CARD_INPUT) {
+      throw new AppError(
+        400,
+        'CARD_TOKENIZATION_REQUIRED',
+        'Send a tokenized payment_method_id from Klap or Stripe. Raw card data is not accepted.',
+      );
+    }
+
     const lastFour = maskCardLastFour(input.card_number);
     const brand = detectCardBrand(input.card_number);
     const providerToken = `pm_${crypto.randomBytes(8).toString('hex')}`;
@@ -404,6 +444,7 @@ export const paymentMethodsService = {
       data: {
         userId,
         providerToken,
+        gateway: 'stripe',
         brand,
         lastFour,
         cardholderName: input.cardholder_name.trim(),
@@ -416,6 +457,34 @@ export const paymentMethodsService = {
       brand,
       last_four: lastFour,
       is_default: true,
+      gateway: 'stripe',
+    };
+  },
+
+  async saveTokenizedPaymentMethod(userId: string, input: TokenizedPaymentMethodInput) {
+    await prisma.userPaymentMethod.updateMany({
+      where: { userId, isDefault: true },
+      data: { isDefault: false },
+    });
+
+    await prisma.userPaymentMethod.create({
+      data: {
+        userId,
+        providerToken: input.payment_method_id.trim(),
+        gateway: input.gateway,
+        brand: input.brand.trim(),
+        lastFour: input.last_four,
+        cardholderName: input.cardholder_name.trim(),
+        isDefault: true,
+      },
+    });
+
+    return {
+      id: input.payment_method_id,
+      brand: input.brand,
+      last_four: input.last_four,
+      is_default: true,
+      gateway: input.gateway,
     };
   },
 

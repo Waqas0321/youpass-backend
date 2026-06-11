@@ -11,13 +11,19 @@ import { eventsRouter } from './modules/events/events.routes.js';
 import { invitationsRouter } from './modules/invitations/invitations.routes.js';
 import { ticketsRouter } from './modules/tickets/tickets.routes.js';
 import { homeRouter } from './modules/home/home.routes.js';
+import { webhooksRouter } from './modules/webhooks/webhooks.routes.js';
+import { analyticsRouter } from './modules/analytics/analytics.routes.js';
 import { optionalAuthenticate } from './common/middleware/authenticate.js';
 import { prisma } from './config/database.js';
 
 export function createApp() {
   const app = express();
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      hsts: env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true } : false,
+    }),
+  );
   app.use(cors());
   // strict: false — Flutter sends Content-Type: application/json with an empty/null body on POST
   app.use(express.json({ limit: '1mb', strict: false }));
@@ -45,6 +51,8 @@ export function createApp() {
   api.use('/invitations', invitationsRouter);
   api.use('/tickets', ticketsRouter);
   api.get('/home/initial-feed', optionalAuthenticate, homeRouter.getInitialFeed);
+  api.use('/analytics', analyticsRouter);
+  api.use('/webhooks', webhooksRouter);
 
   app.use(env.API_PREFIX, api);
   app.use(errorHandler);

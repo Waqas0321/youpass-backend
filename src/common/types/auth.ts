@@ -13,6 +13,7 @@ export type PublicUser = {
   id: string;
   phone: string;
   countryCode: string;
+  preferredLanguage: string | null;
   fullName: string;
   email: string;
   birthdate: string;

@@ -218,6 +218,21 @@ See **[docs/FLUTTER_INVITATIONS_API.md](./docs/FLUTTER_INVITATIONS_API.md)** for
 
 See **[docs/FLUTTER_TICKETS_API.md](./docs/FLUTTER_TICKETS_API.md)** for Flutter integration.
 
+## VIP venue map & ticket purchase
+
+| Method | Endpoint | Auth |
+|--------|----------|------|
+| GET | `/events/:eventId/ticket-types` | — |
+| GET | `/events/:eventId/venue-layout` | Optional |
+| GET | `/events/:eventId/zones/:zoneId/tables` | Optional |
+| GET | `/events/:eventId/tables/:tableId` | Optional |
+| POST | `/events/:eventId/tables/:tableId/lock` | Bearer |
+| DELETE | `/events/:eventId/tables/:tableId/lock` | Bearer |
+| GET | `/events/:eventId/tables/availability/realtime` | Optional |
+| POST | `/events/:eventId/checkout` | Bearer |
+
+See **[docs/FLUTTER_VIP_VENUE_API.md](./docs/FLUTTER_VIP_VENUE_API.md)** for Flutter integration.
+
 ## Guest ticket assignment (purchase → assign → WhatsApp)
 
 | Method | Endpoint | Auth |

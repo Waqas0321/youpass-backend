@@ -3,6 +3,8 @@ import { prisma } from '../../config/database.js';
 import { AppError } from '../errors/app-error.js';
 import { AUTH_ERROR_CODES } from '../../config/constants.js';
 
+const MIN_PHONE_DIGITS = 6;
+
 export type ParsedPhone = {
   e164: string;
   countryCode: string;
@@ -18,17 +20,26 @@ export async function parseAndValidatePhone(
   });
 
   if (!country) {
-    throw new AppError(400, AUTH_ERROR_CODES.UNSUPPORTED_COUNTRY, 'YouPass is not available in this country yet');
+    throw new AppError(
+      400,
+      AUTH_ERROR_CODES.UNSUPPORTED_COUNTRY,
+      'YouPass does not operate in this country yet',
+    );
+  }
+
+  const digitsOnly = phone.replace(/\D/g, '');
+  if (!digitsOnly || digitsOnly.length < MIN_PHONE_DIGITS) {
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Please enter a valid number');
   }
 
   const parsed = parsePhoneNumberFromString(phone, countryCode.toUpperCase() as CountryCode);
 
   if (!parsed?.isValid()) {
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Please enter a valid phone number');
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Check your number format');
   }
 
   if (parsed.country && parsed.country !== countryCode.toUpperCase()) {
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Please check your phone number format');
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_PHONE, 'Check your number format');
   }
 
   return {
