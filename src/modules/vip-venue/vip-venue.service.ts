@@ -1,4 +1,3 @@
-import type { TableLock } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import {
@@ -6,23 +5,18 @@ import {
 } from '../../common/services/country-config.service.js';
 import { DEFAULT_SERVICE_FEE_RATE, TABLE_LOCK_MINUTES } from './vip-venue.constants.js';
 import {
-  formatTableLock,
+  formatTableLockFromTable,
   formatTableLockStatus,
   formatTicketOffering,
   formatVenueLayout,
   formatVenueTable,
-  resolveOfferingAvailability,
   resolveTableApiStatus,
 } from './vip-venue.formatter.js';
-
-function isActiveLock(lock: TableLock, now = new Date()) {
-  const statusOk = lock.status == null || lock.status === 'ACTIVE';
-  return statusOk && lock.expiresAt > now;
-}
-
-const activeLockWhere = (now = new Date()) => ({
-  expiresAt: { gt: now },
-});
+import {
+  resolveOfferingAvailability,
+  resolveOfferingRef,
+} from '../ticket-offerings/ticket-offering.types.js';
+import { isTableLockActive } from './venue-table.types.js';
 
 async function getTableLockMinutes(eventId: string) {
   const layout = await prisma.eventVenueLayout.findUnique({
@@ -33,21 +27,24 @@ async function getTableLockMinutes(eventId: string) {
 }
 
 export async function processExpiredTableLocks(now = new Date()): Promise<number> {
-  const expired = await prisma.tableLock.findMany({
-    where: { expiresAt: { lte: now } },
-    select: { id: true },
+  const expiredTables = await prisma.venueTable.updateMany({
+    where: {
+      status: { in: ['locked', 'reserved'] },
+      lockedUntil: { lte: now },
+    },
+    data: {
+      status: 'available',
+      lockedByUserId: null,
+      lockedUntil: null,
+    },
   });
 
-  if (expired.length === 0) {
-    return 0;
-  }
-
-  const result = await prisma.tableLock.updateMany({
-    where: { id: { in: expired.map((lock) => lock.id) } },
+  await prisma.tableLock.updateMany({
+    where: { expiresAt: { lte: now }, status: 'ACTIVE' },
     data: { status: 'EXPIRED' },
   });
 
-  return result.count;
+  return expiredTables.count;
 }
 
 async function getPublishedEvent(eventId: string) {
@@ -62,14 +59,12 @@ async function getLayoutForEvent(eventId: string) {
   const layout = await prisma.eventVenueLayout.findUnique({
     where: { eventId },
     include: {
+      venue: true,
       zones: {
         orderBy: { displayOrder: 'asc' },
         include: {
           tables: {
             orderBy: { number: 'asc' },
-            include: {
-              locks: { where: activeLockWhere() },
-            },
           },
         },
       },
@@ -127,26 +122,25 @@ export const vipVenueService = {
           return false;
         }
         return (
-          offering.isActive ||
-          offering.soldQuantity > 0 ||
-          offering.stockQuantity != null
+          offering.status === 'active' ||
+          offering.status === 'sold_out' ||
+          offering.stockTotal != null
         );
       })
       .map((o) => formatTicketOffering(o, currencyMeta.currency, now));
 
-    // Auto-deactivate offerings whose stock is fully sold.
     await Promise.all(
       offerings
         .filter(
           (offering) =>
-            offering.isActive &&
-            offering.stockQuantity != null &&
-            offering.soldQuantity >= offering.stockQuantity,
+            offering.status === 'active' &&
+            offering.stockRemaining != null &&
+            offering.stockRemaining <= 0,
         )
         .map((offering) =>
           prisma.eventTicketOffering.update({
             where: { id: offering.id },
-            data: { isActive: false },
+            data: { status: 'sold_out' },
           }),
         ),
     );
@@ -204,9 +198,7 @@ export const vipVenueService = {
       throw new AppError(409, 'TABLE_NOT_AVAILABLE', 'This table is already sold');
     }
 
-    const activeLocks = table.locks.filter((l) => isActiveLock(l, now));
-    const otherLock = activeLocks.find((l) => l.userId !== userId);
-    if (otherLock) {
+    if (isTableLockActive(table, now) && table.lockedByUserId !== userId) {
       throw new AppError(
         409,
         'TABLE_LOCKED',
@@ -214,49 +206,78 @@ export const vipVenueService = {
       );
     }
 
-    const myLock = activeLocks.find((l) => l.userId === userId);
-    if (myLock) {
+    if (isTableLockActive(table, now) && table.lockedByUserId === userId) {
       return {
-        ...formatTableLock(myLock),
+        ...formatTableLockFromTable(table, now),
         table: formatVenueTable(table, zone, userId, now, currencyMeta.currency),
       };
     }
 
     const lockMinutes = await getTableLockMinutes(eventId);
-    const expiresAt = new Date(now.getTime() + lockMinutes * 60 * 1000);
+    const lockedUntil = new Date(now.getTime() + lockMinutes * 60 * 1000);
 
-    const lock = await prisma.$transaction(async (tx) => {
+    const updatedTable = await prisma.$transaction(async (tx) => {
       await tx.tableLock.updateMany({
         where: { tableId: table.id, expiresAt: { lte: now } },
         data: { status: 'EXPIRED' },
       });
 
-      return tx.tableLock.create({
+      await tx.tableLock.create({
         data: {
           tableId: table.id,
           userId,
           eventId,
-          expiresAt,
+          expiresAt: lockedUntil,
           status: 'ACTIVE',
+        },
+      });
+
+      return tx.venueTable.update({
+        where: { id: table.id },
+        data: {
+          status: 'locked',
+          lockedByUserId: userId,
+          lockedUntil,
         },
       });
     });
 
-    const refreshed = await resolveTable(eventId, table.id);
-
     return {
-      ...formatTableLock(lock),
-      table: formatVenueTable(refreshed.table, refreshed.zone, userId, now, currencyMeta.currency),
+      ...formatTableLockFromTable(updatedTable, now),
+      table: formatVenueTable(updatedTable, zone, userId, now, currencyMeta.currency),
     };
   },
 
   async releaseTableLock(eventId: string, tableRef: string, userId: string) {
     await getPublishedEvent(eventId);
     const { table } = await resolveTable(eventId, tableRef);
+    const now = new Date();
 
-    await prisma.tableLock.updateMany({
-      where: { tableId: table.id, userId, eventId, ...activeLockWhere() },
-      data: { status: 'EXPIRED' },
+    await prisma.$transaction(async (tx) => {
+      await tx.venueTable.updateMany({
+        where: {
+          id: table.id,
+          eventId,
+          lockedByUserId: userId,
+          status: { in: ['locked', 'reserved'] },
+        },
+        data: {
+          status: 'available',
+          lockedByUserId: null,
+          lockedUntil: null,
+        },
+      });
+
+      await tx.tableLock.updateMany({
+        where: {
+          tableId: table.id,
+          userId,
+          eventId,
+          expiresAt: { gt: now },
+          status: 'ACTIVE',
+        },
+        data: { status: 'EXPIRED' },
+      });
     });
 
     return { released: true, table_id: table.externalId };
@@ -269,18 +290,7 @@ export const vipVenueService = {
   ) {
     await getPublishedEvent(eventId);
     const { table } = await resolveTable(eventId, tableRef);
-    const now = new Date();
-
-    const lock = await prisma.tableLock.findFirst({
-      where: {
-        tableId: table.id,
-        eventId,
-        ...activeLockWhere(now),
-      },
-      orderBy: { expiresAt: 'desc' },
-    });
-
-    return formatTableLockStatus(lock, userId, now);
+    return formatTableLockStatus(table, userId, new Date());
   },
 
   async getRealtimeAvailability(eventId: string, userId?: string) {
@@ -293,7 +303,7 @@ export const vipVenueService = {
         id: t.externalId,
         table_id: t.id,
         label: t.label,
-        status: resolveTableApiStatus(t, userId, now),
+        status: resolveTableApiStatus(t, zone, userId, now),
       }));
 
       return {
@@ -315,16 +325,17 @@ export const vipVenueService = {
 
   async assertUserTableLock(eventId: string, tableId: string, userId: string) {
     const now = new Date();
-    const lock = await prisma.tableLock.findFirst({
+    const table = await prisma.venueTable.findFirst({
       where: {
-        tableId,
-        userId,
+        id: tableId,
         eventId,
-        ...activeLockWhere(now),
+        lockedByUserId: userId,
+        status: { in: ['locked', 'reserved'] },
+        lockedUntil: { gt: now },
       },
     });
 
-    if (!lock) {
+    if (!table) {
       const lockMinutes = await getTableLockMinutes(eventId);
       throw new AppError(
         409,
@@ -333,27 +344,35 @@ export const vipVenueService = {
       );
     }
 
-    return lock;
+    return table;
   },
 
-  async markTableSold(tableId: string) {
+  async markTableSold(tableId: string, soldToUserId: string) {
+    const now = new Date();
     await prisma.$transaction(async (tx) => {
       await tx.venueTable.update({
         where: { id: tableId },
-        data: { status: 'sold' },
+        data: {
+          status: 'sold',
+          soldAt: now,
+          soldToUserId,
+          lockedByUserId: null,
+          lockedUntil: null,
+        },
       });
       await tx.tableLock.updateMany({
-        where: { tableId, ...activeLockWhere() },
+        where: { tableId, status: 'ACTIVE' },
         data: { status: 'CONSUMED' },
       });
     });
   },
 
   async getOfferingById(eventId: string, offeringRef: string) {
+    const typeRef = resolveOfferingRef(offeringRef);
     const offering = await prisma.eventTicketOffering.findFirst({
       where: {
         eventId,
-        OR: [{ id: offeringRef }, { slug: offeringRef }],
+        OR: [{ id: offeringRef }, ...(typeRef ? [{ type: typeRef }] : [])],
       },
     });
 
@@ -374,7 +393,7 @@ export const vipVenueService = {
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
 
     const [offeringsCount, layout] = await Promise.all([
-      prisma.eventTicketOffering.count({ where: { eventId, isActive: true } }),
+      prisma.eventTicketOffering.count({ where: { eventId, status: 'active' } }),
       prisma.eventVenueLayout.findUnique({ where: { eventId }, select: { id: true } }),
     ]);
 
@@ -394,11 +413,15 @@ export const vipVenueService = {
     }
 
     const offerings = await prisma.eventTicketOffering.findMany({
-      where: { eventId, isActive: true },
+      where: { eventId, status: { in: ['active', 'sold_out'] } },
     });
 
-    const has_general_tickets = offerings.some((offering) => offering.section === 'general');
-    const hasVipOfferings = offerings.some((offering) => offering.section === 'vip');
+    const has_general_tickets = offerings.some(
+      (offering) => offering.type !== 'vip_general' && offering.status === 'active',
+    );
+    const hasVipOfferings = offerings.some(
+      (offering) => offering.type === 'vip_general' && offering.status === 'active',
+    );
 
     const layout = await prisma.eventVenueLayout.findUnique({
       where: { eventId },

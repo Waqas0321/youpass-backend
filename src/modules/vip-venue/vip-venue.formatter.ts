@@ -1,71 +1,28 @@
 import type {
-  EventTicketOffering,
   EventVenueLayout,
-  TableLock,
+  Venue,
   VenueTable,
   VenueZone,
 } from '@prisma/client';
 import { TABLE_LOCK_MINUTES } from './vip-venue.constants.js';
+import { formatVenue } from '../venues/venues.formatter.js';
+import {
+  isTableLockActive,
+  parseTableIncludes,
+  parseTablePosition,
+} from './venue-table.types.js';
+
+export { formatPublicTicketOffering, formatTicketOffering } from '../ticket-offerings/ticket-offering.formatter.js';
 
 type ZoneWithTables = VenueZone & { tables: VenueTable[] };
-type LayoutWithZones = EventVenueLayout & { zones: ZoneWithTables[] };
-type TableWithLocks = VenueTable & { locks: TableLock[] };
-
-export function resolveOfferingAvailability(
-  offering: EventTicketOffering,
-  now = new Date(),
-) {
-  const stockSoldOut =
-    offering.stockQuantity != null && offering.soldQuantity >= offering.stockQuantity;
-  const saleNotStarted =
-    offering.saleStartsAt != null && offering.saleStartsAt > now;
-  const saleExpired = offering.saleEndsAt != null && offering.saleEndsAt < now;
-  const is_sold_out =
-    stockSoldOut ||
-    saleExpired ||
-    (!offering.isActive &&
-      (offering.soldQuantity > 0 || offering.stockQuantity != null));
-  const is_selectable =
-    offering.isActive && !stockSoldOut && !saleExpired && !saleNotStarted;
-
-  return { is_sold_out, is_selectable, stockSoldOut, saleExpired, saleNotStarted };
-}
-
-export function formatTicketOffering(
-  offering: EventTicketOffering,
-  eventCurrency?: string,
-  now = new Date(),
-) {
-  const availability = resolveOfferingAvailability(offering, now);
-
-  return {
-    id: offering.slug,
-    offering_id: offering.id,
-    slug: offering.slug,
-    label: offering.label,
-    description: offering.description,
-    section: offering.section,
-    price: offering.price,
-    currency: eventCurrency ?? offering.currency,
-    badge_label: offering.badgeLabel,
-    display_order: offering.displayOrder,
-    max_per_order: offering.maxPerOrder,
-    maps_to_tier: offering.mapsToTier,
-    maps_to_type: offering.mapsToType,
-    is_sold_out: availability.is_sold_out,
-    is_selectable: availability.is_selectable,
-    is_active: offering.isActive,
-    stock_quantity: offering.stockQuantity,
-    sold_quantity: offering.soldQuantity,
-    sale_starts_at: offering.saleStartsAt?.toISOString() ?? null,
-    sale_ends_at: offering.saleEndsAt?.toISOString() ?? null,
-  };
-}
+type LayoutWithZones = EventVenueLayout & { zones: ZoneWithTables[]; venue?: Venue | null };
 
 function countZoneTables(zone: ZoneWithTables) {
   const total = zone.tables.length;
   const sold = zone.tables.filter((t) => t.status === 'sold').length;
-  const available = zone.tables.filter((t) => t.status === 'available').length;
+  const available = zone.tables.filter(
+    (t) => t.status === 'available' || (t.status === 'locked' && !isTableLockActive(t)),
+  ).length;
   return { total, sold, available };
 }
 
@@ -91,7 +48,9 @@ export function formatVenueZone(zone: ZoneWithTables) {
 
 export function formatVenueLayout(layout: LayoutWithZones) {
   return {
-    venue_id: layout.id,
+    venue_id: layout.venueId ?? null,
+    physical_venue: layout.venue ? formatVenue(layout.venue) : null,
+    layout_venue_id: layout.id,
     event_id: layout.eventId,
     name: layout.venueName,
     table_lock_minutes: layout.tableLockMinutes ?? TABLE_LOCK_MINUTES,
@@ -107,79 +66,93 @@ export function formatVenueLayout(layout: LayoutWithZones) {
 }
 
 export function resolveTableApiStatus(
-  table: TableWithLocks,
+  table: VenueTable,
+  zone: VenueZone,
   userId?: string,
   now = new Date(),
-): 'available' | 'sold' | 'premium' | 'locked' | 'selected' {
+): 'available' | 'sold' | 'premium' | 'locked' | 'selected' | 'reserved' {
   if (table.status === 'sold') return 'sold';
-  if (table.isPremium || table.status === 'premium') return 'premium';
+  if (zone.kind === 'vip_premium_zone') return 'premium';
 
-  const activeLock = table.locks.find(
-    (l) => l.expiresAt > now && (l.status == null || l.status === 'ACTIVE'),
-  );
-  if (activeLock) {
-    return activeLock.userId === userId ? 'selected' : 'locked';
+  if (table.status === 'reserved') {
+    return isTableLockActive(table, now) ? 'reserved' : 'available';
+  }
+
+  if (isTableLockActive(table, now)) {
+    return table.lockedByUserId === userId ? 'selected' : 'locked';
   }
 
   return 'available';
 }
 
 export function formatVenueTable(
-  table: TableWithLocks,
+  table: VenueTable,
   zone: VenueZone,
   userId?: string,
   now = new Date(),
   eventCurrency?: string,
 ) {
-  const apiStatus = resolveTableApiStatus(table, userId, now);
-  const activeLock = table.locks.find(
-    (l) => l.expiresAt > now && (l.status == null || l.status === 'ACTIVE'),
-  );
+  const apiStatus = resolveTableApiStatus(table, zone, userId, now);
+  const includes = parseTableIncludes(table.includes);
+  const position = parseTablePosition(table.position);
+  const lockActive = isTableLockActive(table, now);
 
   return {
     id: table.externalId,
     table_id: table.id,
+    event_id: table.eventId,
     number: table.number,
     label: table.label,
     zone_id: zone.externalId,
     zone_ref_id: zone.id,
     status: apiStatus,
     db_status: table.status,
-    position: { x: table.positionX, y: table.positionY },
+    position,
     price: table.price,
     currency: eventCurrency ?? table.currency,
+    capacity: table.capacity,
     includes: {
       people: table.capacity,
-      bottles: table.bottleCount,
-      bar_vouchers: table.voucherCount,
-      extras: [] as string[],
+      bottles: includes.bottles,
+      bar_vouchers: includes.bar_vouchers,
+      extras: includes.extras,
     },
-    is_premium: table.isPremium,
-    locked_until: activeLock?.expiresAt.toISOString() ?? null,
-    locked_by_me: activeLock ? activeLock.userId === userId : false,
+    is_premium: zone.kind === 'vip_premium_zone',
+    locked_by_user_id: lockActive ? table.lockedByUserId : null,
+    locked_until: lockActive ? table.lockedUntil?.toISOString() ?? null : null,
+    locked_by_me: lockActive ? table.lockedByUserId === userId : false,
+    sold_at: table.soldAt?.toISOString() ?? null,
+    sold_to_user_id: table.soldToUserId ?? null,
   };
 }
 
-export function formatTableLock(lock: TableLock) {
+export function formatTableLockFromTable(table: VenueTable, now = new Date()) {
+  if (!isTableLockActive(table, now) || !table.lockedUntil) {
+    return {
+      lock_id: null,
+      table_id: table.id,
+      status: 'NONE',
+      locked_at: null,
+      expires_at: null,
+      expires_in_seconds: 0,
+    };
+  }
+
   return {
-    lock_id: lock.id,
-    table_id: lock.tableId,
-    status: lock.status,
-    locked_at: lock.createdAt.toISOString(),
-    expires_at: lock.expiresAt.toISOString(),
+    lock_id: table.id,
+    table_id: table.id,
+    status: table.status === 'reserved' ? 'RESERVED' : 'ACTIVE',
+    locked_at: table.updatedAt.toISOString(),
+    expires_at: table.lockedUntil.toISOString(),
     expires_in_seconds: Math.max(
       0,
-      Math.floor((lock.expiresAt.getTime() - Date.now()) / 1000),
+      Math.floor((table.lockedUntil.getTime() - now.getTime()) / 1000),
     ),
   };
 }
 
-export function formatTableLockStatus(
-  lock: TableLock | null,
-  userId?: string,
-  now = new Date(),
-) {
-  if (!lock || lock.expiresAt <= now || (lock.status != null && lock.status !== 'ACTIVE')) {
+export function formatTableLockStatus(table: VenueTable, userId?: string, now = new Date()) {
+  if (!isTableLockActive(table, now) || !table.lockedUntil) {
     return {
       lock_id: null,
       status: 'NONE',
@@ -191,14 +164,14 @@ export function formatTableLockStatus(
   }
 
   return {
-    lock_id: lock.id,
-    status: lock.status,
-    locked_at: lock.createdAt.toISOString(),
-    expires_at: lock.expiresAt.toISOString(),
+    lock_id: table.id,
+    status: table.status === 'reserved' ? 'RESERVED' : 'ACTIVE',
+    locked_at: table.updatedAt.toISOString(),
+    expires_at: table.lockedUntil.toISOString(),
     remaining_seconds: Math.max(
       0,
-      Math.floor((lock.expiresAt.getTime() - now.getTime()) / 1000),
+      Math.floor((table.lockedUntil.getTime() - now.getTime()) / 1000),
     ),
-    is_locked_by_me: userId ? lock.userId === userId : false,
+    is_locked_by_me: userId ? table.lockedByUserId === userId : false,
   };
 }

@@ -8,47 +8,49 @@ const prisma = new PrismaClient();
 
 const OFFERINGS_TEMPLATE = [
   {
-    slug: 'preventa-1',
-    label: 'Preventa 1',
-    section: 'general' as const,
+    type: 'early_bird' as const,
+    name: 'Early Bird',
     price: 10000,
     displayOrder: 1,
-    mapsToTier: 'general' as const,
-    mapsToType: 'general' as const,
-    badgeLabel: 'Early bird',
-    description: 'Acceso general al evento',
-    stockQuantity: 100,
+    stockTotal: 100,
+    stockRemaining: 100,
+    status: 'active' as const,
   },
   {
-    slug: 'preventa-2',
-    label: 'Preventa 2',
-    section: 'general' as const,
+    type: 'preventa_2' as const,
+    name: 'Pre-sale 2nd wave',
     price: 13000,
     displayOrder: 2,
-    mapsToTier: 'general' as const,
-    mapsToType: 'general' as const,
-    description: 'Segunda preventa — precio intermedio',
-    stockQuantity: 200,
+    stockTotal: 200,
+    stockRemaining: 200,
+    status: 'active' as const,
   },
   {
-    slug: 'general-cover',
-    label: 'General + Cover',
-    section: 'general' as const,
-    price: 18000,
+    type: 'preventa_3' as const,
+    name: 'Pre-sale 3rd wave',
+    price: 15000,
     displayOrder: 3,
-    mapsToTier: 'general' as const,
-    mapsToType: 'general' as const,
-    description: 'Entrada general puerta o último minuto online',
+    stockTotal: null,
+    stockRemaining: null,
+    status: 'active' as const,
   },
   {
-    slug: 'vip-general',
-    label: 'VIP General',
-    section: 'vip' as const,
-    price: 35000,
+    type: 'general' as const,
+    name: 'General',
+    price: 18000,
     displayOrder: 4,
-    mapsToTier: 'vip' as const,
-    mapsToType: 'vip' as const,
-    description: 'Sin mesa. Acceso general al evento en zona VIP',
+    stockTotal: null,
+    stockRemaining: null,
+    status: 'active' as const,
+  },
+  {
+    type: 'vip_general' as const,
+    name: 'VIP General',
+    price: 35000,
+    displayOrder: 5,
+    stockTotal: null,
+    stockRemaining: null,
+    status: 'active' as const,
   },
 ];
 
@@ -201,18 +203,21 @@ function tablesForZone(zoneExternalId: string, count: number, capacity: number, 
   return Array.from({ length: count }, (_, i) => {
     const num = i + 1;
     const label = zoneExternalId === 'vip-dj' ? `D${num}` : `M${num}`;
+    const isSold = i >= count - 2;
     return {
       externalId: `table-${zoneExternalId}-${label.toLowerCase()}`,
       number: num,
       label,
-      status: i >= count - 2 ? ('sold' as const) : ('available' as const),
-      positionX: 5 + (i % 4) * 12,
-      positionY: 5 + Math.floor(i / 4) * 12,
+      status: isSold ? ('sold' as const) : ('available' as const),
+      position: { x: 5 + (i % 4) * 12, y: 5 + Math.floor(i / 4) * 12 },
       price: zoneExternalId === 'vip-dj' ? basePrice * 1.4 : basePrice,
       capacity,
-      bottleCount: zoneExternalId === 'vip-dj' ? 3 : 2,
-      voucherCount: zoneExternalId === 'vip-dj' ? 30 : 20,
-      isPremium: zoneExternalId === 'vip-dj',
+      includes: {
+        bottles: zoneExternalId === 'vip-dj' ? 3 : 2,
+        bar_vouchers: zoneExternalId === 'vip-dj' ? 30 : 20,
+        extras: zoneExternalId === 'vip-dj' ? ['premium_service'] : [],
+      },
+      soldAt: isSold ? new Date() : null,
     };
   });
 }
@@ -234,26 +239,33 @@ async function seedOfferings(
   const currency = country?.currencyCode ?? 'CLP';
 
   for (const offering of OFFERINGS_TEMPLATE) {
-    const isSoldOutWave = options.soldOutEarlyBird && offering.slug === 'preventa-1';
-    const stockQuantity = offering.stockQuantity ?? null;
-    const soldQuantity = isSoldOutWave && stockQuantity ? stockQuantity : 0;
+    const isSoldOutWave = options.soldOutEarlyBird && offering.type === 'early_bird';
+    const stockTotal = offering.stockTotal ?? null;
+    const stockRemaining =
+      isSoldOutWave && stockTotal != null ? 0 : (offering.stockRemaining ?? stockTotal);
+    const status = isSoldOutWave ? ('sold_out' as const) : offering.status;
 
     await prisma.eventTicketOffering.upsert({
-      where: { eventId_slug: { eventId, slug: offering.slug } },
+      where: { eventId_type: { eventId, type: offering.type } },
       create: {
         eventId,
-        ...offering,
+        type: offering.type,
+        name: offering.name,
+        price: offering.price,
+        displayOrder: offering.displayOrder,
         currency,
-        stockQuantity,
-        soldQuantity,
-        isActive: !isSoldOutWave,
+        stockTotal,
+        stockRemaining,
+        status,
       },
       update: {
-        ...offering,
+        name: offering.name,
+        price: offering.price,
+        displayOrder: offering.displayOrder,
         currency,
-        stockQuantity,
-        soldQuantity,
-        isActive: !isSoldOutWave,
+        stockTotal,
+        stockRemaining,
+        status,
       },
     });
   }
@@ -293,7 +305,7 @@ async function seedVenueLayout(eventId: string, venueName: string, countryCode: 
     for (const table of tables) {
       await prisma.venueTable.upsert({
         where: { zoneId_label: { zoneId: record.id, label: table.label } },
-        create: { zoneId: record.id, ...table, currency },
+        create: { eventId, zoneId: record.id, ...table, currency },
         update: { ...table, currency },
       });
     }

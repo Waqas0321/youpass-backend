@@ -19,6 +19,7 @@ import { doorRouter } from './modules/door/door.routes.js';
 import { producerInvitationsRouter, producerEventsRouter } from './modules/producer-invitations/producer-invitations.routes.js';
 import { systemInvitationsRouter } from './modules/system-invitations/system-invitations.routes.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
+import { venuesRouter } from './modules/venues/venues.routes.js';
 import { waitlistOffersRouter } from './modules/waitlist/waitlist.routes.js';
 import { renderKlapMockTokenizePage } from './modules/wallet/wallet-mock.controller.js';
 import { optionalAuthenticate } from './common/middleware/authenticate.js';
@@ -69,6 +70,7 @@ export function createApp() {
   api.use('/producer/events', producerEventsRouter);
   api.use('/system/invitations', systemInvitationsRouter);
   api.use('/admin', adminRouter);
+  api.use('/venues', venuesRouter);
   api.get('/wallet/klap/mock-tokenize', renderKlapMockTokenizePage);
   api.use('/webhooks', webhooksRouter);
 

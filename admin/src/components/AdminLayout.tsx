@@ -6,6 +6,7 @@ import {
   IconGrid,
   IconImage,
   IconLogout,
+  IconMapPin,
   IconMail,
   IconSpark,
   IconZap,
@@ -22,6 +23,7 @@ const navSections = [
     label: 'Content',
     items: [
       { to: '/events', label: 'Events', icon: IconCalendar },
+      { to: '/venues', label: 'Venues', icon: IconMapPin },
       { to: '/categories', label: 'Categories', icon: IconGrid },
       { to: '/banners', label: 'Banners', icon: IconImage },
     ],
@@ -40,6 +42,7 @@ const navSections = [
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/events': 'Events',
+  '/venues': 'Physical venues',
   '/categories': 'Event categories',
   '/banners': 'Home banners',
   '/invitations': 'Producer invitations',

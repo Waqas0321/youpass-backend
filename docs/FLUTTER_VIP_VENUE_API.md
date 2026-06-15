@@ -5,8 +5,47 @@
 APIs for **VIP venue map**, **ticket offerings**, **table lock**, and **checkout** (general + VIP table). Replaces `VipVenueMockData` in Flutter.
 
 Related docs:
+- **[FLUTTER_TICKET_PURCHASE_INTEGRATION.md](./FLUTTER_TICKET_PURCHASE_INTEGRATION.md)** — **start here** for Buy tickets migration (types, sold-out UX, lock, no stock numbers)
 - [FLUTTER_EVENTS_API.md](./FLUTTER_EVENTS_API.md) — event list & detail
 - [FLUTTER_GUEST_TICKETS_API.md](./FLUTTER_GUEST_TICKETS_API.md) — post-purchase assignment
+- [FLUTTER_API_DEPLOYED.md](./FLUTTER_API_DEPLOYED.md) — full production API index
+
+---
+
+## What to update in Flutter
+
+| Area | Action required? |
+|------|------------------|
+| **Ticket types** (Early Bird, Pre-sale 2/3, General, VIP General) | **Yes** — see [integration guide](./FLUTTER_TICKET_PURCHASE_INTEGRATION.md) |
+| **Hide stock numbers**; sold-out = disable button only | **Yes** — public API no longer returns stock fields |
+| **Quantity stepper** — no client max | **Yes** — backend enforces promoter stock only |
+| **VIP table lock** (10 min before checkout) | **Yes** if not already implemented |
+| VIP table lock / checkout endpoints | **No** — same endpoints |
+| Table `includes`, `position`, `price`, `label` | **No** — same shape |
+| Venue layout `venue_id` | **Yes** — meaning changed (see [Venue layout](#venue-layout)) |
+| Event detail venue fields | **Optional** — `physical_venue` on `GET /events/:id` |
+| Table response extras | **Optional** — `event_id`, `sold_at`, `db_status`, etc. |
+
+**Required migration** (only if you stored layout `venue_id` as the floor-plan id):
+
+```dart
+// Before (wrong)
+final layoutDocId = layout.venueId;
+
+// After
+final physicalVenueId = layout.venueId;    // catalog id, nullable
+final layoutDocId = layout.layoutVenueId;  // floor plan document id
+final venueMeta = layout.physicalVenue;    // optional
+```
+
+**Model checklist**
+
+- [ ] `VenueLayoutResponse`: add `layoutVenueId`, `physicalVenue`; `venueId` = catalog id
+- [ ] `EventDetailResponse`: optional `venueId`, `physicalVenue`
+- [ ] `VenueTableResponse`: optional `eventId`, `capacity`, `lockedUntil`, `soldAt` (ignore if unused)
+- [ ] Keep using API `status` for UI — not `db_status`
+
+**No Flutter changes** for VIP map only if it already uses `status` / `includes` / lock / checkout with `table_id`, and never relied on layout `venue_id` as floor-plan id. **Ticket selection always needs the migration** in [FLUTTER_TICKET_PURCHASE_INTEGRATION.md](./FLUTTER_TICKET_PURCHASE_INTEGRATION.md).
 
 ---
 
@@ -17,6 +56,8 @@ Related docs:
 | GET | `/events/:eventId` | Optional | Event detail + `purchase` meta |
 | GET | `/events/:eventId/ticket-types` | — | Ticket offerings (Preventa, VIP General, …) |
 | GET | `/events/:eventId/venue-layout` | Optional | Floor plan + zones |
+| GET | `/venues` | — | Physical venue catalog |
+| GET | `/venues/:id` | — | Physical venue detail |
 | GET | `/events/:eventId/zones/:zoneId/tables` | Optional | Tables in zone |
 | GET | `/events/:eventId/tables/:tableId` | Optional | Single table detail |
 | POST | `/events/:eventId/tables/:tableId/lock` | Bearer | 10-minute table hold |
@@ -41,6 +82,15 @@ Existing fields plus:
     "id": "...",
     "title": "URBAN NIGHT LIVE",
     "venue_name": "BICENTENNIAL PARK",
+    "venue_id": "PHYSICAL_VENUE_MONGODB_ID",
+    "physical_venue": {
+      "id": "...",
+      "name": "Bicentennial Park",
+      "address": "...",
+      "city": "Santiago",
+      "country": "CL",
+      "dimensions": { "width_meters": 36, "height_meters": 18 }
+    },
     "purchase": {
       "service_fee_rate": 0.05,
       "currency": "CLP",
@@ -60,6 +110,8 @@ Existing fields plus:
 
 **`GET /events/:eventId/ticket-types`**
 
+Each event exposes ticket offerings (early bird, pre-sales, general, VIP general). **Stock numbers are not returned** to the app — use `is_sold_out` / `is_selectable` only. Legacy slugs (`preventa-1`, …) still work in **checkout** `offering_id`.
+
 ```json
 {
   "success": true,
@@ -68,31 +120,46 @@ Existing fields plus:
     "service_fee_rate": 0.05,
     "offerings": [
       {
-        "id": "preventa-1",
+        "id": "early_bird",
         "offering_id": "...",
-        "slug": "preventa-1",
-        "label": "Preventa 1",
+        "type": "early_bird",
+        "name": "Early Bird",
+        "slug": "early_bird",
+        "label": "Early Bird",
         "section": "general",
         "price": 10000,
         "currency": "CLP",
-        "badge_label": "Early bird",
+        "status": "active",
+        "sale_start_at": null,
+        "sale_end_at": null,
         "maps_to_tier": "general",
-        "maps_to_type": "general"
+        "maps_to_type": "general",
+        "is_sold_out": false,
+        "is_selectable": true
       },
       {
-        "id": "vip-general",
+        "id": "vip_general",
+        "type": "vip_general",
+        "name": "VIP General",
+        "slug": "vip_general",
         "label": "VIP General",
         "section": "vip",
         "price": 35000,
         "maps_to_tier": "vip",
-        "maps_to_type": "vip"
+        "maps_to_type": "vip",
+        "status": "active",
+        "is_sold_out": false,
+        "is_selectable": true
       }
     ]
   }
 }
 ```
 
-**Flutter mapping:** `TicketOfferingEntity.id` ← `slug` or `id`; price from `price`.
+**Types:** `early_bird` · `preventa_2` · `preventa_3` · `general` · `vip_general`  
+**Status:** `active` · `sold_out` · `paused` · `closed`
+
+**Flutter mapping:** See **[FLUTTER_TICKET_PURCHASE_INTEGRATION.md](./FLUTTER_TICKET_PURCHASE_INTEGRATION.md)** for models, UX rules, and checkout migration.
 
 ---
 
@@ -100,11 +167,22 @@ Existing fields plus:
 
 **`GET /events/:eventId/venue-layout`**
 
+**Field note:** `venue_id` is the **physical venue** catalog id (when linked). `layout_venue_id` is the floor-plan document id.
+
 ```json
 {
   "success": true,
   "data": {
-    "venue_id": "...",
+    "venue_id": "PHYSICAL_VENUE_MONGODB_ID",
+    "layout_venue_id": "LAYOUT_DOCUMENT_ID",
+    "physical_venue": {
+      "id": "...",
+      "name": "Club Amanda - Main Hall",
+      "address": "Av. Providencia 1234",
+      "city": "Santiago",
+      "country": "CL",
+      "dimensions": { "width_meters": 40, "height_meters": 30 }
+    },
     "event_id": "...",
     "name": "BICENTENNIAL PARK - Main Hall",
     "dimensions": { "width_meters": 36, "height_meters": 18 },
@@ -153,13 +231,16 @@ Existing fields plus:
       {
         "id": "table-vip-1-m1",
         "table_id": "...",
+        "event_id": "...",
         "number": 1,
         "label": "M1",
         "zone_id": "vip-1",
         "status": "available",
+        "db_status": "available",
         "position": { "x": 5, "y": 5 },
         "price": 320000,
         "currency": "CLP",
+        "capacity": 10,
         "includes": {
           "people": 10,
           "bottles": 2,
@@ -167,17 +248,23 @@ Existing fields plus:
           "extras": []
         },
         "is_premium": false,
+        "locked_by_user_id": null,
         "locked_until": null,
-        "locked_by_me": false
+        "locked_by_me": false,
+        "sold_at": null,
+        "sold_to_user_id": null
       }
     ]
   }
 }
 ```
 
-**Table `status` (API):** `available` | `locked` | `selected` | `sold` | `premium`  
+**Table `status` (API):** `available` | `locked` | `selected` | `sold` | `premium` | `reserved`  
 - `selected` = locked by **current user**  
-- `locked` = held by someone else
+- `locked` = held by someone else  
+- `db_status`: `available` | `locked` | `reserved` | `sold` (persisted on `venue_tables`)
+
+Each event owns its own table rows (`event_id` + `zone_id`). Lock fields live on the table: `locked_by_user_id`, `locked_until`.
 
 ---
 
@@ -253,7 +340,7 @@ Mock payment is **on** by default (`CHECKOUT_MOCK_PAYMENT=true`). Service fee **
 
 ```json
 {
-  "offering_id": "preventa-1",
+  "offering_id": "early_bird",
   "quantity": 2
 }
 ```
@@ -273,7 +360,7 @@ Or legacy:
 ```json
 {
   "items": [
-    { "offering_id": "preventa-1", "quantity": 2 },
+    { "offering_id": "early_bird", "quantity": 2 },
     { "offering_id": "vip-general", "quantity": 1 }
   ]
 }
@@ -361,6 +448,8 @@ lib/features/vip_venue/data/
 | `VENUE_ZONE_NOT_FOUND` | 404 | Invalid zone |
 | `VENUE_TABLE_NOT_FOUND` | 404 | Invalid table |
 | `TICKET_OFFERING_NOT_FOUND` | 404 | Invalid offering |
+| `TICKET_OFFERING_SOLD_OUT` | 409 | Offering not selectable |
+| `INSUFFICIENT_STOCK` | 409 | Quantity exceeds promoter stock |
 | `TABLE_NOT_AVAILABLE` | 409 | Table sold |
 | `TABLE_LOCKED` | 409 | Held by another user |
 | `TABLE_LOCK_REQUIRED` | 409 | Checkout without active lock |

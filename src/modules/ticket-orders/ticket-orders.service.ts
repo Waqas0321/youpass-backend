@@ -26,6 +26,12 @@ import {
   preparePayment,
   resolvePaymentGateway,
 } from '../payments/payment-gateway.service.js';
+import {
+  mapsToCatalogType,
+  mapsToTier,
+  isQuantityAvailable,
+  normalizeStatusAfterStockChange,
+} from '../ticket-offerings/ticket-offering.types.js';
 
 type SlotWithInvitation = TicketSlot & {
   invitation: (Invitation & { ticket: { id: string } | null }) | null;
@@ -43,6 +49,24 @@ const DEFAULT_UNIT_PRICES: Record<string, number> = {
 
 /** MongoDB transactions on serverless need extra time for multi-slot VIP table orders. */
 const CHECKOUT_TX_OPTIONS = { maxWait: 15_000, timeout: 30_000 } as const;
+
+async function decrementOfferingStock(
+  tx: Prisma.TransactionClient,
+  offeringId: string,
+  quantity: number,
+) {
+  const offering = await tx.eventTicketOffering.findUnique({ where: { id: offeringId } });
+  if (!offering || offering.stockRemaining == null) return;
+
+  const nextRemaining = Math.max(0, offering.stockRemaining - quantity);
+  await tx.eventTicketOffering.update({
+    where: { id: offeringId },
+    data: {
+      stockRemaining: nextRemaining,
+      status: normalizeStatusAfterStockChange(offering.status, nextRemaining),
+    },
+  });
+}
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -280,10 +304,17 @@ export const ticketOrdersService = {
       let totalQty = 0;
       for (const item of input.items) {
         const offering = await vipVenueService.getOfferingById(eventId, item.offering_id);
+        if (!isQuantityAvailable(offering, item.quantity)) {
+          throw new AppError(
+            409,
+            'INSUFFICIENT_STOCK',
+            'Not enough tickets available for this offering',
+          );
+        }
         subtotal += offering.price * item.quantity;
         totalQty += item.quantity;
-        tier = offering.mapsToTier;
-        type = offering.mapsToType;
+        tier = mapsToTier(offering.type);
+        type = mapsToCatalogType(offering.type);
         ticketOfferingId = offering.id;
         unitPrice = offering.price;
       }
@@ -291,9 +322,16 @@ export const ticketOrdersService = {
     } else if (input.offering_id) {
       const offering = await vipVenueService.getOfferingById(eventId, input.offering_id);
       quantity = input.quantity ?? 1;
+      if (!isQuantityAvailable(offering, quantity)) {
+        throw new AppError(
+          409,
+          'INSUFFICIENT_STOCK',
+          'Not enough tickets available for this offering',
+        );
+      }
       subtotal = offering.price * quantity;
-      tier = offering.mapsToTier;
-      type = offering.mapsToType;
+      tier = mapsToTier(offering.type);
+      type = mapsToCatalogType(offering.type);
       ticketOfferingId = offering.id;
       unitPrice = offering.price;
     } else {
@@ -413,18 +451,25 @@ export const ticketOrdersService = {
         );
 
         if (venueTableId) {
+          const soldAt = new Date();
           await tx.venueTable.update({
             where: { id: venueTableId },
-            data: { status: 'sold' },
+            data: {
+              status: 'sold',
+              soldAt,
+              soldToUserId: buyerUserId,
+              lockedByUserId: null,
+              lockedUntil: null,
+            },
           });
-          await tx.tableLock.deleteMany({ where: { tableId: venueTableId } });
+          await tx.tableLock.updateMany({
+            where: { tableId: venueTableId, status: 'ACTIVE' },
+            data: { status: 'CONSUMED' },
+          });
         }
 
         if (ticketOfferingId) {
-          await tx.eventTicketOffering.update({
-            where: { id: ticketOfferingId },
-            data: { soldQuantity: { increment: quantity } },
-          });
+          await decrementOfferingStock(tx, ticketOfferingId, quantity);
         }
 
         return {
@@ -545,18 +590,25 @@ export const ticketOrdersService = {
       );
 
       if (order.venueTableId) {
+        const soldAt = new Date();
         await tx.venueTable.update({
           where: { id: order.venueTableId },
-          data: { status: 'sold' },
+          data: {
+            status: 'sold',
+            soldAt,
+            soldToUserId: order.buyerUserId,
+            lockedByUserId: null,
+            lockedUntil: null,
+          },
         });
-        await tx.tableLock.deleteMany({ where: { tableId: order.venueTableId } });
+        await tx.tableLock.updateMany({
+          where: { tableId: order.venueTableId, status: 'ACTIVE' },
+          data: { status: 'CONSUMED' },
+        });
       }
 
       if (order.ticketOfferingId) {
-        await tx.eventTicketOffering.update({
-          where: { id: order.ticketOfferingId },
-          data: { soldQuantity: { increment: order.quantity } },
-        });
+        await decrementOfferingStock(tx, order.ticketOfferingId, order.quantity);
       }
 
       return {

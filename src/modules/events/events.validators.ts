@@ -79,13 +79,14 @@ export const featuredEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(10),
 });
 
-export const createEventSchema = z.object({
+const eventBodyBaseSchema = z.object({
   title: z.string().min(2).max(200),
   description: z.string().max(5000).optional(),
   starts_at: z.string().datetime({ message: 'Use ISO 8601 datetime' }),
-  venue_name: z.string().min(2).max(200),
-  city: z.string().min(2).max(100),
-  country_code: z.string().min(2).max(5),
+  venue_id: z.string().min(1).optional(),
+  venue_name: z.string().min(2).max(200).optional(),
+  city: z.string().min(2).max(100).optional(),
+  country_code: z.string().min(2).max(5).optional(),
   image_url: z.string().url().max(2000).optional(),
   event_type: z.string().min(1).max(50),
   is_featured: z.boolean().optional().default(false),
@@ -96,7 +97,16 @@ export const createEventSchema = z.object({
   longitude: z.coerce.number().min(-180).max(180).optional(),
 });
 
-export const updateEventSchema = createEventSchema.partial().refine(
+export const createEventSchema = eventBodyBaseSchema.superRefine((data, ctx) => {
+  if (!data.venue_id && (!data.venue_name || !data.city || !data.country_code)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide venue_id or venue_name, city, and country_code',
+    });
+  }
+});
+
+export const updateEventSchema = eventBodyBaseSchema.partial().refine(
   (data) => Object.values(data).some((value) => value !== undefined),
   { message: 'At least one field is required' },
 );

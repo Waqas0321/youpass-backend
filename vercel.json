@@ -1,7 +1,7 @@
 {
   "version": 2,
   "framework": null,
-  "installCommand": "npm install",
+  "installCommand": "npm install && npm run admin:install",
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "public",
   "functions": {
@@ -18,6 +18,14 @@
     {
       "source": "/api/v1",
       "destination": "/api"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin/index.html"
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "/admin/index.html"
     }
   ]
 }

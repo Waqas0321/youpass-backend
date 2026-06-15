@@ -21,9 +21,10 @@
     "test:section-21": "tsx scripts/test-section-21.ts",
     "db:studio": "prisma studio",
     "admin:dev": "npm run dev --prefix admin",
+    "admin:build": "npm run build --prefix admin",
     "admin:install": "npm install --prefix admin",
     "postinstall": "prisma generate",
-    "vercel-build": "prisma generate && npm run build"
+    "vercel-build": "prisma generate && npm run build && npm run admin:build"
   },
   "engines": {
     "node": ">=20"

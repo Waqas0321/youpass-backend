@@ -92,7 +92,7 @@ async function loadEventForProducer(eventId: string) {
     where: { id: eventId },
     include: {
       invitationSettings: true,
-      ticketOfferings: { where: { isActive: true }, orderBy: { price: 'desc' }, take: 1 },
+      ticketOfferings: { where: { status: 'active' }, orderBy: { price: 'desc' }, take: 1 },
     },
   });
   if (!event) {

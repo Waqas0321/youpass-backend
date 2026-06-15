@@ -45,7 +45,8 @@ export function EventPurchaseConfigPanel({ eventId, eventTitle, venueName }: Pro
             <p className="purchase-config__map-step">App screen 1</p>
             <strong>General tickets</strong>
             <p className="muted">
-              Preventa, General+Cover, etc. Quantity stepper. Configure in section{' '}
+              Early Bird, Pre-sale 2nd/3rd wave, General. Quantity stepper — no app-side cap;
+              stock is set per wave in section{' '}
               <button type="button" className="text-link" onClick={() => scrollTo('purchase-general')}>
                 1 · General tickets
               </button>
@@ -82,12 +83,17 @@ export function EventPurchaseConfigPanel({ eventId, eventTitle, venueName }: Pro
         </div>
         <ul className="purchase-config__stock-notes muted">
           <li>
-            <strong>General / VIP General stock:</strong> set <em>Stock quantity</em> per wave. Sold
-            count increases on each purchase.
+            <strong>General / VIP General stock:</strong> set <em>Stock total</em> and{' '}
+            <em>Stock remaining</em> per wave. Guests only see Sold out — not numbers.
           </li>
           <li>
             <strong>VIP table stock:</strong> one table = one unit. Set each table status to{' '}
-            <em>available</em> or <em>sold</em>.
+            <em>available</em> or <em>sold</em>. VIP 1 / VIP 2 = 10 seats; VIP DJ = 15 seats
+            (set <em>Capacity per table</em> on the zone).
+          </li>
+          <li>
+            <strong>Table lock:</strong> guests get a 10-minute hold when they start checkout on a
+            table (configurable under layout settings).
           </li>
           <li>
             <strong>Zones are not tickets.</strong> Zones group tables on the floor plan — guests pick
@@ -102,7 +108,7 @@ export function EventPurchaseConfigPanel({ eventId, eventTitle, venueName }: Pro
           eventTitle={eventTitle}
           section="general"
           title="1 · General tickets"
-          description="Waves shown under GENERAL TICKETS in the app (Preventa 1, Preventa 2, General + Cover…)."
+          description="Waves shown under GENERAL TICKETS in the app (Early Bird, Pre-sale 2nd/3rd wave, General)."
         />
       </div>
 

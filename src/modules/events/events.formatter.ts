@@ -1,7 +1,8 @@
-import type { Event, EventType } from '@prisma/client';
+import type { Event, EventType, Venue } from '@prisma/client';
 import { getTimezone, localeForLanguage } from '../../common/services/country-config.service.js';
+import { formatVenue } from '../venues/venues.formatter.js';
 
-type EventWithType = Event & { eventType: EventType };
+type EventWithType = Event & { eventType: EventType; venue?: Venue | null };
 
 function formatInTimezone(date: Date, timezone: string, languageCode: string, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat(localeForLanguage(languageCode), {
@@ -104,6 +105,8 @@ export function formatEvent(
     starts_at_time: time,
     date_time_display: `${dateShort} · ${time}`,
     venue_name: event.venueName,
+    venue_id: event.venueId ?? null,
+    physical_venue: event.venue ? formatVenue(event.venue) : null,
     city: event.city,
     country_code: event.countryCode,
     location_display: formatLocationDisplay(event.venueName, event.city),

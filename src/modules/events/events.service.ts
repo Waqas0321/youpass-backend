@@ -22,10 +22,43 @@ import { producerFollowNotificationsService } from '../producers/producer-follow
 import { waitlistService } from '../waitlist/waitlist.service.js';
 import { getCountrySync, getEventCurrencyMeta } from '../../common/services/country-config.service.js';
 import { resolveDateRange } from '../../common/utils/event-date-range.js';
+import { venuesService } from '../venues/venues.service.js';
 
-const eventInclude = { eventType: true } as const;
+const eventInclude = { eventType: true, venue: true } as const;
 
-type EventWithType = Event & { eventType: EventType };
+type EventWithType = Event & { eventType: EventType; venue?: import('@prisma/client').Venue | null };
+
+async function resolveEventVenueFields(input: {
+  venue_id?: string;
+  venue_name?: string;
+  city?: string;
+  country_code?: string;
+}) {
+  if (input.venue_id) {
+    const venue = await venuesService.resolveForLink(input.venue_id);
+    return {
+      venueId: venue.id,
+      venueName: input.venue_name?.trim() ?? venue.name,
+      city: input.city?.trim() ?? venue.city,
+      countryCode: input.country_code?.toUpperCase() ?? venue.country,
+    };
+  }
+
+  if (!input.venue_name || !input.city || !input.country_code) {
+    throw new AppError(
+      400,
+      'INVALID_VENUE',
+      'Provide venue_id or venue_name, city, and country_code',
+    );
+  }
+
+  return {
+    venueId: null as string | null,
+    venueName: input.venue_name.trim(),
+    city: input.city.trim(),
+    countryCode: input.country_code.toUpperCase(),
+  };
+}
 
 async function resolveEventType(slug: string): Promise<EventType> {
   const eventType = await prisma.eventType.findFirst({
@@ -337,9 +370,10 @@ export const eventsService = {
 
   async createEvent(input: CreateEventInput) {
     const eventType = await resolveEventType(input.event_type);
+    const venueFields = await resolveEventVenueFields(input);
 
     const country = await prisma.country.findFirst({
-      where: { code: input.country_code.toUpperCase(), isActive: true },
+      where: { code: venueFields.countryCode, isActive: true },
     });
 
     if (!country) {
@@ -351,8 +385,9 @@ export const eventsService = {
         title: input.title.trim(),
         description: input.description?.trim(),
         startsAt: new Date(input.starts_at),
-        venueName: input.venue_name.trim(),
-        city: input.city.trim(),
+        venueId: venueFields.venueId,
+        venueName: venueFields.venueName,
+        city: venueFields.city,
         countryCode: country.code,
         imageUrl: input.image_url,
         eventTypeId: eventType.id,
@@ -383,9 +418,30 @@ export const eventsService = {
     }
 
     let countryCode: string | undefined;
-    if (input.country_code !== undefined) {
+    let venueId: string | null | undefined;
+    let venueName: string | undefined;
+    let city: string | undefined;
+
+    if (input.venue_id !== undefined) {
+      const venueFields = await resolveEventVenueFields({
+        venue_id: input.venue_id,
+        venue_name: input.venue_name,
+        city: input.city,
+        country_code: input.country_code,
+      });
+      venueId = venueFields.venueId;
+      venueName = venueFields.venueName;
+      city = venueFields.city;
+      countryCode = venueFields.countryCode;
+    } else if (input.venue_name !== undefined || input.city !== undefined || input.country_code !== undefined) {
+      venueName = input.venue_name?.trim() ?? existing.venueName;
+      city = input.city?.trim() ?? existing.city;
+      countryCode = input.country_code?.toUpperCase() ?? existing.countryCode;
+    }
+
+    if (countryCode !== undefined) {
       const country = await prisma.country.findFirst({
-        where: { code: input.country_code.toUpperCase(), isActive: true },
+        where: { code: countryCode, isActive: true },
       });
       if (!country) {
         throw new AppError(400, 'INVALID_COUNTRY', 'Country not supported');
@@ -399,8 +455,9 @@ export const eventsService = {
         ...(input.title !== undefined ? { title: input.title.trim() } : {}),
         ...(input.description !== undefined ? { description: input.description?.trim() } : {}),
         ...(input.starts_at !== undefined ? { startsAt: new Date(input.starts_at) } : {}),
-        ...(input.venue_name !== undefined ? { venueName: input.venue_name.trim() } : {}),
-        ...(input.city !== undefined ? { city: input.city.trim() } : {}),
+        ...(venueId !== undefined ? { venueId } : {}),
+        ...(venueName !== undefined ? { venueName } : {}),
+        ...(city !== undefined ? { city } : {}),
         ...(countryCode !== undefined ? { countryCode } : {}),
         ...(input.image_url !== undefined ? { imageUrl: input.image_url } : {}),
         ...(eventTypeId !== undefined ? { eventTypeId } : {}),

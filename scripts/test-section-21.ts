@@ -102,7 +102,7 @@ async function main() {
       fail(`Event "${title}" published with tickets`, 'Not found');
       continue;
     }
-    const activeOfferings = event.ticketOfferings.filter((o) => o.isActive);
+    const activeOfferings = event.ticketOfferings.filter((o) => o.status === 'active');
     if (activeOfferings.length > 0) {
       pass(`"${title}" has active ticket types`, `${activeOfferings.length} active`);
     } else {
@@ -112,11 +112,11 @@ async function main() {
 
   const caribe = publishedWithTickets.find((e) => e.title === 'Caribe Night');
   if (caribe) {
-    const soldOutWave = caribe.ticketOfferings.find((o) => o.slug === 'preventa-1');
-    if (soldOutWave && !soldOutWave.isActive && soldOutWave.stockQuantity) {
+    const soldOutWave = caribe.ticketOfferings.find((o) => o.type === 'early_bird');
+    if (soldOutWave && soldOutWave.status === 'sold_out' && soldOutWave.stockTotal) {
       pass('Caribe Night Early bird sold-out wave seeded');
     } else {
-      fail('Caribe Night Early bird sold-out wave seeded', 'preventa-1 should be inactive + stocked');
+      fail('Caribe Night Early bird sold-out wave seeded', 'early_bird should be sold_out + stocked');
     }
     if (caribe.venueLayout) {
       pass('Caribe Night has VIP floor plan');
@@ -126,12 +126,12 @@ async function main() {
   }
 
   const offeringWithStock = await prisma.eventTicketOffering.findFirst({
-    where: { stockQuantity: { not: null } },
+    where: { stockTotal: { not: null } },
   });
   if (offeringWithStock) {
-    pass('Per-wave stockQuantity field in use');
+    pass('Per-wave stock_total field in use');
   } else {
-    fail('Per-wave stockQuantity field in use', 'Run db:seed:purchasable');
+    fail('Per-wave stock_total field in use', 'Run db:seed:purchasable');
   }
 
   // ── Flutter source (Section 21 UI) ───────────────────────────────────────
@@ -252,13 +252,13 @@ async function main() {
         const offerings = ticketTypesBody.data.offerings;
         pass('GET /events/:id/ticket-types', `${offerings.length} offerings`);
 
-        const hasDescription = offerings.some((o: { description?: string }) => o.description);
-        if (hasDescription) pass('API returns ticket descriptions');
-        else fail('API returns ticket descriptions', 'No description on any offering');
+        const hasDescription = offerings.some((o: { name?: string }) => o.name);
+        if (hasDescription) pass('API returns ticket names');
+        else fail('API returns ticket names', 'No name on any offering');
 
         const hasSoldOut = offerings.some((o: { is_sold_out?: boolean }) => o.is_sold_out === true);
         if (hasSoldOut) pass('API returns sold-out offering (visible, not hidden)');
-        else fail('API returns sold-out offering', 'Expected preventa-1 is_sold_out');
+        else fail('API returns sold-out offering', 'Expected early_bird is_sold_out');
 
         const hasSelectable = offerings.some(
           (o: { is_selectable?: boolean }) => o.is_selectable === true,

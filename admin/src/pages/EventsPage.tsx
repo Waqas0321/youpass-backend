@@ -5,10 +5,12 @@ import {
   AdminEventInput,
   CountryOption,
   EventTypeOption,
+  PhysicalVenue,
   Producer,
 } from '../api/client';
 import { Alert } from '../components/ui/Alert';
 import { EventPurchaseConfigPanel } from '../components/EventPurchaseConfigPanel';
+import { EventVenueFields } from '../components/EventVenueFields';
 import { EmptyState } from '../components/ui/EmptyState';
 import { LoadingBlock } from '../components/ui/LoadingBlock';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -53,6 +55,8 @@ function statusTone(status: AdminEvent['status']) {
 
 export function EventsPage() {
   const [events, setEvents] = useState<AdminEvent[]>([]);
+  const [venues, setVenues] = useState<PhysicalVenue[]>([]);
+  const [linkedVenueHint, setLinkedVenueHint] = useState<PhysicalVenue | null>(null);
   const [categories, setCategories] = useState<EventTypeOption[]>([]);
   const [countries, setCountries] = useState<CountryOption[]>([]);
   const [producers, setProducers] = useState<Producer[]>([]);
@@ -69,11 +73,13 @@ export function EventsPage() {
   );
 
   async function load() {
-    const [eventsResult, typesResult, countriesResult, producersResult] = await Promise.all([
+    const [eventsResult, typesResult, countriesResult, producersResult, venuesResult] =
+      await Promise.all([
       adminApi.events(),
       adminApi.eventTypes(),
       adminApi.countries(),
       adminApi.producers(),
+      adminApi.venues(),
     ]);
 
     setLoading(false);
@@ -87,6 +93,7 @@ export function EventsPage() {
     setCategories(typesResult.ok ? (typesResult.data ?? []) : []);
     setCountries(countriesResult.ok ? (countriesResult.data ?? []) : []);
     setProducers(producersResult.data?.producers ?? []);
+    setVenues(venuesResult.ok ? (venuesResult.data?.venues ?? []) : []);
     setError('');
   }
 
@@ -101,6 +108,7 @@ export function EventsPage() {
   function resetForm() {
     setForm(EMPTY_FORM);
     setEditingId(null);
+    setLinkedVenueHint(null);
     setMessage('');
     setError('');
   }
@@ -109,10 +117,12 @@ export function EventsPage() {
     setEditingId(event.id);
     setMessage('');
     setError('');
+    setLinkedVenueHint(event.physical_venue ?? null);
     setForm({
       title: event.title,
       description: event.description ?? '',
       starts_at: toDatetimeLocalValue(event.starts_at),
+      venue_id: event.venue_id ?? undefined,
       venue_name: event.venue_name ?? '',
       city: event.city,
       country_code: event.country_code ?? 'CL',
@@ -147,8 +157,10 @@ export function EventsPage() {
     const payload: AdminEventInput = {
       ...form,
       title: form.title.trim(),
-      venue_name: form.venue_name.trim(),
-      city: form.city.trim(),
+      venue_name: form.venue_name?.trim(),
+      city: form.city?.trim(),
+      country_code: form.country_code?.toUpperCase(),
+      venue_id: form.venue_id || undefined,
       description: form.description?.trim() || undefined,
       image_url: form.image_url?.trim() || undefined,
       producer_name: form.producer_name?.trim() || undefined,
@@ -187,23 +199,7 @@ export function EventsPage() {
     setMessage('Event created. Configure tickets in the sections below, then Publish when ready.');
     await load();
     if (savedEvent) {
-      setEditingId(savedEvent.id);
-      setForm({
-        title: savedEvent.title,
-        description: savedEvent.description ?? '',
-        starts_at: toDatetimeLocalValue(savedEvent.starts_at),
-        venue_name: savedEvent.venue_name ?? '',
-        city: savedEvent.city,
-        country_code: savedEvent.country_code ?? 'CL',
-        image_url: savedEvent.image_url ?? '',
-        event_type: savedEvent.event_type?.slug ?? 'parties',
-        producer_name: savedEvent.producer_name ?? '',
-        latitude: savedEvent.latitude ?? undefined,
-        longitude: savedEvent.longitude ?? undefined,
-        status: savedEvent.status ?? 'draft',
-        is_featured: savedEvent.is_featured ?? false,
-        featured_order: savedEvent.featured_order ?? 0,
-      });
+      startEdit(savedEvent);
       requestAnimationFrame(() => {
         document.getElementById('event-purchase-config')?.scrollIntoView({ behavior: 'smooth' });
       });
@@ -383,41 +379,18 @@ export function EventsPage() {
             </select>
           </label>
 
-          <label className="field">
-            <span className="field__label">Venue</span>
-            <input
-              value={form.venue_name}
-              onChange={(e) => updateForm('venue_name', e.target.value)}
-              placeholder="Teatro Coliseo"
-              required
-            />
-          </label>
-
-          <label className="field">
-            <span className="field__label">City</span>
-            <input
-              value={form.city}
-              onChange={(e) => updateForm('city', e.target.value)}
-              placeholder="Santiago"
-              required
-            />
-          </label>
-
-          <label className="field">
-            <span className="field__label">Country</span>
-            <select
-              value={form.country_code}
-              onChange={(e) => updateForm('country_code', e.target.value)}
-              required
-            >
-              {countries.map((country) => (
-                <option key={country.code} value={country.code}>
-                  {country.flag_emoji ? `${country.flag_emoji} ` : ''}
-                  {country.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <EventVenueFields
+            value={{
+              venue_id: form.venue_id,
+              venue_name: form.venue_name ?? '',
+              city: form.city ?? '',
+              country_code: form.country_code ?? 'CL',
+            }}
+            venues={venues}
+            countries={countries}
+            linkedVenueHint={linkedVenueHint}
+            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+          />
 
           <label className="field">
             <span className="field__label">Category</span>
@@ -570,41 +543,17 @@ export function EventsPage() {
               </select>
             </label>
 
-            <label className="field">
-              <span className="field__label">Venue</span>
-              <input
-                value={form.venue_name}
-                onChange={(e) => updateForm('venue_name', e.target.value)}
-                placeholder="Teatro Coliseo"
-                required
-              />
-            </label>
-
-            <label className="field">
-              <span className="field__label">City</span>
-              <input
-                value={form.city}
-                onChange={(e) => updateForm('city', e.target.value)}
-                placeholder="Santiago"
-                required
-              />
-            </label>
-
-            <label className="field">
-              <span className="field__label">Country</span>
-              <select
-                value={form.country_code}
-                onChange={(e) => updateForm('country_code', e.target.value)}
-                required
-              >
-                {countries.map((country) => (
-                  <option key={country.code} value={country.code}>
-                    {country.flag_emoji ? `${country.flag_emoji} ` : ''}
-                    {country.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <EventVenueFields
+              value={{
+                venue_id: form.venue_id,
+                venue_name: form.venue_name ?? '',
+                city: form.city ?? '',
+                country_code: form.country_code ?? 'CL',
+              }}
+              venues={venues}
+              countries={countries}
+              onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+            />
 
             <label className="field">
               <span className="field__label">Category</span>

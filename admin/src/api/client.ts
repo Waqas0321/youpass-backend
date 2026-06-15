@@ -200,6 +200,25 @@ export const adminApi = {
       `/admin/events/${eventId}/venue-layout/zones/${zoneId}/tables/${tableId}`,
       { method: 'DELETE' },
     ),
+  venues: (params?: { country?: string; city?: string; q?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.country) search.set('country', params.country);
+    if (params?.city) search.set('city', params.city);
+    if (params?.q) search.set('q', params.q);
+    const query = search.toString();
+    return apiRequest<{ venues: PhysicalVenue[] }>(
+      `/admin/venues${query ? `?${query}` : ''}`,
+    );
+  },
+  createVenue: (body: PhysicalVenueInput) =>
+    apiRequest<PhysicalVenue>('/admin/venues', { method: 'POST', body: JSON.stringify(body) }),
+  updateVenue: (venueId: string, body: Partial<PhysicalVenueInput>) =>
+    apiRequest<PhysicalVenue>(`/admin/venues/${venueId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteVenue: (venueId: string) =>
+    apiRequest(`/admin/venues/${venueId}`, { method: 'DELETE' }),
 };
 
 export type Producer = {
@@ -216,12 +235,38 @@ export type AdminUser = {
   email: string;
 };
 
+export type VenueDimensions = {
+  width_meters: number;
+  height_meters: number;
+};
+
+export type PhysicalVenue = {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  dimensions: VenueDimensions;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PhysicalVenueInput = {
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  dimensions: VenueDimensions;
+};
+
 export type AdminEvent = {
   id: string;
   title: string;
   description?: string | null;
   city: string;
   venue_name?: string;
+  venue_id?: string | null;
+  physical_venue?: PhysicalVenue | null;
   country_code?: string;
   starts_at: string;
   starts_at_display?: string;
@@ -240,9 +285,10 @@ export type AdminEventInput = {
   title: string;
   description?: string;
   starts_at: string;
-  venue_name: string;
-  city: string;
-  country_code: string;
+  venue_id?: string;
+  venue_name?: string;
+  city?: string;
+  country_code?: string;
   image_url?: string;
   event_type: string;
   producer_name?: string;
@@ -256,40 +302,41 @@ export type AdminEventInput = {
 export type AdminTicketOffering = {
   id: string;
   offering_id: string;
-  slug: string;
-  label: string;
-  description?: string | null;
+  type: 'early_bird' | 'preventa_2' | 'preventa_3' | 'general' | 'vip_general';
+  name: string;
   section: 'general' | 'vip';
   price: number;
   currency: string;
-  badge_label?: string | null;
   display_order: number;
-  stock_quantity?: number | null;
+  stock_total?: number | null;
+  stock_remaining?: number | null;
   sold_quantity?: number;
-  sale_starts_at?: string | null;
-  sale_ends_at?: string | null;
+  sale_start_at?: string | null;
+  sale_end_at?: string | null;
+  status: 'active' | 'sold_out' | 'paused' | 'closed';
   is_sold_out: boolean;
   is_selectable: boolean;
-  is_active: boolean;
+  slug: string;
+  label: string;
 };
 
 export type AdminTicketOfferingInput = {
-  slug: string;
-  label: string;
-  description?: string | null;
-  section: 'general' | 'vip';
+  type: 'early_bird' | 'preventa_2' | 'preventa_3' | 'general' | 'vip_general';
+  name: string;
   price: number;
-  badge_label?: string | null;
+  stock_total?: number | null;
+  stock_remaining?: number | null;
+  sale_start_at?: string | null;
+  sale_end_at?: string | null;
+  status?: 'active' | 'sold_out' | 'paused' | 'closed';
   display_order?: number;
-  stock_quantity?: number | null;
-  sale_starts_at?: string | null;
-  sale_ends_at?: string | null;
-  is_active?: boolean;
 };
 
 export type AdminVenueLayout = {
   layout_id: string;
   event_id: string;
+  venue_id: string | null;
+  physical_venue: PhysicalVenue | null;
   venue_name: string;
   width_meters: number;
   height_meters: number;
@@ -302,9 +349,10 @@ export type AdminVenueLayout = {
 };
 
 export type AdminVenueLayoutInput = {
-  venue_name: string;
-  width_meters: number;
-  height_meters: number;
+  venue_id?: string;
+  venue_name?: string;
+  width_meters?: number;
+  height_meters?: number;
   table_lock_minutes?: number;
 };
 
@@ -345,18 +393,24 @@ export type AdminVenueZoneInput = {
 
 export type AdminVenueTable = {
   table_id: string;
+  event_id: string;
   external_id: string;
   number: number;
   label: string;
-  status: 'available' | 'sold' | 'premium';
+  status: 'available' | 'locked' | 'reserved' | 'sold';
+  position: { x: number; y: number };
   position_x: number;
   position_y: number;
   price: number;
   currency: string;
   capacity: number;
+  includes: { bottles: number; bar_vouchers: number; extras: string[] };
   bottle_count: number;
   voucher_count: number;
-  is_premium: boolean;
+  locked_by_user_id: string | null;
+  locked_until: string | null;
+  sold_at: string | null;
+  sold_to_user_id: string | null;
 };
 
 export type AdminVenueTableInput = {
@@ -364,13 +418,15 @@ export type AdminVenueTableInput = {
   number: number;
   label: string;
   status?: AdminVenueTable['status'];
-  position_x: number;
-  position_y: number;
+  position?: { x: number; y: number };
+  position_x?: number;
+  position_y?: number;
   price: number;
   capacity?: number;
+  includes?: { bottles?: number; bar_vouchers?: number; extras?: string[] };
   bottle_count?: number;
   voucher_count?: number;
-  is_premium?: boolean;
+  extras?: string[];
 };
 
 export type EventTypeOption = {

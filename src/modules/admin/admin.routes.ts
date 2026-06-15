@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAdminApiKey } from '../../common/middleware/admin-api-key.js';
 import { adminController } from './admin.controller.js';
 import { adminVenueLayoutController } from './admin-venue-layout.controller.js';
+import { venuesController } from '../venues/venues.controller.js';
 
 export const adminRouter = Router();
 
@@ -14,6 +15,11 @@ adminRouter.get('/events', adminController.listEvents);
 adminRouter.post('/events', adminController.createEvent);
 adminRouter.patch('/events/:eventId', adminController.updateEvent);
 adminRouter.delete('/events/:eventId', adminController.deleteEvent);
+adminRouter.get('/venues', venuesController.list);
+adminRouter.post('/venues', venuesController.create);
+adminRouter.get('/venues/:id', venuesController.getById);
+adminRouter.patch('/venues/:id', venuesController.update);
+adminRouter.delete('/venues/:id', venuesController.remove);
 adminRouter.get('/events/:eventId/invitation-settings', adminController.getEventInvitationSettings);
 adminRouter.patch('/events/:eventId/invitation-settings', adminController.updateEventInvitationSettings);
 adminRouter.get('/events/:eventId/waitlist', adminController.getEventWaitlist);

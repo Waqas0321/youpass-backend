@@ -1,11 +1,31 @@
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { getEventCurrencyMeta } from '../../common/services/country-config.service.js';
+import { venuesService } from '../venues/venues.service.js';
+import { formatVenue } from '../venues/venues.formatter.js';
+import { parseVenueDimensions } from '../venues/venues.types.js';
+import { buildTableIncludes, parseTableIncludes, parseTablePosition } from '../vip-venue/venue-table.types.js';
 import type {
   AdminVenueLayoutInput,
   AdminVenueTableInput,
   AdminVenueZoneInput,
 } from './admin-venue-layout.validators.js';
+
+function resolveAdminTablePosition(input: AdminVenueTableInput) {
+  if (input.position) {
+    return { x: input.position.x, y: input.position.y };
+  }
+  return { x: input.position_x ?? 0, y: input.position_y ?? 0 };
+}
+
+function resolveAdminTableIncludes(input: AdminVenueTableInput, zoneKind: string) {
+  return buildTableIncludes({
+    bottles: input.includes?.bottles ?? input.bottle_count ?? (zoneKind === 'vip_premium_zone' ? 3 : 2),
+    bar_vouchers:
+      input.includes?.bar_vouchers ?? input.voucher_count ?? (zoneKind === 'vip_premium_zone' ? 30 : 20),
+    extras: input.includes?.extras ?? input.extras ?? (zoneKind === 'vip_premium_zone' ? ['premium_service'] : []),
+  });
+}
 
 async function assertEvent(eventId: string) {
   const event = await prisma.event.findUnique({ where: { id: eventId } });
@@ -62,35 +82,46 @@ async function resolveTable(zoneId: string, tableRef: string) {
 function formatAdminTable(
   table: {
     id: string;
+    eventId: string;
     externalId: string;
     number: number;
     label: string;
     status: string;
-    positionX: number;
-    positionY: number;
+    position: unknown;
     price: number;
     currency: string;
     capacity: number;
-    bottleCount: number;
-    voucherCount: number;
-    isPremium: boolean;
+    includes: unknown;
+    lockedByUserId?: string | null;
+    lockedUntil?: Date | null;
+    soldAt?: Date | null;
+    soldToUserId?: string | null;
   },
   currency?: string,
 ) {
+  const includes = parseTableIncludes(table.includes);
+  const position = parseTablePosition(table.position);
   return {
     table_id: table.id,
+    event_id: table.eventId,
     external_id: table.externalId,
     number: table.number,
     label: table.label,
     status: table.status,
-    position_x: table.positionX,
-    position_y: table.positionY,
+    position,
+    position_x: position.x,
+    position_y: position.y,
     price: table.price,
     currency: currency ?? table.currency,
     capacity: table.capacity,
-    bottle_count: table.bottleCount,
-    voucher_count: table.voucherCount,
-    is_premium: table.isPremium,
+    includes,
+    bottle_count: includes.bottles,
+    voucher_count: includes.bar_vouchers,
+    extras: includes.extras,
+    locked_by_user_id: table.lockedByUserId ?? null,
+    locked_until: table.lockedUntil?.toISOString() ?? null,
+    sold_at: table.soldAt?.toISOString() ?? null,
+    sold_to_user_id: table.soldToUserId ?? null,
   };
 }
 
@@ -111,18 +142,20 @@ function formatAdminZone(
     displayOrder: number;
     tables: Array<{
       id: string;
+      eventId: string;
       externalId: string;
       number: number;
       label: string;
       status: string;
-      positionX: number;
-      positionY: number;
+      position: unknown;
       price: number;
       currency: string;
       capacity: number;
-      bottleCount: number;
-      voucherCount: number;
-      isPremium: boolean;
+      includes: unknown;
+      lockedByUserId?: string | null;
+      lockedUntil?: Date | null;
+      soldAt?: Date | null;
+      soldToUserId?: string | null;
     }>;
   },
   currency?: string,
@@ -151,14 +184,44 @@ function formatAdminZone(
   };
 }
 
+async function resolveLayoutFields(input: AdminVenueLayoutInput) {
+  if (input.venue_id) {
+    const venue = await venuesService.resolveForLink(input.venue_id);
+    const dimensions = parseVenueDimensions(venue.dimensions);
+    return {
+      venueId: venue.id,
+      venueName: input.venue_name?.trim() ?? venue.name,
+      widthMeters: input.width_meters ?? dimensions.width_meters,
+      heightMeters: input.height_meters ?? dimensions.height_meters,
+    };
+  }
+
+  if (!input.venue_name || input.width_meters == null || input.height_meters == null) {
+    throw new AppError(
+      400,
+      'INVALID_VENUE_LAYOUT',
+      'Provide venue_id or venue_name with width_meters and height_meters',
+    );
+  }
+
+  return {
+    venueId: null,
+    venueName: input.venue_name.trim(),
+    widthMeters: input.width_meters,
+    heightMeters: input.height_meters,
+  };
+}
+
 function formatAdminLayout(
   layout: {
     id: string;
     eventId: string;
+    venueId?: string | null;
     venueName: string;
     widthMeters: number;
     heightMeters: number;
     tableLockMinutes: number;
+    venue?: Parameters<typeof formatVenue>[0] | null;
     zones: Array<Parameters<typeof formatAdminZone>[0]>;
   },
   currency?: string,
@@ -167,10 +230,16 @@ function formatAdminLayout(
   return {
     layout_id: layout.id,
     event_id: layout.eventId,
+    venue_id: layout.venueId ?? null,
+    physical_venue: layout.venue ? formatVenue(layout.venue) : null,
     venue_name: layout.venueName,
     width_meters: layout.widthMeters,
     height_meters: layout.heightMeters,
     table_lock_minutes: layout.tableLockMinutes,
+    dimensions: {
+      width_meters: layout.widthMeters,
+      height_meters: layout.heightMeters,
+    },
     total_zones: layout.zones.length,
     total_tables: allTables.length,
     available_tables: allTables.filter((table) => table.status === 'available').length,
@@ -187,6 +256,7 @@ export const adminVenueLayoutService = {
     const layout = await prisma.eventVenueLayout.findUnique({
       where: { eventId },
       include: {
+        venue: true,
         zones: {
           orderBy: { displayOrder: 'asc' },
           include: {
@@ -209,25 +279,29 @@ export const adminVenueLayoutService = {
   async upsertLayout(eventId: string, input: AdminVenueLayoutInput) {
     const event = await assertEvent(eventId);
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
+    const resolved = await resolveLayoutFields(input);
 
     const layout = await prisma.eventVenueLayout.upsert({
       where: { eventId },
       create: {
         eventId,
-        venueName: input.venue_name,
-        widthMeters: input.width_meters,
-        heightMeters: input.height_meters,
+        venueId: resolved.venueId,
+        venueName: resolved.venueName,
+        widthMeters: resolved.widthMeters,
+        heightMeters: resolved.heightMeters,
         tableLockMinutes: input.table_lock_minutes ?? 10,
       },
       update: {
-        venueName: input.venue_name,
-        widthMeters: input.width_meters,
-        heightMeters: input.height_meters,
+        venueId: resolved.venueId,
+        venueName: resolved.venueName,
+        widthMeters: resolved.widthMeters,
+        heightMeters: resolved.heightMeters,
         ...(input.table_lock_minutes != null
           ? { tableLockMinutes: input.table_lock_minutes }
           : {}),
       },
       include: {
+        venue: true,
         zones: {
           orderBy: { displayOrder: 'asc' },
           include: { tables: { orderBy: { number: 'asc' } } },
@@ -320,19 +394,17 @@ export const adminVenueLayoutService = {
 
     const table = await prisma.venueTable.create({
       data: {
+        eventId,
         zoneId: zone.id,
         externalId: input.external_id,
         number: input.number,
         label: input.label,
         status: input.status ?? 'available',
-        positionX: input.position_x,
-        positionY: input.position_y,
+        position: resolveAdminTablePosition(input),
         price: input.price,
         currency: currencyMeta.currency,
         capacity: input.capacity ?? zone.capacityPerTable ?? 10,
-        bottleCount: input.bottle_count ?? 0,
-        voucherCount: input.voucher_count ?? 0,
-        isPremium: input.is_premium ?? zone.kind === 'vip_premium_zone',
+        includes: resolveAdminTableIncludes(input, zone.kind),
       },
     });
 
@@ -351,6 +423,30 @@ export const adminVenueLayoutService = {
     const existing = await resolveTable(zone.id, tableRef);
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
 
+    const existingIncludes = parseTableIncludes(existing.includes);
+    const existingPosition = parseTablePosition(existing.position);
+    const includes =
+      input.includes != null ||
+      input.bottle_count != null ||
+      input.voucher_count != null ||
+      input.extras != null
+        ? resolveAdminTableIncludes(
+            {
+              external_id: existing.externalId,
+              number: existing.number,
+              label: existing.label,
+              position_x: existingPosition.x,
+              position_y: existingPosition.y,
+              price: existing.price,
+              bottle_count: input.bottle_count ?? input.includes?.bottles ?? existingIncludes.bottles,
+              voucher_count:
+                input.voucher_count ?? input.includes?.bar_vouchers ?? existingIncludes.bar_vouchers,
+              extras: input.extras ?? input.includes?.extras ?? existingIncludes.extras,
+            },
+            zone.kind,
+          )
+        : undefined;
+
     const table = await prisma.venueTable.update({
       where: { id: existing.id },
       data: {
@@ -358,13 +454,22 @@ export const adminVenueLayoutService = {
         ...(input.number != null ? { number: input.number } : {}),
         ...(input.label != null ? { label: input.label } : {}),
         ...(input.status != null ? { status: input.status } : {}),
-        ...(input.position_x != null ? { positionX: input.position_x } : {}),
-        ...(input.position_y != null ? { positionY: input.position_y } : {}),
+        ...(input.position != null || input.position_x != null || input.position_y != null
+          ? {
+              position: resolveAdminTablePosition({
+                position: input.position,
+                position_x: input.position_x ?? existingPosition.x,
+                position_y: input.position_y ?? existingPosition.y,
+                external_id: existing.externalId,
+                number: existing.number,
+                label: existing.label,
+                price: existing.price,
+              }),
+            }
+          : {}),
         ...(input.price != null ? { price: input.price } : {}),
         ...(input.capacity != null ? { capacity: input.capacity } : {}),
-        ...(input.bottle_count != null ? { bottleCount: input.bottle_count } : {}),
-        ...(input.voucher_count != null ? { voucherCount: input.voucher_count } : {}),
-        ...(input.is_premium != null ? { isPremium: input.is_premium } : {}),
+        ...(includes != null ? { includes } : {}),
       },
     });
 

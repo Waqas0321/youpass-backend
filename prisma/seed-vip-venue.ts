@@ -7,10 +7,51 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const OFFERINGS = [
-  { slug: 'preventa-1', label: 'Preventa 1', section: 'general' as const, price: 10000, displayOrder: 1, mapsToTier: 'general' as const, mapsToType: 'general' as const, badgeLabel: 'Early bird', stockQuantity: 100 },
-  { slug: 'preventa-2', label: 'Preventa 2', section: 'general' as const, price: 13000, displayOrder: 2, mapsToTier: 'general' as const, mapsToType: 'general' as const, stockQuantity: 200 },
-  { slug: 'general-cover', label: 'General + Cover', section: 'general' as const, price: 18000, displayOrder: 3, mapsToTier: 'general' as const, mapsToType: 'general' as const },
-  { slug: 'vip-general', label: 'VIP General', section: 'vip' as const, price: 35000, displayOrder: 4, mapsToTier: 'vip' as const, mapsToType: 'vip' as const, description: 'VIP access without reserved table' },
+  {
+    type: 'early_bird' as const,
+    name: 'Early Bird',
+    price: 10000,
+    displayOrder: 1,
+    stockTotal: 100,
+    stockRemaining: 100,
+    status: 'active' as const,
+  },
+  {
+    type: 'preventa_2' as const,
+    name: 'Pre-sale 2nd wave',
+    price: 13000,
+    displayOrder: 2,
+    stockTotal: 200,
+    stockRemaining: 200,
+    status: 'active' as const,
+  },
+  {
+    type: 'preventa_3' as const,
+    name: 'Pre-sale 3rd wave',
+    price: 15000,
+    displayOrder: 3,
+    stockTotal: null,
+    stockRemaining: null,
+    status: 'active' as const,
+  },
+  {
+    type: 'general' as const,
+    name: 'General',
+    price: 18000,
+    displayOrder: 4,
+    stockTotal: null,
+    stockRemaining: null,
+    status: 'active' as const,
+  },
+  {
+    type: 'vip_general' as const,
+    name: 'VIP General',
+    price: 35000,
+    displayOrder: 5,
+    stockTotal: null,
+    stockRemaining: null,
+    status: 'active' as const,
+  },
 ];
 
 const ZONES = [
@@ -25,18 +66,21 @@ function tablesForZone(zoneExternalId: string, count: number, capacity: number, 
   return Array.from({ length: count }, (_, i) => {
     const num = i + 1;
     const label = zoneExternalId === 'vip-dj' ? `D${num}` : `M${num}`;
+    const isSold = i >= count - 2;
     return {
       externalId: `table-${zoneExternalId}-${label.toLowerCase()}`,
       number: num,
       label,
-      status: i >= count - 2 ? ('sold' as const) : ('available' as const),
-      positionX: 5 + (i % 4) * 12,
-      positionY: 5 + Math.floor(i / 4) * 12,
+      status: isSold ? ('sold' as const) : ('available' as const),
+      position: { x: 5 + (i % 4) * 12, y: 5 + Math.floor(i / 4) * 12 },
       price: zoneExternalId === 'vip-dj' ? basePrice * 1.4 : basePrice,
       capacity,
-      bottleCount: zoneExternalId === 'vip-dj' ? 3 : 2,
-      voucherCount: zoneExternalId === 'vip-dj' ? 30 : 20,
-      isPremium: zoneExternalId === 'vip-dj',
+      includes: {
+        bottles: zoneExternalId === 'vip-dj' ? 3 : 2,
+        bar_vouchers: zoneExternalId === 'vip-dj' ? 30 : 20,
+        extras: zoneExternalId === 'vip-dj' ? ['premium_service'] : [],
+      },
+      soldAt: isSold ? new Date() : null,
     };
   });
 }
@@ -47,9 +91,9 @@ async function seedEvent(eventId: string, venueName: string, countryCode: string
 
   for (const o of OFFERINGS) {
     await prisma.eventTicketOffering.upsert({
-      where: { eventId_slug: { eventId, slug: o.slug } },
-      create: { eventId, ...o, currency, description: (o as { description?: string }).description ?? null },
-      update: { ...o, currency, description: (o as { description?: string }).description ?? null, isActive: true },
+      where: { eventId_type: { eventId, type: o.type } },
+      create: { eventId, ...o, currency },
+      update: { ...o, currency },
     });
   }
 
@@ -79,7 +123,7 @@ async function seedEvent(eventId: string, venueName: string, countryCode: string
     for (const t of tables) {
       await prisma.venueTable.upsert({
         where: { zoneId_label: { zoneId: zone.id, label: t.label } },
-        create: { zoneId: zone.id, ...t, currency },
+        create: { eventId, zoneId: zone.id, ...t, currency },
         update: { ...t, currency },
       });
     }

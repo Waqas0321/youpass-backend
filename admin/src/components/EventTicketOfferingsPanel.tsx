@@ -8,18 +8,32 @@ import { Alert } from './ui/Alert';
 import { Panel } from './ui/Panel';
 import { StatusPill } from './ui/StatusPill';
 
+const GENERAL_TYPES = [
+  { value: 'early_bird', label: 'Early Bird' },
+  { value: 'preventa_2', label: 'Pre-sale 2nd wave' },
+  { value: 'preventa_3', label: 'Pre-sale 3rd wave' },
+  { value: 'general', label: 'General' },
+] as const;
+
+const VIP_TYPES = [{ value: 'vip_general', label: 'VIP General' }] as const;
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Active' },
+  { value: 'sold_out', label: 'Sold out' },
+  { value: 'paused', label: 'Paused' },
+  { value: 'closed', label: 'Closed' },
+] as const;
+
 const EMPTY_OFFERING = (section: 'general' | 'vip'): AdminTicketOfferingInput => ({
-  slug: '',
-  label: '',
-  description: '',
-  section,
+  type: section === 'vip' ? 'vip_general' : 'early_bird',
+  name: section === 'vip' ? 'VIP General' : 'Early Bird',
   price: section === 'vip' ? 35000 : 10000,
-  badge_label: '',
   display_order: 0,
-  stock_quantity: undefined,
-  sale_starts_at: null,
-  sale_ends_at: null,
-  is_active: true,
+  stock_total: undefined,
+  stock_remaining: undefined,
+  sale_start_at: null,
+  sale_end_at: null,
+  status: 'active',
 });
 
 function toDatetimeLocalValue(iso: string | null | undefined) {
@@ -55,6 +69,8 @@ export function EventTicketOfferingsPanel({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  const typeOptions = section === 'general' ? GENERAL_TYPES : VIP_TYPES;
+
   const sectionOfferings = useMemo(
     () => offerings.filter((offering) => offering.section === section),
     [offerings, section],
@@ -83,17 +99,15 @@ export function EventTicketOfferingsPanel({
   function startEdit(offering: AdminTicketOffering) {
     setEditingId(offering.offering_id);
     setForm({
-      slug: offering.slug,
-      label: offering.label,
-      description: offering.description ?? '',
-      section: offering.section,
+      type: offering.type,
+      name: offering.name,
       price: offering.price,
-      badge_label: offering.badge_label ?? '',
       display_order: offering.display_order,
-      stock_quantity: offering.stock_quantity ?? undefined,
-      sale_starts_at: offering.sale_starts_at ?? null,
-      sale_ends_at: offering.sale_ends_at ?? null,
-      is_active: offering.is_active,
+      stock_total: offering.stock_total ?? undefined,
+      stock_remaining: offering.stock_remaining ?? undefined,
+      sale_start_at: offering.sale_start_at ?? null,
+      sale_end_at: offering.sale_end_at ?? null,
+      status: offering.status,
     });
   }
 
@@ -110,10 +124,10 @@ export function EventTicketOfferingsPanel({
 
     const payload: AdminTicketOfferingInput = {
       ...form,
-      section,
-      description: form.description?.trim() || null,
-      badge_label: form.badge_label?.trim() || null,
-      stock_quantity: form.stock_quantity ?? null,
+      stock_total: form.stock_total ?? null,
+      stock_remaining:
+        form.stock_remaining ??
+        (form.stock_total != null ? form.stock_total : null),
     };
 
     const result = editingId
@@ -157,24 +171,34 @@ export function EventTicketOfferingsPanel({
         </span>
       </div>
 
-      {editingId || form.slug || form.label ? (
+      {editingId || form.name ? (
         <form className="form-grid form-grid--3" onSubmit={handleSubmit}>
           <label className="field">
-            <span className="field__label">Slug (unique ID)</span>
-            <input
-              value={form.slug}
-              onChange={(e) => setForm((prev) => ({ ...prev, slug: e.target.value }))}
-              placeholder={section === 'general' ? 'preventa-1' : 'vip-general'}
+            <span className="field__label">Type</span>
+            <select
+              value={form.type}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  type: e.target.value as AdminTicketOfferingInput['type'],
+                }))
+              }
               required
               disabled={Boolean(editingId)}
-            />
+            >
+              {typeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className="field">
-            <span className="field__label">Label (shown in app)</span>
+            <span className="field__label">Name (shown in app)</span>
             <input
-              value={form.label}
-              onChange={(e) => setForm((prev) => ({ ...prev, label: e.target.value }))}
+              value={form.name}
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
               placeholder={section === 'general' ? 'Early Bird' : 'VIP General'}
               required
             />
@@ -192,15 +216,6 @@ export function EventTicketOfferingsPanel({
           </label>
 
           <label className="field">
-            <span className="field__label">Badge label</span>
-            <input
-              value={form.badge_label ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, badge_label: e.target.value }))}
-              placeholder="Early bird"
-            />
-          </label>
-
-          <label className="field">
             <span className="field__label">Display order</span>
             <input
               type="number"
@@ -213,15 +228,15 @@ export function EventTicketOfferingsPanel({
           </label>
 
           <label className="field">
-            <span className="field__label">Stock quantity</span>
+            <span className="field__label">Stock total</span>
             <input
               type="number"
               min={1}
-              value={form.stock_quantity ?? ''}
+              value={form.stock_total ?? ''}
               onChange={(e) =>
                 setForm((prev) => ({
                   ...prev,
-                  stock_quantity: e.target.value === '' ? undefined : Number(e.target.value),
+                  stock_total: e.target.value === '' ? undefined : Number(e.target.value),
                 }))
               }
               placeholder="Unlimited if empty"
@@ -229,14 +244,30 @@ export function EventTicketOfferingsPanel({
           </label>
 
           <label className="field">
-            <span className="field__label">Sale starts</span>
+            <span className="field__label">Stock remaining</span>
             <input
-              type="datetime-local"
-              value={toDatetimeLocalValue(form.sale_starts_at)}
+              type="number"
+              min={0}
+              value={form.stock_remaining ?? ''}
               onChange={(e) =>
                 setForm((prev) => ({
                   ...prev,
-                  sale_starts_at: fromDatetimeLocalValue(e.target.value),
+                  stock_remaining: e.target.value === '' ? undefined : Number(e.target.value),
+                }))
+              }
+              placeholder="Defaults to total on create"
+            />
+          </label>
+
+          <label className="field">
+            <span className="field__label">Sale starts</span>
+            <input
+              type="datetime-local"
+              value={toDatetimeLocalValue(form.sale_start_at)}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  sale_start_at: fromDatetimeLocalValue(e.target.value),
                 }))
               }
             />
@@ -246,33 +277,33 @@ export function EventTicketOfferingsPanel({
             <span className="field__label">Sale ends</span>
             <input
               type="datetime-local"
-              value={toDatetimeLocalValue(form.sale_ends_at)}
+              value={toDatetimeLocalValue(form.sale_end_at)}
               onChange={(e) =>
                 setForm((prev) => ({
                   ...prev,
-                  sale_ends_at: fromDatetimeLocalValue(e.target.value),
+                  sale_end_at: fromDatetimeLocalValue(e.target.value),
                 }))
               }
             />
           </label>
 
-          <label className="field form-grid__full">
-            <span className="field__label">Description</span>
-            <textarea
-              rows={2}
-              value={form.description ?? ''}
-              onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="Access from 22:00 · includes 2 drinks"
-            />
-          </label>
-
-          <label className="field field--checkbox">
-            <input
-              type="checkbox"
-              checked={form.is_active ?? true}
-              onChange={(e) => setForm((prev) => ({ ...prev, is_active: e.target.checked }))}
-            />
-            <span>Active (visible when in stock)</span>
+          <label className="field">
+            <span className="field__label">Status</span>
+            <select
+              value={form.status ?? 'active'}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  status: e.target.value as AdminTicketOfferingInput['status'],
+                }))
+              }
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div className="form-actions form-grid__full">
@@ -307,18 +338,15 @@ export function EventTicketOfferingsPanel({
             {sectionOfferings.map((offering) => (
               <tr key={offering.offering_id}>
                 <td>
-                  <strong>{offering.label}</strong>
-                  <div className="muted">{offering.slug}</div>
-                  {offering.description ? (
-                    <div className="muted">{offering.description}</div>
-                  ) : null}
+                  <strong>{offering.name}</strong>
+                  <div className="muted">{offering.type}</div>
                 </td>
                 <td>
                   {offering.price.toLocaleString()} {offering.currency}
                 </td>
                 <td>
-                  {offering.stock_quantity != null
-                    ? `${offering.sold_quantity ?? 0} / ${offering.stock_quantity}`
+                  {offering.stock_total != null
+                    ? `${offering.sold_quantity ?? 0} / ${offering.stock_total}`
                     : `${offering.sold_quantity ?? 0} sold · unlimited`}
                 </td>
                 <td>
@@ -327,7 +355,7 @@ export function EventTicketOfferingsPanel({
                   ) : offering.is_selectable ? (
                     <StatusPill tone="success" label="Available" />
                   ) : (
-                    <StatusPill tone="neutral" label="Inactive" />
+                    <StatusPill tone="neutral" label={offering.status} />
                   )}
                 </td>
                 <td>

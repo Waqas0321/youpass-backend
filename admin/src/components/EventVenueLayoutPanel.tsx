@@ -7,6 +7,7 @@ import {
   AdminVenueTableInput,
   AdminVenueZone,
   AdminVenueZoneInput,
+  PhysicalVenue,
 } from '../api/client';
 import { Alert } from './ui/Alert';
 import { Panel } from './ui/Panel';
@@ -53,6 +54,7 @@ type Props = {
 
 export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props) {
   const [layout, setLayout] = useState<AdminVenueLayout | null>(null);
+  const [venues, setVenues] = useState<PhysicalVenue[]>([]);
   const [layoutForm, setLayoutForm] = useState<AdminVenueLayoutInput>(EMPTY_LAYOUT);
   const [zoneForm, setZoneForm] = useState<AdminVenueZoneInput>(EMPTY_ZONE);
   const [tableForm, setTableForm] = useState<AdminVenueTableInput>(EMPTY_TABLE);
@@ -71,16 +73,21 @@ export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props)
 
   async function load() {
     setLoading(true);
-    const result = await adminApi.eventVenueLayout(eventId);
+    const [layoutResult, venuesResult] = await Promise.all([
+      adminApi.eventVenueLayout(eventId),
+      adminApi.venues(),
+    ]);
     setLoading(false);
-    if (!result.ok) {
-      setError(result.error ?? 'Failed to load venue layout');
+    if (!layoutResult.ok) {
+      setError(layoutResult.error ?? 'Failed to load venue layout');
       return;
     }
-    const nextLayout = result.data?.layout ?? null;
+    setVenues(venuesResult.ok ? (venuesResult.data?.venues ?? []) : []);
+    const nextLayout = layoutResult.data?.layout ?? null;
     setLayout(nextLayout);
     if (nextLayout) {
       setLayoutForm({
+        venue_id: nextLayout.venue_id ?? undefined,
         venue_name: nextLayout.venue_name,
         width_meters: nextLayout.width_meters,
         height_meters: nextLayout.height_meters,
@@ -102,6 +109,22 @@ export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props)
   useEffect(() => {
     void load();
   }, [eventId]);
+
+  function selectPhysicalVenue(venueId: string) {
+    if (!venueId) {
+      setLayoutForm((prev) => ({ ...prev, venue_id: undefined }));
+      return;
+    }
+    const venue = venues.find((item) => item.id === venueId);
+    if (!venue) return;
+    setLayoutForm((prev) => ({
+      ...prev,
+      venue_id: venue.id,
+      venue_name: venue.name,
+      width_meters: venue.dimensions.width_meters,
+      height_meters: venue.dimensions.height_meters,
+    }));
+  }
 
   async function saveLayout(event: FormEvent) {
     event.preventDefault();
@@ -217,7 +240,6 @@ export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props)
       capacity: table.capacity,
       bottle_count: table.bottle_count,
       voucher_count: table.voucher_count,
-      is_premium: table.is_premium,
     });
   }
 
@@ -257,7 +279,6 @@ export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props)
         capacity: selectedZone.capacity_per_table ?? 10,
         bottle_count: selectedZone.kind === 'vip_premium_zone' ? 3 : 2,
         voucher_count: selectedZone.kind === 'vip_premium_zone' ? 30 : 20,
-        is_premium: selectedZone.kind === 'vip_premium_zone',
       });
       if (!result.ok) {
         setSaving(false);
@@ -286,6 +307,20 @@ export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props)
       </p>
 
       <form className="form-grid form-grid--3" onSubmit={saveLayout}>
+        <label className="field form-grid__full">
+          <span className="field__label">Physical venue (catalog)</span>
+          <select
+            value={layoutForm.venue_id ?? ''}
+            onChange={(e) => selectPhysicalVenue(e.target.value)}
+          >
+            <option value="">Custom floor plan dimensions</option>
+            {venues.map((venue) => (
+              <option key={venue.id} value={venue.id}>
+                {venue.name} — {venue.dimensions.width_meters}m × {venue.dimensions.height_meters}m
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="field">
           <span className="field__label">Floor plan name</span>
           <input
@@ -624,8 +659,9 @@ export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props)
                     }
                   >
                     <option value="available">Available</option>
+                    <option value="locked">Locked</option>
+                    <option value="reserved">Reserved</option>
                     <option value="sold">Sold</option>
-                    <option value="premium">Premium</option>
                   </select>
                 </label>
                 <div className="form-actions form-grid__full">
@@ -654,6 +690,7 @@ export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props)
                       <th>Table</th>
                       <th>Price</th>
                       <th>Capacity</th>
+                      <th>Includes</th>
                       <th>Status</th>
                       <th />
                     </tr>
@@ -670,13 +707,24 @@ export function EventVenueLayoutPanel({ eventId, eventTitle, venueName }: Props)
                         </td>
                         <td>{table.capacity}</td>
                         <td>
+                          {table.bottle_count} bottles · {table.voucher_count} vouchers
+                        </td>
+                        <td>
                           {table.status === 'sold' ? (
                             <StatusPill tone="neutral" label="Sold" />
-                          ) : table.status === 'premium' ? (
-                            <StatusPill tone="warning" label="Premium" />
+                          ) : table.status === 'locked' || table.status === 'reserved' ? (
+                            <StatusPill tone="warning" label={table.status} />
                           ) : (
                             <StatusPill tone="success" label="Available" />
                           )}
+                          {table.sold_at ? (
+                            <div className="muted">Sold {new Date(table.sold_at).toLocaleString()}</div>
+                          ) : null}
+                          {table.locked_until && table.status !== 'sold' ? (
+                            <div className="muted">
+                              Lock until {new Date(table.locked_until).toLocaleString()}
+                            </div>
+                          ) : null}
                         </td>
                         <td>
                           <button

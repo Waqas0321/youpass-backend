@@ -2,12 +2,12 @@ import { z } from 'zod';
 
 const checkoutItemSchema = z.object({
   offering_id: z.string().min(1),
-  quantity: z.coerce.number().int().min(1).max(50),
+  quantity: z.coerce.number().int().min(1),
 });
 
 export const checkoutSchema = z
   .object({
-    quantity: z.coerce.number().int().min(1).max(50).optional(),
+    quantity: z.coerce.number().int().min(1).optional(),
     tier: z.enum(['general', 'vip']).default('general'),
     type: z
       .enum(['courtesy', 'free', 'general', 'vip', 'vip_table', 'discounted'])

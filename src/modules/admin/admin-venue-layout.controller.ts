@@ -3,7 +3,6 @@ import { successResponse } from '../../common/utils/crypto.js';
 import { adminVenueLayoutService } from './admin-venue-layout.service.js';
 import {
   adminVenueLayoutSchema,
-  adminVenueLayoutUpdateSchema,
   adminVenueTableSchema,
   adminVenueTableUpdateSchema,
   adminVenueZoneSchema,

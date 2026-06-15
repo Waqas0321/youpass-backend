@@ -5,6 +5,7 @@ import { EventsPage } from './pages/EventsPage';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { CategoriesPage } from './pages/CategoriesPage';
+import { VenuesPage } from './pages/VenuesPage';
 import { BannersPage } from './pages/BannersPage';
 import { InvitationsPage } from './pages/InvitationsPage';
 import { EventSettingsPage } from './pages/EventSettingsPage';
@@ -32,6 +33,7 @@ export default function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="events" element={<EventsPage />} />
+        <Route path="venues" element={<VenuesPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="banners" element={<BannersPage />} />
         <Route path="invitations" element={<InvitationsPage />} />
