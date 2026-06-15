@@ -44,6 +44,7 @@ const DEFAULT_PRICE_RANGES: Record<string, { min: number; max: number; currency:
   CO: { min: 0, max: 500000, currency: 'COP' },
   MX: { min: 0, max: 5000, currency: 'MXN' },
   PE: { min: 0, max: 1000, currency: 'PEN' },
+  PK: { min: 0, max: 50000, currency: 'PKR' },
   DEFAULT: { min: 0, max: 500000, currency: 'USD' },
 };
 

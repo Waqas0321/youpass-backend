@@ -22,6 +22,7 @@ import { producerFollowNotificationsService } from '../producers/producer-follow
 import { waitlistService } from '../waitlist/waitlist.service.js';
 import { getCountrySync, getEventCurrencyMeta } from '../../common/services/country-config.service.js';
 import { resolveDateRange } from '../../common/utils/event-date-range.js';
+import { buildVenueKindWhere } from '../../common/utils/venue-kind-filter.js';
 import { venuesService } from '../venues/venues.service.js';
 
 const eventInclude = { eventType: true, venue: true } as const;
@@ -103,10 +104,14 @@ function buildPublishedWhere(
   eventTypeId?: string,
 ): Prisma.EventWhereInput {
   const searchTerm = query.search?.trim();
+  const timezone = query.country_code
+    ? (getCountrySync(query.country_code)?.timezone ?? 'UTC')
+    : 'UTC';
   const dateRange = resolveDateRange({
     date_preset: query.date_preset === 'custom' ? undefined : query.date_preset,
     date_from: query.date_from,
     date_to: query.date_to,
+    timezone,
   });
 
   const startsAtFilter: Prisma.DateTimeFilter = { gte: new Date() };
@@ -134,7 +139,7 @@ function buildPublishedWhere(
     ...(query.exclude_ids?.length ? { id: { notIn: query.exclude_ids } } : {}),
     ...(query.city ? { city: { equals: query.city, mode: 'insensitive' } } : {}),
     ...(query.zone ? { zone: { equals: query.zone, mode: 'insensitive' } } : {}),
-    ...(query.venue_kind ? { venueKind: query.venue_kind as Event['venueKind'] } : {}),
+    ...(query.venue_kind ? buildVenueKindWhere(query.venue_kind) : {}),
     ...(priceFilters.length ? { AND: priceFilters } : {}),
     ...(searchTerm
       ? {
@@ -148,6 +153,39 @@ function buildPublishedWhere(
         }
       : {}),
   };
+}
+
+async function findPublishedEventsForListing(
+  query: {
+    country_code?: string;
+    event_type?: string;
+    exclude_ids?: string[];
+  },
+  eventTypeId?: string,
+): Promise<EventWithType[]> {
+  const baseQuery = {
+    country_code: query.country_code,
+    event_type: query.event_type,
+  };
+
+  const withExclusions = buildPublishedWhere(
+    { ...baseQuery, exclude_ids: query.exclude_ids },
+    eventTypeId,
+  );
+
+  let events = await prisma.event.findMany({
+    where: withExclusions,
+    include: eventInclude,
+  });
+
+  if (events.length === 0 && query.exclude_ids?.length) {
+    events = await prisma.event.findMany({
+      where: buildPublishedWhere(baseQuery, eventTypeId),
+      include: eventInclude,
+    });
+  }
+
+  return events;
 }
 
 function mapEvents(events: EventWithType[], favoriteIds: Set<string>) {
@@ -251,15 +289,14 @@ export const eventsService = {
         ? { latitude: query.lat, longitude: query.lng }
         : null;
 
-    const where = buildPublishedWhere(
-      { country_code: query.country_code, event_type: query.event_type, exclude_ids: query.exclude_ids },
+    const events = await findPublishedEventsForListing(
+      {
+        country_code: query.country_code,
+        event_type: query.event_type,
+        exclude_ids: query.exclude_ids,
+      },
       eventType?.id,
     );
-
-    const events = await prisma.event.findMany({
-      where,
-      include: eventInclude,
-    });
 
     const sorted = sortEventsForListing(events, weights, {
       userLocation,

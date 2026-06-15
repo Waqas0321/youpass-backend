@@ -7,15 +7,20 @@ import { eventsService } from '../events/events.service.js';
 import { invitationsService } from '../invitations/invitations.service.js';
 import { buildSearchFiltersConfig } from '../../common/constants/event-search-filters.js';
 import type { HomeFeedQuery } from '../events/events.validators.js';
+import { listActiveCountries } from '../../common/services/country-config.service.js';
 
 type HomeFeedUser = Pick<User, 'id' | 'fullName' | 'countryCode' | 'category' | 'phone'>;
 
 export const homeService = {
   async getInitialFeed(query: HomeFeedQuery, user?: HomeFeedUser) {
+    const activeCountries = await listActiveCountries();
+    const defaultCountryCode = activeCountries[0]?.code ?? 'CL';
+
     const countryCode =
       query.country_code?.toUpperCase() ??
       query.country?.toUpperCase() ??
-      user?.countryCode;
+      user?.countryCode?.toUpperCase() ??
+      defaultCountryCode;
     const eventType = query.event_type;
     const context = query.context?.toLowerCase();
     const userId = user?.id;

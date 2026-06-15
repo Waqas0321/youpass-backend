@@ -63,8 +63,11 @@ export const configService = {
       }),
     ]);
 
+    const normalizedCode = selectedCountryCode?.toUpperCase();
     const selected =
-      countries.find((c) => c.code === selectedCountryCode?.toUpperCase()) ?? countries[0] ?? null;
+      (normalizedCode ? countries.find((c) => c.code === normalizedCode) : null) ??
+      countries[0] ??
+      null;
 
     return {
       selected_country_code: selected?.code ?? null,

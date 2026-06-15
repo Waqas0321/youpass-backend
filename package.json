@@ -18,6 +18,8 @@
     "test:e2e": "tsx scripts/test-e2e-requirements.ts",
     "db:seed:vip": "tsx prisma/seed-vip-venue.ts",
     "db:seed:purchasable": "tsx prisma/seed-purchasable-events.ts",
+    "db:seed:more": "tsx prisma/seed-more-events.ts",
+    "db:seed:tickets": "tsx prisma/seed-all-event-tickets.ts",
     "test:section-21": "tsx scripts/test-section-21.ts",
     "db:studio": "prisma studio",
     "admin:dev": "npm run dev --prefix admin",
