@@ -229,7 +229,15 @@ function mapTwilioDeliveryError(err: unknown): AppError {
     return new AppError(
       502,
       AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
-      'WhatsApp template not approved yet. Join the Twilio sandbox from your phone (send join <code> to +1 415 523 8886), then try again.',
+      'WhatsApp OTP template is missing or not approved. Create an Authentication template in Twilio/Meta and set TWILIO_WHATSAPP_OTP_CONTENT_SID.',
+    );
+  }
+
+  if (raw.includes('63112')) {
+    return new AppError(
+      503,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      'WhatsApp Business Account is disabled or pending Meta verification. Complete verification in Meta Business Manager, then retry.',
     );
   }
 

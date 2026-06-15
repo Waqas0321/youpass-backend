@@ -28,8 +28,10 @@ const envSchema = z.object({
   OTP_MAX_FAILED_ATTEMPTS: z.coerce.number().default(3),
   OTP_BLOCK_MINUTES: z.coerce.number().default(15),
   OTP_DELIVERY_CHANNEL: z
-    .enum(['sms', 'whatsapp'])
-    .default('whatsapp')
+    .preprocess(
+      (v) => (v === '' || v == null ? 'whatsapp' : v),
+      z.enum(['sms', 'whatsapp']),
+    )
     .transform(() => 'whatsapp' as const),
   RECAPTCHA_ENABLED: z
     .string()
@@ -71,6 +73,13 @@ const envSchema = z.object({
   TWILIO_WHATSAPP_TEMPLATE_REGISTER_SID: z.string().optional().default('').transform((v) => v.trim()),
   TWILIO_WHATSAPP_TEMPLATE_PHONE_CHANGE_SID: z.string().optional().default('').transform((v) => v.trim()),
   TWILIO_WHATSAPP_TEMPLATE_DELETE_ACCOUNT_SID: z.string().optional().default('').transform((v) => v.trim()),
+  /** Optional — some WhatsApp auth templates require a Messaging Service SID. */
+  TWILIO_MESSAGING_SERVICE_SID: z.string().optional().default('').transform((v) => v.trim()),
+  /** When true, retry OTP via Twilio sandbox if production template/WABA is not ready. */
+  TWILIO_WHATSAPP_SANDBOX_FALLBACK: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
   CHECKOUT_MOCK_PAYMENT: z
     .string()
     .optional()

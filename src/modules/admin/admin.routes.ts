@@ -9,6 +9,8 @@ export const adminRouter = Router();
 adminRouter.use(requireAdminApiKey);
 
 adminRouter.get('/overview', adminController.overview);
+adminRouter.get('/twilio/whatsapp-diagnostics', adminController.twilioWhatsAppDiagnostics);
+adminRouter.post('/twilio/submit-otp-template-approval', adminController.submitTwilioOtpTemplateApproval);
 adminRouter.get('/producers', adminController.listProducers);
 adminRouter.get('/users', adminController.listUsers);
 adminRouter.get('/events', adminController.listEvents);

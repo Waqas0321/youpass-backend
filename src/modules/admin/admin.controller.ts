@@ -24,6 +24,8 @@ import {
   adminTicketOfferingSchema,
   adminTicketOfferingUpdateSchema,
 } from './admin-ticket-offerings.validators.js';
+import { getTwilioWhatsAppDiagnostics, submitOtpTemplateForWhatsAppApproval } from '../messaging/twilio-diagnostics.service.js';
+import { parseAndValidatePhone } from '../../common/utils/phone.js';
 
 export const adminController = {
   overview: async (_req: Request, res: Response, next: NextFunction) => {
@@ -368,6 +370,48 @@ export const adminController = {
 
       await prisma.eventTicketOffering.delete({ where: { id: existing.id } });
       res.json(successResponse({ deleted: true, offering_id: existing.id }));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  twilioWhatsAppDiagnostics: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const phoneRaw = typeof req.query.phone === 'string' ? req.query.phone.trim() : '';
+      const countryCode =
+        typeof req.query.country_code === 'string' ? req.query.country_code.trim() : 'PK';
+      let phoneE164: string | undefined;
+
+      if (phoneRaw) {
+        if (phoneRaw.startsWith('+')) {
+          phoneE164 = phoneRaw;
+        } else {
+          const parsed = await parseAndValidatePhone(phoneRaw, countryCode);
+          phoneE164 = parsed.e164;
+        }
+      }
+
+      const diagnostics = await getTwilioWhatsAppDiagnostics(phoneE164);
+      res.json(successResponse(diagnostics));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  submitTwilioOtpTemplateApproval: async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { env } = await import('../../config/env.js');
+      const contentSid = env.TWILIO_WHATSAPP_OTP_CONTENT_SID;
+      if (!contentSid) {
+        throw new AppError(
+          400,
+          'TWILIO_CONFIG',
+          'Set TWILIO_WHATSAPP_OTP_CONTENT_SID before submitting for approval.',
+        );
+      }
+
+      const result = await submitOtpTemplateForWhatsAppApproval(contentSid, 'youpass_otp_login');
+      res.json(successResponse({ submitted: true, approval: result }));
     } catch (err) {
       next(err);
     }

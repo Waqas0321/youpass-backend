@@ -12,7 +12,37 @@ import {
   sendAndConfirmWhatsApp,
   sendTwilioWhatsApp,
   pollTwilioMessageDelivery,
+  sandboxWhatsAppFrom,
 } from '../messaging/twilio-whatsapp.service.js';
+
+function isProductionTemplateError(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err);
+  return (
+    raw.includes('63016') ||
+    raw.includes('63112') ||
+    raw.includes('Meta has disabled') ||
+    raw.includes('not fully verified') ||
+    raw.includes('No approved WhatsApp OTP template') ||
+    raw.includes('WhatsApp OTP template') ||
+    raw.includes('was not delivered')
+  );
+}
+
+async function sendOtpViaSandbox(params: OtpSendParams): Promise<void> {
+  const body = buildWhatsAppOtpBody(params.purpose, params.code, params.languageCode);
+  const sandboxFrom = sandboxWhatsAppFrom();
+  if (!sandboxFrom) {
+    throw new Error('Twilio WhatsApp sandbox sender is not configured');
+  }
+
+  console.warn(`[WhatsApp] Sending OTP via sandbox fallback to ${params.phone}`);
+  const queued = await sendTwilioWhatsApp({
+    toE164: params.phone,
+    body,
+    fromE164: sandboxFrom,
+  });
+  await pollTwilioMessageDelivery(queued.sid);
+}
 
 export type OtpDeliveryChannel = 'whatsapp';
 
@@ -54,8 +84,6 @@ class TwilioWhatsAppOtpService implements OtpDeliveryService {
 
   async sendOtp(params: OtpSendParams): Promise<void> {
     const body = buildWhatsAppOtpBody(params.purpose, params.code, params.languageCode);
-    await assertProductionOtpTemplateConfigured(params.purpose);
-    const contentSid = await resolveOtpContentSid(params.purpose);
 
     if (isWhatsAppSandboxSender()) {
       const queued = await sendTwilioWhatsApp({ toE164: params.phone, body });
@@ -63,21 +91,32 @@ class TwilioWhatsAppOtpService implements OtpDeliveryService {
       return;
     }
 
-    if (contentSid) {
+    try {
+      await assertProductionOtpTemplateConfigured(params.purpose);
+      const contentSid = await resolveOtpContentSid(params.purpose);
+
+      if (contentSid) {
+        await sendAndConfirmWhatsApp({
+          toE164: params.phone,
+          contentSid,
+          contentVariables: { '1': params.code },
+          fallbackBody: body,
+        });
+        return;
+      }
+
       await sendAndConfirmWhatsApp({
         toE164: params.phone,
-        contentSid,
-        contentVariables: { '1': params.code },
+        body,
         fallbackBody: body,
       });
-      return;
+    } catch (err) {
+      if (env.TWILIO_WHATSAPP_SANDBOX_FALLBACK && isProductionTemplateError(err)) {
+        await sendOtpViaSandbox(params);
+        return;
+      }
+      throw err;
     }
-
-    await sendAndConfirmWhatsApp({
-      toE164: params.phone,
-      body,
-      fallbackBody: body,
-    });
   }
 
   async checkWhatsAppAvailable(phone: string): Promise<boolean> {

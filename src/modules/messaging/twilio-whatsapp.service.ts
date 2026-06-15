@@ -1,4 +1,5 @@
 import { env } from '../../config/env.js';
+import { isProductionWhatsAppMode } from '../../config/twilio-whatsapp.config.js';
 
 export type TwilioWhatsAppSendParams = {
   toE164: string;
@@ -7,6 +8,8 @@ export type TwilioWhatsAppSendParams = {
   contentVariables?: Record<string, string>;
   /** Override sender E.164 (e.g. sandbox fallback). */
   fromE164?: string;
+  /** Optional Messaging Service SID (required for some WhatsApp auth templates). */
+  messagingServiceSid?: string;
 };
 
 export type TwilioWhatsAppSendResult = {
@@ -93,6 +96,12 @@ export async function fetchTwilioMessageStatus(messageSid: string): Promise<Twil
 
 export function explainTwilioWhatsAppFailure(record: TwilioMessageRecord): string {
   const code = record.error_code;
+  if (code === 63112) {
+    return (
+      'Meta has disabled or not fully verified the WhatsApp Business Account linked to this sender. ' +
+      'Complete Meta Business verification in business.facebook.com, resolve any WABA policy issues, then retry.'
+    );
+  }
   if (code === 63016) {
     return (
       'WhatsApp requires an approved message template on the production sender. ' +
@@ -115,35 +124,48 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Poll until delivered/failed or timeout — queued alone is not success. */
+/** Poll until delivered/failed or timeout — queued/sent alone is not success in production. */
 export async function pollTwilioMessageDelivery(
   messageSid: string,
   maxAttempts = 6,
   intervalMs = 1500,
 ): Promise<TwilioMessageRecord> {
+  const requireDelivered = isProductionWhatsAppMode();
+  const attempts = requireDelivered ? Math.max(maxAttempts, 15) : maxAttempts;
+  const waitMs = requireDelivered ? Math.max(intervalMs, 2000) : intervalMs;
   let last: TwilioMessageRecord = { sid: messageSid, status: 'queued' };
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (attempt > 0) await sleep(intervalMs);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) await sleep(waitMs);
     last = await fetchTwilioMessageStatus(messageSid);
 
     if (last.status === 'failed' || last.status === 'undelivered' || last.status === 'canceled') {
       throw new Error(explainTwilioWhatsAppFailure(last));
     }
 
-    if (last.status === 'delivered' || last.status === 'sent') {
+    if (last.status === 'delivered') {
+      return last;
+    }
+
+    if (!requireDelivered && last.status === 'sent') {
       return last;
     }
 
     if (last.status && TERMINAL_STATUSES.has(last.status) && last.status !== 'queued') {
+      if (requireDelivered && last.status === 'sent') {
+        continue;
+      }
       return last;
     }
   }
 
-  if (last.status === 'queued') {
+  if (last.status === 'queued' || (requireDelivered && last.status === 'sent')) {
     throw new Error(
-      'WhatsApp message was not delivered. Production needs approved templates; ' +
-        'sandbox requires the recipient to send join <code> to +1 415 523 8886.',
+      requireDelivered
+        ? `WhatsApp message was not delivered (last status: ${last.status ?? 'unknown'}). ` +
+            explainTwilioWhatsAppFailure(last)
+        : 'WhatsApp message was not delivered. Production needs approved templates; ' +
+            'sandbox requires the recipient to send join <code> to +1 415 523 8886.',
     );
   }
 
@@ -163,6 +185,12 @@ export async function sendTwilioWhatsApp(
     To: whatsappToAddress(params.toE164),
     From: whatsappFromAddress(params.fromE164),
   });
+
+  const messagingServiceSid =
+    params.messagingServiceSid?.trim() || env.TWILIO_MESSAGING_SERVICE_SID.trim();
+  if (messagingServiceSid) {
+    form.set('MessagingServiceSid', messagingServiceSid);
+  }
 
   if (params.contentSid) {
     form.set('ContentSid', params.contentSid);
@@ -225,6 +253,9 @@ export async function sendAndConfirmWhatsApp(
   try {
     const queued = await sendTwilioWhatsApp(params);
     const delivered = await pollTwilioMessageDelivery(queued.sid);
+    console.log(
+      `[WhatsApp] delivered sid=${queued.sid} status=${delivered.status} template=${params.contentSid ?? '(body)'}`,
+    );
     return {
       ...queued,
       status: delivered.status ?? queued.status,
