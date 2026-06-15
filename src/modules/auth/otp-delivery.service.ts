@@ -1,7 +1,11 @@
-import { env } from '../../config/env.js';
 import type { AuthCodePurpose } from '@prisma/client';
+import { env } from '../../config/env.js';
 import { OTP_PURPOSE_LABELS } from '../../config/constants.js';
 import { SUPPORT_EMAIL } from '../../common/constants/auth-messages.js';
+import {
+  assertProductionOtpTemplateConfigured,
+  resolveOtpContentSid,
+} from '../../config/twilio-whatsapp.config.js';
 import { buildWhatsAppOtpBody } from '../../common/constants/whatsapp-templates.js';
 import {
   isWhatsAppSandboxSender,
@@ -23,16 +27,6 @@ export interface OtpDeliveryService {
   getChannel(): OtpDeliveryChannel;
   sendOtp(params: OtpSendParams): Promise<void>;
   checkWhatsAppAvailable(phone: string): Promise<boolean>;
-}
-
-function contentSidForPurpose(purpose: AuthCodePurpose): string {
-  const byPurpose: Record<AuthCodePurpose, string | undefined> = {
-    login: env.TWILIO_WHATSAPP_TEMPLATE_LOGIN_SID,
-    register: env.TWILIO_WHATSAPP_TEMPLATE_REGISTER_SID,
-    change_phone: env.TWILIO_WHATSAPP_TEMPLATE_PHONE_CHANGE_SID,
-    delete_account: env.TWILIO_WHATSAPP_TEMPLATE_DELETE_ACCOUNT_SID,
-  };
-  return (byPurpose[purpose] || env.TWILIO_WHATSAPP_OTP_CONTENT_SID).trim();
 }
 
 class MockOtpDeliveryService implements OtpDeliveryService {
@@ -60,7 +54,8 @@ class TwilioWhatsAppOtpService implements OtpDeliveryService {
 
   async sendOtp(params: OtpSendParams): Promise<void> {
     const body = buildWhatsAppOtpBody(params.purpose, params.code, params.languageCode);
-    const contentSid = contentSidForPurpose(params.purpose);
+    await assertProductionOtpTemplateConfigured(params.purpose);
+    const contentSid = await resolveOtpContentSid(params.purpose);
 
     if (isWhatsAppSandboxSender()) {
       const queued = await sendTwilioWhatsApp({ toE164: params.phone, body });

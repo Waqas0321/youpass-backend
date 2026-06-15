@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { logTwilioWhatsAppStartupSummary } from './config/twilio-whatsapp.config.js';
 import { prisma } from './config/database.js';
 import { startInvitationExpiryScheduler } from './modules/invitations/invitation-expiry.scheduler.js';
 import { startGuaranteedPassReminderScheduler } from './modules/invitations/guaranteed-pass-reminder.scheduler.js';
@@ -9,6 +10,7 @@ import { startAccountDeletionScheduler } from './modules/users/account-deletion.
 import { startTableLockExpiryScheduler } from './modules/vip-venue/table-lock-expiry.scheduler.js';
 
 async function main() {
+  logTwilioWhatsAppStartupSummary();
   const app = createApp();
   startInvitationExpiryScheduler();
   startGuaranteedPassReminderScheduler();

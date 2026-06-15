@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+function resolveTwilioMockFlag(
+  raw: string | undefined,
+  nodeEnv: string,
+): boolean {
+  if (raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '0') return false;
+  return nodeEnv !== 'production';
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(3000),
@@ -46,7 +55,7 @@ const envSchema = z.object({
   TWILIO_MOCK: z
     .string()
     .optional()
-    .transform((v) => v !== 'false' && v !== '0'),
+    .transform((v) => resolveTwilioMockFlag(v, process.env.NODE_ENV ?? 'development')),
   MIN_AGE_YEARS: z.coerce.number().default(18),
   CLOUDINARY_CLOUD_NAME: z.string().optional().default('').transform((v) => v.trim()),
   CLOUDINARY_API_KEY: z.string().optional().default('').transform((v) => v.trim()),

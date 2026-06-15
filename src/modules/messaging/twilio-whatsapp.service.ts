@@ -217,6 +217,7 @@ export async function sendAndConfirmWhatsApp(
 ): Promise<TwilioWhatsAppSendResult> {
   const sandboxFrom = sandboxWhatsAppFrom();
   const canFallback =
+    env.NODE_ENV !== 'production' &&
     sandboxFrom &&
     !isWhatsAppSandboxSender(params.fromE164) &&
     normalizeE164(params.fromE164 ?? env.TWILIO_WHATSAPP_FROM) !== sandboxFrom;

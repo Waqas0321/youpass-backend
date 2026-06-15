@@ -1,5 +1,9 @@
 import { env } from '../../config/env.js';
 import {
+  assertProductionInvitationTemplateConfigured,
+  invitationContentSid as resolveInvitationContentSid,
+} from '../../config/twilio-whatsapp.config.js';
+import {
   isWhatsAppSandboxSender,
   pollTwilioMessageDelivery,
   sendAndConfirmWhatsApp,
@@ -33,10 +37,8 @@ function buildInvitationBody(params: GuestInvitationMessageParams): string {
 }
 
 function invitationContentSid(): string | undefined {
-  const invite = env.TWILIO_WHATSAPP_INVITATION_CONTENT_SID.trim();
-  if (invite) return invite;
-  const otp = env.TWILIO_WHATSAPP_OTP_CONTENT_SID.trim();
-  return otp || undefined;
+  const sid = resolveInvitationContentSid();
+  return sid || undefined;
 }
 
 function invitationContentVariables(params: GuestInvitationMessageParams): Record<string, string> {
@@ -71,6 +73,7 @@ class MockInvitationDeliveryService implements InvitationDeliveryService {
 class TwilioInvitationDeliveryService implements InvitationDeliveryService {
   async sendGuestInvitation(params: GuestInvitationMessageParams): Promise<GuestInvitationSendResult> {
     const body = buildInvitationBody(params);
+    assertProductionInvitationTemplateConfigured();
     const contentSid = invitationContentSid();
 
     let result;
@@ -87,11 +90,9 @@ class TwilioInvitationDeliveryService implements InvitationDeliveryService {
         fallbackBody: body,
       });
     } else {
-      result = await sendAndConfirmWhatsApp({
-        toE164: params.guestPhone,
-        body,
-        fallbackBody: body,
-      });
+      throw new Error(
+        'TWILIO_WHATSAPP_INVITATION_CONTENT_SID is required for production WhatsApp invitations.',
+      );
     }
 
     return {

@@ -199,11 +199,13 @@ async function resolveSendCodePurpose(
 function mapTwilioDeliveryError(err: unknown): AppError {
   const raw = err instanceof Error ? err.message : String(err);
 
-  if (raw.includes('credentials missing')) {
+  if (raw.includes('TWILIO_WHATSAPP_FROM is not set') || raw.includes('credentials missing')) {
     return new AppError(
       503,
       AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
-      'Twilio is not configured on the server. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Vercel, then redeploy.',
+      raw.includes('credentials missing')
+        ? 'Twilio is not configured on the server. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in Vercel, then redeploy.'
+        : 'WhatsApp sender is not configured. Set TWILIO_WHATSAPP_FROM in Vercel (sandbox: +14155238886), then redeploy.',
     );
   }
 
@@ -212,6 +214,14 @@ function mapTwilioDeliveryError(err: unknown): AppError {
       429,
       AUTH_ERROR_CODES.RATE_LIMITED,
       'Daily WhatsApp message limit reached on Twilio trial. Try again tomorrow or upgrade your Twilio account.',
+    );
+  }
+
+  if (raw.includes('TWILIO_WHATSAPP_OTP_CONTENT_SID') || raw.includes('INVITATION_CONTENT_SID')) {
+    return new AppError(
+      503,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      raw,
     );
   }
 

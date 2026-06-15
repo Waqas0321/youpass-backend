@@ -24,8 +24,10 @@ import { waitlistOffersRouter } from './modules/waitlist/waitlist.routes.js';
 import { renderKlapMockTokenizePage } from './modules/wallet/wallet-mock.controller.js';
 import { optionalAuthenticate } from './common/middleware/authenticate.js';
 import { prisma } from './config/database.js';
+import { logTwilioWhatsAppStartupSummary } from './config/twilio-whatsapp.config.js';
 
 export function createApp() {
+  logTwilioWhatsAppStartupSummary();
   const app = express();
 
   app.use(
