@@ -15,10 +15,13 @@ import {
   generateQrPayload,
 } from '../invitations/invitations.utils.js';
 import { getTimezone, getEventCurrencyMeta } from '../../common/services/country-config.service.js';
+import { invitationConfigService } from '../../common/services/invitation-config.service.js';
 import type { AssignTicketSlotInput, CheckoutInput } from './ticket-orders.validators.js';
 import { vipVenueService } from '../vip-venue/vip-venue.service.js';
+import { producersService } from '../producers/producers.service.js';
 import { DEFAULT_SERVICE_FEE_RATE } from '../vip-venue/vip-venue.constants.js';
 import { getActiveCountry } from '../../common/services/country-config.service.js';
+import { defaultCancellationDeadline } from '../tickets/tickets.utils.js';
 import {
   preparePayment,
   resolvePaymentGateway,
@@ -81,7 +84,7 @@ async function resolveOrderIdForBuyer(buyerUserId: string, refId: string): Promi
     where: {
       id: refId,
       recipientUserId: buyerUserId,
-      status: { in: ['confirmed', 'validated'] },
+      status: { in: ['accepted', 'validated'] },
     },
     select: { eventId: true },
   });
@@ -128,8 +131,8 @@ function formatSlotStatus(slot: SlotWithInvitation): string {
   if (slot.status === 'owner') return 'owner';
   if (slot.status === 'claimed') return 'claimed';
   if (slot.status === 'assigned') {
-    if (slot.invitation?.status === 'pending') return 'pending';
-    if (slot.invitation?.status === 'confirmed') return 'claimed';
+    if (slot.invitation?.status === 'sent' || slot.invitation?.status === 'viewed') return 'pending';
+    if (slot.invitation?.status === 'accepted') return 'claimed';
     if (slot.invitation?.status === 'rejected') return 'available';
   }
   return 'available';
@@ -174,12 +177,16 @@ async function createBuyerTicket(
       eventId: event.id,
       producerId,
       recipientUserId: buyer.id,
+      recipientPhone: buyer.phone,
       inviterUserId: buyer.id,
       source: 'guest',
-      type: order.type,
+      type: 'free',
       tier: order.tier,
-      status: 'confirmed',
+      status: 'accepted',
       assignedSlot: slotLabel,
+      entryValue: order.unitPrice ?? 0,
+      amountToPay: 0,
+      cancellationDeadline: defaultCancellationDeadline(event.startsAt),
       respondedAt: new Date(),
       sentAt: new Date(),
     },
@@ -209,6 +216,8 @@ export const ticketOrdersService = {
     if (!event || event.status !== 'published') {
       throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
     }
+
+    await producersService.assertFollowerPresaleAccess(buyerUserId, eventId);
 
     if (input.payment_method_id) {
       const method = await prisma.userPaymentMethod.findFirst({
@@ -411,6 +420,13 @@ export const ticketOrdersService = {
           await tx.tableLock.deleteMany({ where: { tableId: venueTableId } });
         }
 
+        if (ticketOfferingId) {
+          await tx.eventTicketOffering.update({
+            where: { id: ticketOfferingId },
+            data: { soldQuantity: { increment: quantity } },
+          });
+        }
+
         return {
           order: created,
           ticketId: ticketResult.ticketId,
@@ -536,6 +552,13 @@ export const ticketOrdersService = {
         await tx.tableLock.deleteMany({ where: { tableId: order.venueTableId } });
       }
 
+      if (order.ticketOfferingId) {
+        await tx.eventTicketOffering.update({
+          where: { id: order.ticketOfferingId },
+          data: { soldQuantity: { increment: order.quantity } },
+        });
+      }
+
       return {
         order: updated,
         ticketId: ticketResult.ticketId,
@@ -618,6 +641,8 @@ export const ticketOrdersService = {
 
     const existingGuest = await prisma.user.findUnique({ where: { phone: e164 } });
     const claimToken = crypto.randomBytes(16).toString('hex');
+    const sentAt = new Date();
+    const expiresAt = await invitationConfigService.computeExpiresAt(sentAt);
 
     const invitation = await prisma.$transaction(async (tx) => {
       const producerId = await getSystemProducerId(tx);
@@ -631,13 +656,15 @@ export const ticketOrdersService = {
           recipientPhone: e164,
           recipientName: input.guest_name.trim(),
           claimToken,
-          type: order.type,
+          type: 'free',
           tier: order.tier,
-          status: 'pending',
+          status: 'sent',
           assignedSlot: `Entrada ${slot.slotNumber}`,
-          requiresPaymentMethod: false,
-          termsAcceptedRequired: false,
-          sentAt: new Date(),
+          entryValue: order.unitPrice ?? 0,
+          amountToPay: 0,
+          cancellationDeadline: defaultCancellationDeadline(order.event.startsAt),
+          sentAt,
+          expiresAt,
         },
       });
 
@@ -727,7 +754,7 @@ export const ticketOrdersService = {
       throw new AppError(409, 'TICKET_SLOT_NOT_CANCELLABLE', 'Only pending assigned tickets can be cancelled');
     }
 
-    if (slot.invitation?.status === 'confirmed') {
+    if (slot.invitation?.status === 'accepted') {
       throw new AppError(409, 'TICKET_ALREADY_CLAIMED', 'Guest already accepted this ticket');
     }
 
@@ -774,7 +801,7 @@ export const ticketOrdersService = {
       include: { inviter: true },
     });
 
-    if (!invitation || invitation.status !== 'pending' || !invitation.claimToken) {
+    if (!invitation || !['sent', 'viewed'].includes(invitation.status) || !invitation.claimToken) {
       throw new AppError(409, 'TICKET_SLOT_NOT_RESENDABLE', 'Invitation is no longer pending');
     }
 

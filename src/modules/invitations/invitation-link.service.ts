@@ -7,7 +7,7 @@ export async function linkPendingInvitationsByPhone(userId: string, phone: strin
       source: 'guest',
       recipientPhone: phone,
       recipientUserId: null,
-      status: 'pending',
+      status: { in: ['sent', 'viewed'] },
     },
     data: { recipientUserId: userId },
   });

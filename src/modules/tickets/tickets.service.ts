@@ -4,7 +4,13 @@ import { invitationsService } from '../invitations/invitations.service.js';
 import { ticketOrdersService } from '../ticket-orders/ticket-orders.service.js';
 import { formatPastTicket, formatTicketDetail, formatUpcomingTicket } from './tickets.formatter.js';
 import type { InvitationTicketRow } from './tickets.utils.js';
-import { isPastTicket, isUpcomingTicket, resolveTicketStatus } from './tickets.utils.js';
+import {
+  canCancelTicket,
+  eventStillActiveCutoff,
+  isPastTicket,
+  isUpcomingTicket,
+  resolveTicketStatus,
+} from './tickets.utils.js';
 import type { ListPastTicketsQuery, ListUpcomingTicketsQuery } from './tickets.validators.js';
 
 const ticketInclude = {
@@ -21,15 +27,85 @@ async function getFavoriteIds(userId: string): Promise<Set<string>> {
   return new Set(favorites.map((f) => f.eventId));
 }
 
-async function fetchTicketRows(userId: string): Promise<InvitationTicketRow[]> {
+async function getOrderStatusByInvitationIds(
+  userId: string,
+  rows: InvitationTicketRow[],
+): Promise<Map<string, string>> {
+  if (rows.length === 0) {
+    return new Map();
+  }
+
+  const invitationIds = rows.map((row) => row.id);
+  const slots = await prisma.ticketSlot.findMany({
+    where: { invitationId: { in: invitationIds } },
+    select: {
+      invitationId: true,
+      order: { select: { status: true } },
+    },
+  });
+
+  const map = new Map<string, string>();
+  for (const slot of slots) {
+    if (slot.invitationId) {
+      map.set(slot.invitationId, slot.order.status);
+    }
+  }
+
+  const canceledRows = rows.filter((row) => row.status === 'canceled');
+  const missingRefundLookup = canceledRows.filter((row) => !map.has(row.id));
+  if (missingRefundLookup.length > 0) {
+    const eventIds = [...new Set(missingRefundLookup.map((row) => row.eventId))];
+    const refundedOrders = await prisma.ticketOrder.findMany({
+      where: {
+        buyerUserId: userId,
+        eventId: { in: eventIds },
+        status: 'refunded',
+      },
+      select: { eventId: true },
+    });
+    const refundedEventIds = new Set(refundedOrders.map((order) => order.eventId));
+    for (const row of missingRefundLookup) {
+      if (refundedEventIds.has(row.eventId)) {
+        map.set(row.id, 'refunded');
+      }
+    }
+  }
+
+  return map;
+}
+
+async function fetchUpcomingRows(userId: string, now = new Date()): Promise<InvitationTicketRow[]> {
+  const cutoff = eventStillActiveCutoff(now);
   const rows = await prisma.invitation.findMany({
     where: {
       recipientUserId: userId,
-      status: { in: ['confirmed', 'validated'] },
+      status: { in: ['accepted', 'validated'] },
       ticket: { isNot: null },
+      event: { startsAt: { gte: cutoff } },
     },
     include: ticketInclude,
     orderBy: { event: { startsAt: 'asc' } },
+  });
+
+  return (rows as InvitationTicketRow[]).filter((row) => isUpcomingTicket(row, now));
+}
+
+async function fetchPastRows(userId: string, now = new Date()): Promise<InvitationTicketRow[]> {
+  const cutoff = eventStillActiveCutoff(now);
+  const rows = await prisma.invitation.findMany({
+    where: {
+      recipientUserId: userId,
+      OR: [
+        { status: 'canceled' },
+        {
+          status: { in: ['accepted', 'validated'] },
+          ticket: { isNot: null },
+          event: { startsAt: { lt: cutoff } },
+        },
+      ],
+    },
+    include: ticketInclude,
+    orderBy: { event: { startsAt: 'desc' } },
   });
 
   return rows as InvitationTicketRow[];
@@ -47,20 +123,26 @@ function matchesSearch(row: InvitationTicketRow, term: string): boolean {
   return haystack.includes(term.toLowerCase());
 }
 
-function filterPastRows(rows: InvitationTicketRow[], query: ListPastTicketsQuery): InvitationTicketRow[] {
-  const now = new Date();
-
+function filterPastRows(
+  rows: InvitationTicketRow[],
+  query: ListPastTicketsQuery,
+  orderStatusByInvitation: Map<string, string>,
+  now = new Date(),
+): InvitationTicketRow[] {
   return rows.filter((row) => {
-    if (!isPastTicket(row, now)) return false;
+    const orderStatus = orderStatusByInvitation.get(row.id) ?? null;
+    if (!isPastTicket(row, now, orderStatus)) return false;
 
     if (query.event_type && row.event.eventType.slug !== query.event_type) return false;
 
     if (query.search && !matchesSearch(row, query.search.trim())) return false;
 
-    const status = resolveTicketStatus(row, row.event, row.ticket, now);
+    const status = resolveTicketStatus(row, row.event, row.ticket, now, orderStatus);
     if (query.status === 'attended' && status !== 'validated') return false;
     if (query.status === 'not_attended' && status !== 'expired') return false;
-    if (query.status === 'cancelled' && status !== 'cancelled') return false;
+    if (query.status === 'cancelled' && status !== 'cancelled' && status !== 'refunded') {
+      return false;
+    }
 
     return true;
   });
@@ -85,7 +167,7 @@ async function getTicketRowForUser(userId: string, ticketId: string): Promise<In
     where: {
       id: ticketId,
       recipientUserId: userId,
-      status: { in: ['confirmed', 'validated'] },
+      status: { in: ['accepted', 'validated'] },
       ticket: { isNot: null },
     },
     include: ticketInclude,
@@ -103,10 +185,7 @@ export const ticketsService = {
     const favoriteIds = await getFavoriteIds(userId);
     const assignMap = await ticketOrdersService.getAssignabilityByEvent(userId);
     const now = new Date();
-    const upcoming = (await fetchTicketRows(userId))
-      .filter((row) => isUpcomingTicket(row, now))
-      .sort((a, b) => a.event.startsAt.getTime() - b.event.startsAt.getTime());
-
+    const upcoming = await fetchUpcomingRows(userId, now);
     const { items, meta } = paginate(upcoming, query.page, query.limit);
 
     return {
@@ -128,20 +207,36 @@ export const ticketsService = {
 
   async listPast(userId: string, query: ListPastTicketsQuery) {
     const favoriteIds = await getFavoriteIds(userId);
-    const allRows = await fetchTicketRows(userId);
-    const past = filterPastRows(allRows, query).sort(
+    const now = new Date();
+    const allRows = await fetchPastRows(userId, now);
+    const orderStatusByInvitation = await getOrderStatusByInvitationIds(userId, allRows);
+    const past = filterPastRows(allRows, query, orderStatusByInvitation, now).sort(
       (a, b) => b.event.startsAt.getTime() - a.event.startsAt.getTime(),
     );
 
     const { items, meta } = paginate(past, query.page, query.limit);
-    const now = new Date();
 
     return {
-      tickets: items.map((row) => formatPastTicket(row, favoriteIds.has(row.eventId))),
+      tickets: items.map((row) => {
+        const orderStatus = orderStatusByInvitation.get(row.id) ?? null;
+        return formatPastTicket(
+          row,
+          favoriteIds.has(row.eventId),
+          null,
+          orderStatus,
+        );
+      }),
       meta: {
         ...meta,
         attended_count: past.filter(
-          (row) => resolveTicketStatus(row, row.event, row.ticket, now) === 'validated',
+          (row) =>
+            resolveTicketStatus(
+              row,
+              row.event,
+              row.ticket,
+              now,
+              orderStatusByInvitation.get(row.id),
+            ) === 'validated',
         ).length,
       },
     };
@@ -162,21 +257,97 @@ export const ticketsService = {
     return invitationsService.getTicket(userId, userPhone, ticketId);
   },
 
+  async cancelTicket(userId: string, ticketId: string) {
+    const row = await prisma.invitation.findFirst({
+      where: {
+        id: ticketId,
+        recipientUserId: userId,
+        status: 'accepted',
+        ticket: { isNot: null },
+      },
+      include: {
+        ...ticketInclude,
+        ticket: true,
+      },
+    });
+
+    if (!row || !row.ticket) {
+      throw new AppError(404, 'TICKET_NOT_FOUND', 'Ticket not found');
+    }
+
+    const now = new Date();
+    if (!canCancelTicket(row, row.event, now)) {
+      throw new AppError(
+        409,
+        'TICKET_NOT_CANCELLABLE',
+        'Cancellation is no longer available for this ticket',
+      );
+    }
+
+    const slot = await prisma.ticketSlot.findFirst({
+      where: { invitationId: ticketId },
+      include: { order: true },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.invitation.update({
+        where: { id: ticketId },
+        data: {
+          status: 'canceled',
+          respondedAt: now,
+        },
+      });
+
+      if (slot?.order.status === 'paid') {
+        await tx.ticketOrder.update({
+          where: { id: slot.orderId },
+          data: {
+            status: 'refunded',
+            paymentReference: slot.order.paymentReference
+              ? `${slot.order.paymentReference}:user-cancel`
+              : 'user-cancel-refund',
+          },
+        });
+      }
+    });
+
+    const favoriteIds = await getFavoriteIds(userId);
+    const orderStatus = slot?.order.status === 'paid' ? 'refunded' : null;
+    const updated = await prisma.invitation.findUniqueOrThrow({
+      where: { id: ticketId },
+      include: ticketInclude,
+    });
+
+    return formatPastTicket(
+      updated as InvitationTicketRow,
+      favoriteIds.has(updated.eventId),
+      null,
+      orderStatus,
+    );
+  },
+
   async getYearlySummary(userId: string) {
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { category: true },
     });
 
-    const rows = await fetchTicketRows(userId);
     const now = new Date();
     const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const rows = await fetchPastRows(userId, now);
+    const orderStatusByInvitation = await getOrderStatusByInvitationIds(userId, rows);
 
     const pastThisYear = rows.filter(
       (row) =>
-        isPastTicket(row, now) &&
+        isPastTicket(row, now, orderStatusByInvitation.get(row.id)) &&
         row.event.startsAt >= yearStart &&
-        resolveTicketStatus(row, row.event, row.ticket, now) === 'validated',
+        resolveTicketStatus(
+          row,
+          row.event,
+          row.ticket,
+          now,
+          orderStatusByInvitation.get(row.id),
+        ) === 'validated',
     );
 
     const producerCounts = new Map<string, { name: string; count: number }>();

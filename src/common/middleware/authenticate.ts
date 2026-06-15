@@ -39,7 +39,8 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       !session ||
       !isSessionActive(session.revokedAt) ||
       isSessionExpired(session.expiresAt) ||
-      session.user.accountStatus !== 'active'
+      session.user.accountStatus !== 'active' &&
+      session.user.accountStatus !== 'pending_deletion'
     ) {
       throw new AppError(401, AUTH_ERROR_CODES.SESSION_INVALID, 'Session is no longer valid');
     }

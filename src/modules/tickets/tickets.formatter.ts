@@ -1,6 +1,7 @@
 import type { InvitationTicketRow, TicketDisplayStatus } from './tickets.utils.js';
 import {
   canViewQr,
+  canCancelTicket,
   formatEntryTime,
   formatStayLabel,
   resolveTicketStatus,
@@ -9,6 +10,7 @@ import {
 import { formatDateTimeLabel } from '../invitations/invitations.utils.js';
 import { getTimezone } from '../invitations/invitations.formatter.js';
 import { resolveQrStatus } from '../invitations/invitations.utils.js';
+import { productKindFields } from '../invitations/invitation-product-type.utils.js';
 
 function locationLabel(event: InvitationTicketRow['event']): string {
   return `${event.venueName}, ${event.city}`;
@@ -91,10 +93,12 @@ function baseTicketFields(
     },
     assigned_slot: row.assignedSlot,
     is_favorite: isFavorite,
+    ...productKindFields(row),
     can_view_qr: canViewQr(row),
     can_assign_tickets: (assignMeta?.available_count ?? 0) > 0,
     qr_status: qrStatus,
     entry_code: row.ticket.manualEntryId,
+    starts_at: row.event.startsAt.toISOString(),
     statistics: formatStatistics(row, status),
   };
 }
@@ -104,17 +108,25 @@ export function formatUpcomingTicket(
   isFavorite: boolean,
   assignMeta?: AssignMeta | null,
 ) {
-  const status = resolveTicketStatus(row, row.event, row.ticket);
-  return baseTicketFields(row, isFavorite, status, assignMeta);
+  const now = new Date();
+  const status = resolveTicketStatus(row, row.event, row.ticket, now);
+  return {
+    ...baseTicketFields(row, isFavorite, status, assignMeta),
+    can_cancel: canCancelTicket(row, row.event, now),
+  };
 }
 
 export function formatPastTicket(
   row: InvitationTicketRow,
   isFavorite: boolean,
   assignMeta?: AssignMeta | null,
+  orderStatus?: string | null,
 ) {
-  const status = resolveTicketStatus(row, row.event, row.ticket);
-  return baseTicketFields(row, isFavorite, status, assignMeta);
+  const status = resolveTicketStatus(row, row.event, row.ticket, new Date(), orderStatus);
+  return {
+    ...baseTicketFields(row, isFavorite, status, assignMeta),
+    can_cancel: false,
+  };
 }
 
 export function formatTicketDetail(

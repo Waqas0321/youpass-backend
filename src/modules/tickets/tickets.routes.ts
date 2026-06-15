@@ -9,6 +9,7 @@ ticketsRouter.use(authenticate);
 ticketsRouter.get('/upcoming', ticketsController.listUpcoming);
 ticketsRouter.get('/past', ticketsController.listPast);
 ticketsRouter.get('/yearly-summary', ticketsController.yearlySummary);
+ticketsRouter.post('/:id/cancel', ticketsController.cancelTicket);
 ticketsRouter.get('/:id/assignments', ticketsController.listAssignments);
 ticketsRouter.post('/:id/slots/:slotId/assign', ticketsController.assignSlot);
 ticketsRouter.delete('/:id/slots/:slotId/assign', ticketsController.cancelAssignment);

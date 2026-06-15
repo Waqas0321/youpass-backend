@@ -5,12 +5,27 @@ import {
   resolveQrStatus,
   type QrStatus,
 } from './invitations.utils.js';
+import { invitationConfigService } from '../../common/services/invitation-config.service.js';
+import {
+  productKindFields,
+  requiresPaymentMethod,
+  resolveInvitationProductKind,
+  termsAcceptedRequired,
+} from './invitation-product-type.utils.js';
+import { buildInvitationDeepLink } from './guaranteed-pass-deep-link.utils.js';
+import {
+  formatLifecycleStatus,
+  mapApiStatus,
+  mapDbTypeToApi,
+  resolveInvitationLifecycleState,
+} from './invitation-status.utils.js';
 
 type InvitationWithRelations = Invitation & {
   event: Event;
   producer: Producer;
   ticket: InvitationTicket | null;
   inviter?: User | null;
+  preAuth?: { status: string } | null;
 };
 
 function locationLabel(event: Event): string {
@@ -21,12 +36,27 @@ import { getTimezone } from '../../common/services/country-config.service.js';
 
 export { getTimezone };
 
-function mapStatusForApi(status: Invitation['status']): string {
-  return status === 'canceled' ? 'rejected' : status;
+function statusLabel(
+  invitation: InvitationWithRelations,
+  productKind: ReturnType<typeof resolveInvitationProductKind>,
+): string | null {
+  if (productKind !== 'guaranteed_pass') {
+    return null;
+  }
+
+  if (invitation.status === 'sent' || invitation.status === 'viewed') {
+    return 'Awaiting acceptance';
+  }
+
+  if (invitation.status === 'accepted' || invitation.status === 'validated') {
+    return 'Pass reserved';
+  }
+
+  return null;
 }
 
 function qrFields(invitation: InvitationWithRelations): { entry_code: string | null; qr_payload: string | null; qr_status: QrStatus } {
-  if (invitation.status !== 'confirmed' || !invitation.ticket) {
+  if (invitation.status !== 'accepted' || !invitation.ticket) {
     return { entry_code: null, qr_payload: null, qr_status: 'locked' };
   }
 
@@ -43,8 +73,65 @@ function qrFields(invitation: InvitationWithRelations): { entry_code: string | n
   };
 }
 
-function baseFields(invitation: InvitationWithRelations, timezone: string) {
+function formatInvitedBy(invitation: InvitationWithRelations) {
+  if (invitation.source === 'guest' && invitation.inviter) {
+    return {
+      name: invitation.inviter.fullName,
+      role: 'guest' as const,
+    };
+  }
+
+  return {
+    name: invitation.producer.name,
+    role: 'producer' as const,
+  };
+}
+
+function pricingFields(invitation: InvitationWithRelations) {
+  const productKind = resolveInvitationProductKind(invitation);
+  const currency = invitation.chargeCurrency ?? 'CLP';
+  const entryValue = invitation.entryValue;
+  const acceptAmount = invitation.amountToPay;
+  const noShowChargeAmount = productKind === 'guaranteed_pass' ? entryValue : null;
+
+  return {
+    ...productKindFields(invitation),
+    entry_value: entryValue,
+    amount_to_pay: acceptAmount,
+    charge_amount: entryValue,
+    charge_currency: currency,
+    discount_percentage: invitation.discountPercentage,
+    discount_percent: invitation.discountPercentage,
+    accept_amount: acceptAmount,
+    accept_amount_label:
+      acceptAmount > 0 ? `${currency} ${Math.round(acceptAmount).toLocaleString('en')}` : null,
+    no_show_charge_amount: noShowChargeAmount,
+    no_show_charge_label:
+      noShowChargeAmount != null && noShowChargeAmount > 0
+        ? `${currency} ${Math.round(noShowChargeAmount).toLocaleString('en')}`
+        : null,
+    custom_message: invitation.customMessage,
+    cancellation_deadline: invitation.cancellationDeadline.toISOString(),
+    cancellation_deadline_label: formatDeadlineLabel(
+      invitation.cancellationDeadline,
+      getTimezone(invitation.event.countryCode),
+    ),
+  };
+}
+
+function baseFields(
+  invitation: InvitationWithRelations,
+  timezone: string,
+  expiryDays: number,
+) {
   const qr = qrFields(invitation);
+  const expiresAt = invitationConfigService.resolveExpiresAt(invitation, expiryDays);
+  const productKind = resolveInvitationProductKind(invitation);
+  const lifecycle = resolveInvitationLifecycleState({
+    status: invitation.status,
+    viewedAt: invitation.viewedAt,
+    ticket: invitation.ticket,
+  });
 
   return {
     id: invitation.id,
@@ -54,80 +141,91 @@ function baseFields(invitation: InvitationWithRelations, timezone: string) {
     date_time_label: formatDateTimeLabel(invitation.event.startsAt, timezone),
     image_url: invitation.event.imageUrl,
     tier: invitation.tier,
-    type: invitation.type,
+    type: mapDbTypeToApi(invitation.type),
     source: invitation.source,
-    status: mapStatusForApi(invitation.status),
-    requires_payment_method: invitation.requiresPaymentMethod,
+    status: mapApiStatus(invitation.status),
+    lifecycle_state: lifecycle,
+    status_label: statusLabel(invitation, productKind),
+    deep_link: buildInvitationDeepLink(invitation.id),
+    requires_payment_method: requiresPaymentMethod(invitation.type),
+    terms_accepted_required: termsAcceptedRequired(invitation.type),
     entry_code: qr.entry_code,
     qr_payload: qr.qr_payload,
     qr_status: qr.qr_status,
+    expires_at: expiresAt.toISOString(),
+    expires_at_label: formatDeadlineLabel(expiresAt, timezone),
+    invited_by: formatInvitedBy(invitation),
+    assigned_slot: invitation.assignedSlot,
+    ...pricingFields(invitation),
   };
 }
 
-function computeFlags(invitation: InvitationWithRelations, hasPaymentMethod: boolean) {
+function computeFlags(
+  invitation: InvitationWithRelations,
+  hasPaymentMethod: boolean,
+  expiryDays: number,
+) {
   const now = new Date();
   const qr = qrFields(invitation);
-  const isPending = invitation.status === 'pending';
-  const isConfirmed = invitation.status === 'confirmed';
-  const pastDeadline =
-    invitation.cancellationDeadline != null && now > invitation.cancellationDeadline;
+  const isPending = invitation.status === 'sent' || invitation.status === 'viewed';
+  const isAccepted = invitation.status === 'accepted';
+  const needsPaymentMethod = requiresPaymentMethod(invitation.type);
+  const pastDeadline = now > invitation.cancellationDeadline;
+  const pastExpiry =
+    isPending &&
+    invitationConfigService.resolveExpiresAt(invitation, expiryDays) <= now;
 
   return {
     can_confirm:
       isPending &&
       !pastDeadline &&
+      !pastExpiry &&
       invitation.event.status === 'published' &&
-      (!invitation.requiresPaymentMethod || hasPaymentMethod),
-    can_reject: isPending && !pastDeadline,
+      (!needsPaymentMethod || hasPaymentMethod),
+    can_reject: isPending && !pastDeadline && !pastExpiry,
     can_cancel:
-      isConfirmed &&
-      invitation.cancellationDeadline != null &&
+      isAccepted &&
       now <= invitation.cancellationDeadline,
-    can_view_qr: isConfirmed && qr.qr_status === 'available',
+    can_view_qr: isAccepted && qr.qr_status === 'available',
   };
 }
 
-export function formatInvitationListItem(invitation: InvitationWithRelations) {
+export function formatInvitationListItem(
+  invitation: InvitationWithRelations,
+  expiryDays: number,
+) {
   const timezone = getTimezone(invitation.event.countryCode);
-  return baseFields(invitation, timezone);
+  return baseFields(invitation, timezone, expiryDays);
 }
 
 export function formatInvitationDetail(
   invitation: InvitationWithRelations,
   hasPaymentMethod: boolean,
+  expiryDays: number,
 ) {
   const timezone = getTimezone(invitation.event.countryCode);
-  const flags = computeFlags(invitation, hasPaymentMethod);
+  const flags = computeFlags(invitation, hasPaymentMethod, expiryDays);
 
   return {
-    ...baseFields(invitation, timezone),
-    terms_accepted_required: invitation.termsAcceptedRequired,
+    ...baseFields(invitation, timezone, expiryDays),
     ...flags,
+    ...formatLifecycleStatus({
+      status: invitation.status,
+      viewedAt: invitation.viewedAt,
+      ticket: invitation.ticket,
+      preAuth: invitation.preAuth,
+    }),
     producer: {
       id: invitation.producer.id,
       name: invitation.producer.name,
       logo_url: invitation.producer.logoUrl,
     },
-    invited_by:
-      invitation.source === 'guest' && invitation.inviter
-        ? {
-            name: invitation.inviter.fullName,
-            role: 'guest' as const,
-          }
-        : {
-            name: invitation.producer.name,
-            role: 'producer' as const,
-          },
-    custom_message: invitation.customMessage,
-    assigned_slot: invitation.assignedSlot,
-    cancellation_deadline: invitation.cancellationDeadline?.toISOString() ?? null,
-    cancellation_deadline_label: invitation.cancellationDeadline
-      ? formatDeadlineLabel(invitation.cancellationDeadline, timezone)
-      : null,
-    charge_amount: invitation.chargeAmount,
-    charge_currency: invitation.chargeCurrency ?? 'CLP',
     sent_at: invitation.sentAt.toISOString(),
+    viewed_at: invitation.viewedAt?.toISOString() ?? null,
     responded_at: invitation.respondedAt?.toISOString() ?? null,
+    canceled_at: invitation.canceledAt?.toISOString() ?? null,
+    preauth_active: invitation.preAuth?.status === 'pre_authorized',
+    payment_completed: invitation.status === 'charged' || invitation.amountToPay > 0 && invitation.status === 'accepted' && invitation.type === 'discount',
   };
 }
 

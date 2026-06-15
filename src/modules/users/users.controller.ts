@@ -79,4 +79,85 @@ export const usersController = {
       next(err);
     }
   },
+
+  getProfileBannerStatus: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.getProfileBannerStatus(req.user!.id);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  dismissProfileBanner: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.dismissProfileBanner(req.user!.id);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  deleteProfilePhoto: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.deleteProfilePhoto(req.user!.id);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  getCategoryBenefits: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.getCategoryBenefits(req.user!.id);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  getNotificationSettings: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.getNotificationSettings(req.user!.id);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  updateNotificationSettings: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.updateNotificationSettings(req.user!.id, req.body);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  toggleNotificationsMaster: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.toggleNotificationsMaster(req.user!.id, req.body.enabled);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  getDeletionStatus: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.getDeletionStatus(req.user!.id);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  cancelAccountDeletion: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await usersService.cancelAccountDeletion(req.user!.id);
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
 };

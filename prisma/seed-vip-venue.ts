@@ -7,8 +7,8 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const OFFERINGS = [
-  { slug: 'preventa-1', label: 'Preventa 1', section: 'general' as const, price: 10000, displayOrder: 1, mapsToTier: 'general' as const, mapsToType: 'general' as const, badgeLabel: 'Early bird' },
-  { slug: 'preventa-2', label: 'Preventa 2', section: 'general' as const, price: 13000, displayOrder: 2, mapsToTier: 'general' as const, mapsToType: 'general' as const },
+  { slug: 'preventa-1', label: 'Preventa 1', section: 'general' as const, price: 10000, displayOrder: 1, mapsToTier: 'general' as const, mapsToType: 'general' as const, badgeLabel: 'Early bird', stockQuantity: 100 },
+  { slug: 'preventa-2', label: 'Preventa 2', section: 'general' as const, price: 13000, displayOrder: 2, mapsToTier: 'general' as const, mapsToType: 'general' as const, stockQuantity: 200 },
   { slug: 'general-cover', label: 'General + Cover', section: 'general' as const, price: 18000, displayOrder: 3, mapsToTier: 'general' as const, mapsToType: 'general' as const },
   { slug: 'vip-general', label: 'VIP General', section: 'vip' as const, price: 35000, displayOrder: 4, mapsToTier: 'vip' as const, mapsToType: 'vip' as const, description: 'VIP access without reserved table' },
 ];

@@ -28,12 +28,22 @@ import {
 } from '../../common/constants/auth-messages.js';
 import { otpDeliveryService, whatsAppReadyMessage, whatsAppUnavailableMessage } from './otp-delivery.service.js';
 import { linkPendingInvitationsByPhone } from '../invitations/invitation-link.service.js';
+
+function isSessionEligibleAccountStatus(status: User['accountStatus']): boolean {
+  return status === 'active' || status === 'pending_deletion';
+}
+
+function otpBlockMinutesForPurpose(purpose: AuthCodePurpose): number {
+  return purpose === 'delete_account'
+    ? env.DELETE_ACCOUNT_OTP_BLOCK_MINUTES
+    : env.OTP_BLOCK_MINUTES;
+}
 import {
   buildPostRegistrationNavigation,
   buildWelcomePayload,
 } from '../../common/constants/post-registration-policy.js';
 import { migrateUserPhoneData } from './phone-migration.service.js';
-import { createSession, revokeAllUserSessions, revokeSession } from './session.service.js';
+import { createSession, revokeSession } from './session.service.js';
 import type {
   ChangePhoneRequestInput,
   ChangePhoneVerifyInput,
@@ -94,12 +104,15 @@ async function resetFailedAttempts(phone: string): Promise<void> {
   });
 }
 
-async function incrementFailedAttempt(phone: string): Promise<void> {
+async function incrementFailedAttempt(
+  phone: string,
+  blockMinutes = env.OTP_BLOCK_MINUTES,
+): Promise<void> {
   const limit = await getOrCreateRateLimit(phone);
   const failedAttempts = limit.failedAttempts + 1;
   const blockedUntil =
     failedAttempts >= env.OTP_MAX_FAILED_ATTEMPTS
-      ? addMinutes(new Date(), env.OTP_BLOCK_MINUTES)
+      ? addMinutes(new Date(), blockMinutes)
       : null;
 
   await prisma.authRateLimit.update({
@@ -112,7 +125,7 @@ async function incrementFailedAttempt(phone: string): Promise<void> {
       429,
       AUTH_ERROR_CODES.BLOCKED,
       bruteForceBlockedMessage(),
-      { retry_after_seconds: env.OTP_BLOCK_MINUTES * 60 },
+      { retry_after_seconds: blockMinutes * 60 },
     );
   }
 }
@@ -176,7 +189,7 @@ async function resolveSendCodePurpose(
     return { purpose: 'register', accountExists: false };
   }
 
-  if (existingUser.accountStatus !== 'active') {
+  if (existingUser.accountStatus !== 'active' && existingUser.accountStatus !== 'pending_deletion') {
     throw new AppError(403, AUTH_ERROR_CODES.UNAUTHORIZED, 'This account is not active');
   }
 
@@ -247,7 +260,12 @@ async function createAndSendOtp(
   purpose: AuthCodePurpose,
   _context?: OtpContext,
   isResend = false,
-): Promise<{ expires_in_seconds: number; resend_available_in_seconds: number; phone_display: string }> {
+): Promise<{
+  expires_in_seconds: number;
+  resend_available_in_seconds: number;
+  phone_display: string;
+  dev_otp_code?: string;
+}> {
   await assertNotBlocked(e164);
   await assertResendAllowed(e164, isResend);
 
@@ -310,12 +328,17 @@ async function createAndSendOtp(
   }
 
   if (env.TWILIO_MOCK || env.NODE_ENV === 'development') {
-    console.log(`[DEV OTP] ${e164} purpose=${purpose} code=${code} channel=${deliveryChannel}`);
+    console.log('');
+    console.log('════════════════════════════════════════');
+    console.log(`[DEV OTP] phone=${e164} purpose=${purpose} code=${code}`);
+    console.log('════════════════════════════════════════');
+    console.log('');
   }
 
   return {
     phone_display: formatPhoneDisplay(e164, countryCode),
     ...otpPolicyMeta(),
+    ...(env.TWILIO_MOCK ? { dev_otp_code: code } : {}),
   };
 }
 
@@ -341,7 +364,8 @@ async function verifyOtpCode(
     const limit = await getOrCreateRateLimit(e164);
     const attemptsAfter = limit.failedAttempts + 1;
     const remainingAttempts = Math.max(0, env.OTP_MAX_FAILED_ATTEMPTS - attemptsAfter);
-    await incrementFailedAttempt(e164);
+    const blockMinutes = otpBlockMinutesForPurpose(purpose);
+    await incrementFailedAttempt(e164, blockMinutes);
     throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Invalid code', {
       remaining_attempts: remainingAttempts,
     });
@@ -367,7 +391,8 @@ async function verifyOtpCode(
     const limit = await getOrCreateRateLimit(e164);
     const attemptsAfter = limit.failedAttempts + 1;
     const remainingAttempts = Math.max(0, env.OTP_MAX_FAILED_ATTEMPTS - attemptsAfter);
-    await incrementFailedAttempt(e164);
+    const blockMinutes = otpBlockMinutesForPurpose(purpose);
+    await incrementFailedAttempt(e164, blockMinutes);
     throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Incorrect code', {
       remaining_attempts: remainingAttempts,
     });
@@ -494,7 +519,7 @@ export const authService = {
     await verifyOtpCode(e164, countryCode, input.code, 'login', context);
 
     const user = await prisma.user.findUnique({ where: { phone: e164 } });
-    if (!user || user.accountStatus !== 'active') {
+    if (!user || !isSessionEligibleAccountStatus(user.accountStatus)) {
       throw new AppError(404, AUTH_ERROR_CODES.USER_NOT_FOUND, 'No account found for this phone number');
     }
 
@@ -609,23 +634,27 @@ export const authService = {
 
     await verifyOtpCode(user.phone, user.countryCode, input.code, 'delete_account', context);
 
-    const deletedAt = new Date();
+    const requestedAt = new Date();
+    const scheduledAt = new Date(requestedAt);
+    scheduledAt.setDate(scheduledAt.getDate() + env.ACCOUNT_DELETION_COOLING_DAYS);
 
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        accountStatus: 'deleted',
-        deletionRequestedAt: deletedAt,
-        deletionScheduledAt: deletedAt,
+        accountStatus: 'pending_deletion',
+        deletionRequestedAt: requestedAt,
+        deletionScheduledAt: scheduledAt,
         pendingPhoneChange: null,
       },
     });
 
-    await revokeAllUserSessions(user.id);
-
     return {
-      message: 'Your account has been deleted successfully',
-      deleted_at: deletedAt.toISOString(),
+      message:
+        `Your account is scheduled for deletion in ${env.ACCOUNT_DELETION_COOLING_DAYS} days. You can cancel anytime before then.`,
+      status: 'pending_deletion',
+      deletion_requested_at: requestedAt.toISOString(),
+      deletion_scheduled_at: scheduledAt.toISOString(),
+      days_remaining: env.ACCOUNT_DELETION_COOLING_DAYS,
     };
   },
 

@@ -5,6 +5,7 @@ import {
   generateEntryCode,
   generateQrPayload,
 } from '../src/modules/invitations/invitations.utils.js';
+import { repairInvitationTimestamps } from '../src/modules/invitations/invitation-data-repair.service.js';
 
 const INVITATION_EVENTS = [
   {
@@ -43,6 +44,126 @@ const TIMEZONE_BY_COUNTRY: Record<string, string> = {
 
 function timezoneFor(countryCode: string): string {
   return TIMEZONE_BY_COUNTRY[countryCode] ?? 'UTC';
+}
+
+function expiresAtFromSentAt(sentAt: Date, expiryDays = 3): Date {
+  const result = new Date(sentAt);
+  result.setUTCDate(result.getUTCDate() + expiryDays);
+  return result;
+}
+
+function hoursAgo(hours: number): Date {
+  const result = new Date();
+  result.setHours(result.getHours() - hours);
+  return result;
+}
+
+function hoursFromNow(hours: number): Date {
+  const result = new Date();
+  result.setHours(result.getHours() + hours);
+  return result;
+}
+
+/** Confirmed invitations on these events get a QR that is unlocked for local testing. */
+const QR_AVAILABLE_EVENT_KEYS = [
+  { title: 'Santiago Live Tonight', city: 'Santiago' },
+  { title: 'VIP Lounge Experience', city: 'Santiago' },
+  { title: 'Festival Verano 2026', city: 'Santiago' },
+  { title: 'YouFest 2026', city: 'Concepción' },
+  { title: 'Techno Warehouse', city: 'Santiago' },
+  { title: 'Neon Disco CDMX', city: 'Ciudad de México' },
+  { title: 'Caribe Night', city: 'Viña del Mar' },
+] as const;
+
+async function resolveInvitationSeedUser(prisma: PrismaClient) {
+  const devUser =
+    (await prisma.user.findFirst({
+      where: {
+        accountStatus: 'active',
+        fullName: { contains: 'Dev T' },
+      },
+    })) ??
+    (await prisma.user.findFirst({
+      where: {
+        accountStatus: 'active',
+        fullName: { startsWith: 'Dev' },
+      },
+    }));
+
+  if (devUser) {
+    return devUser;
+  }
+
+  return prisma.user.findFirst({ where: { accountStatus: 'active' } });
+}
+
+function daysFromNow(days: number): Date {
+  const result = new Date();
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
+async function syncInvitationQrDemo(
+  prisma: PrismaClient,
+  recipientUserId: string,
+  eventTitle: string,
+  eventCity: string,
+) {
+  const event = await prisma.event.findFirst({
+    where: { title: eventTitle, city: eventCity },
+  });
+  if (!event) {
+    return;
+  }
+
+  const invitation = await prisma.invitation.findFirst({
+    where: {
+      eventId: event.id,
+      recipientUserId,
+      status: 'confirmed',
+    },
+  });
+  if (!invitation) {
+    return;
+  }
+
+  const startsAt = hoursFromNow(6);
+  const unlockAt = hoursAgo(1);
+
+  await prisma.event.update({
+    where: { id: event.id },
+    data: { startsAt },
+  });
+
+  const existing = await prisma.invitationTicket.findUnique({
+    where: { invitationId: invitation.id },
+  });
+
+  if (existing) {
+    const qrPayload = generateQrPayload(existing.id, event.id);
+    await prisma.invitationTicket.update({
+      where: { id: existing.id },
+      data: { qrPayload, unlockAt },
+    });
+    return;
+  }
+
+  const ticketId = crypto.randomBytes(12).toString('hex');
+  await prisma.invitationTicket.create({
+    data: {
+      id: ticketId,
+      invitationId: invitation.id,
+      manualEntryId: generateEntryCode(),
+      qrPayload: generateQrPayload(ticketId, event.id),
+      unlockAt,
+    },
+  });
+}
+
+async function syncQrAvailableInvitations(prisma: PrismaClient, recipientUserId: string) {
+  for (const { title, city } of QR_AVAILABLE_EVENT_KEYS) {
+    await syncInvitationQrDemo(prisma, recipientUserId, title, city);
+  }
 }
 
 async function ensureTicket(
@@ -95,11 +216,18 @@ async function fixAllQrPayloads(prisma: PrismaClient) {
 }
 
 export async function seedInvitations(prisma: PrismaClient) {
-  const user = await prisma.user.findFirst({ where: { accountStatus: 'active' } });
+  const repaired = await repairInvitationTimestamps(prisma);
+  if (repaired > 0) {
+    console.log(`Repaired ${repaired} invitation timestamp(s)`);
+  }
+
+  const user = await resolveInvitationSeedUser(prisma);
   if (!user) {
     console.log('Skipped invitations seed — no active user');
     return;
   }
+
+  console.log(`Seeding invitations for ${user.fullName} (${user.phone})`);
 
   const eventType = await prisma.eventType.findFirst({ where: { slug: 'concerts' } });
   if (!eventType) {
@@ -179,16 +307,27 @@ export async function seedInvitations(prisma: PrismaClient) {
           customMessage: data.customMessage,
           chargeAmount: data.chargeAmount,
           chargeCurrency: data.chargeCurrency,
+          discountPercent: data.discountPercent,
           requiresPaymentMethod: data.requiresPaymentMethod,
           termsAcceptedRequired: data.termsAcceptedRequired,
           cancellationDeadline: data.cancellationDeadline,
           respondedAt: data.respondedAt,
           sentAt: data.sentAt,
+          expiresAt:
+            data.expiresAt ??
+            (data.sentAt ? expiresAtFromSentAt(data.sentAt as Date) : undefined),
         },
       });
     }
 
-    return prisma.invitation.create({ data });
+    const sentAt = (data.sentAt as Date | undefined) ?? new Date();
+    return prisma.invitation.create({
+      data: {
+        ...data,
+        sentAt,
+        expiresAt: data.expiresAt ?? expiresAtFromSentAt(sentAt),
+      },
+    });
   };
 
   const pendingCourtesy = await upsertInvitation(
@@ -206,26 +345,28 @@ export async function seedInvitations(prisma: PrismaClient) {
       chargeCurrency: 'CLP',
       requiresPaymentMethod: true,
       termsAcceptedRequired: true,
-      cancellationDeadline: new Date('2026-07-01T23:59:59.000Z'),
-      sentAt: new Date('2026-06-01T18:30:00.000Z'),
+      cancellationDeadline: daysFromNow(14),
+      sentAt: hoursAgo(2),
     },
   );
 
-  await upsertInvitation(
-    { eventId: conciertoId!, type: 'general', recipientUserId: user.id },
+  const pendingFree = await upsertInvitation(
+    { eventId: conciertoId!, type: 'free', recipientUserId: user.id },
     {
       eventId: conciertoId!,
       producerId: producerTebo.id,
       recipientUserId: user.id,
-      type: 'general',
+      type: 'free',
       tier: 'general',
       status: 'pending',
       requiresPaymentMethod: false,
-      sentAt: new Date('2026-06-02T10:00:00.000Z'),
+      customMessage: 'Free invitation — no commitment required.',
+      cancellationDeadline: daysFromNow(10),
+      sentAt: hoursAgo(5),
     },
   );
 
-  const confirmed = await upsertInvitation(
+  const confirmedFree = await upsertInvitation(
     { eventId: festivalId!, type: 'vip', recipientUserId: user.id },
     {
       eventId: festivalId!,
@@ -244,7 +385,7 @@ export async function seedInvitations(prisma: PrismaClient) {
   const festivalEvent = await prisma.event.findUniqueOrThrow({ where: { id: festivalId! } });
   await ensureTicket(
     prisma,
-    confirmed.id,
+    confirmedFree.id,
     festivalId!,
     festivalEvent.startsAt,
     festivalEvent.countryCode,
@@ -262,7 +403,26 @@ export async function seedInvitations(prisma: PrismaClient) {
   });
 
   if (technoEvent) {
-    await upsertInvitation(
+    const pendingDiscounted = await upsertInvitation(
+      { eventId: technoEvent.id, type: 'discounted', recipientUserId: user.id },
+      {
+        eventId: technoEvent.id,
+        producerId: producerTebo.id,
+        recipientUserId: user.id,
+        type: 'discounted',
+        tier: 'general',
+        status: 'pending',
+        chargeAmount: 15000,
+        chargeCurrency: 'CLP',
+        discountPercent: 50,
+        requiresPaymentMethod: true,
+        customMessage: '50% off — pay now to secure your spot.',
+        cancellationDeadline: daysFromNow(12),
+        sentAt: hoursAgo(1),
+      },
+    );
+
+    const technoConfirmed = await upsertInvitation(
       { eventId: technoEvent.id, type: 'general', recipientUserId: user.id },
       {
         eventId: technoEvent.id,
@@ -270,39 +430,84 @@ export async function seedInvitations(prisma: PrismaClient) {
         recipientUserId: user.id,
         type: 'general',
         tier: 'general',
-        status: 'pending',
-        sentAt: new Date('2026-06-01T09:00:00.000Z'),
-      },
-    );
-  }
-
-  if (vipLoungeEvent) {
-    const vipConfirmed = await upsertInvitation(
-      { eventId: vipLoungeEvent.id, type: 'vip', recipientUserId: user.id },
-      {
-        eventId: vipLoungeEvent.id,
-        producerId: producerSunset.id,
-        recipientUserId: user.id,
-        type: 'vip',
-        tier: 'vip',
         status: 'confirmed',
-        assignedSlot: 'VIP Lounge A',
         requiresPaymentMethod: false,
-        respondedAt: new Date('2026-05-26T11:30:00.000Z'),
-        sentAt: new Date('2026-05-25T14:00:00.000Z'),
+        respondedAt: hoursAgo(2),
+        sentAt: hoursAgo(24),
       },
     );
     await ensureTicket(
       prisma,
-      vipConfirmed.id,
+      technoConfirmed.id,
+      technoEvent.id,
+      technoEvent.startsAt,
+      technoEvent.countryCode,
+    );
+  }
+
+  if (vipLoungeEvent) {
+    const confirmedGuaranteed = await upsertInvitation(
+      { eventId: vipLoungeEvent.id, type: 'courtesy', recipientUserId: user.id },
+      {
+        eventId: vipLoungeEvent.id,
+        producerId: producerSunset.id,
+        recipientUserId: user.id,
+        type: 'courtesy',
+        tier: 'vip',
+        status: 'confirmed',
+        assignedSlot: 'VIP Lounge A',
+        chargeAmount: 65000,
+        chargeCurrency: 'CLP',
+        requiresPaymentMethod: true,
+        termsAcceptedRequired: true,
+        customMessage: 'Confirmed Guaranteed Pass — attended commitment accepted.',
+        respondedAt: hoursAgo(4),
+        sentAt: hoursAgo(48),
+      },
+    );
+    await ensureTicket(
+      prisma,
+      confirmedGuaranteed.id,
       vipLoungeEvent.id,
       vipLoungeEvent.startsAt,
       vipLoungeEvent.countryCode,
     );
   }
 
+  const caribeEvent = await prisma.event.findFirst({
+    where: { title: 'Caribe Night', city: 'Viña del Mar' },
+  });
+
+  if (caribeEvent) {
+    const confirmedDiscounted = await upsertInvitation(
+      { eventId: caribeEvent.id, type: 'discounted', recipientUserId: user.id },
+      {
+        eventId: caribeEvent.id,
+        producerId: producerSunset.id,
+        recipientUserId: user.id,
+        type: 'discounted',
+        tier: 'general',
+        status: 'confirmed',
+        chargeAmount: 12000,
+        chargeCurrency: 'CLP',
+        discountPercent: 50,
+        requiresPaymentMethod: true,
+        customMessage: 'Confirmed discounted invitation — 50% paid.',
+        respondedAt: hoursAgo(6),
+        sentAt: hoursAgo(72),
+      },
+    );
+    await ensureTicket(
+      prisma,
+      confirmedDiscounted.id,
+      caribeEvent.id,
+      caribeEvent.startsAt,
+      caribeEvent.countryCode,
+    );
+  }
+
   if (neonDiscoEvent) {
-    await upsertInvitation(
+    const neonConfirmed = await upsertInvitation(
       { eventId: neonDiscoEvent.id, type: 'free', recipientUserId: user.id },
       {
         eventId: neonDiscoEvent.id,
@@ -310,9 +515,18 @@ export async function seedInvitations(prisma: PrismaClient) {
         recipientUserId: user.id,
         type: 'free',
         tier: 'general',
-        status: 'pending',
-        sentAt: new Date('2026-06-02T16:00:00.000Z'),
+        status: 'confirmed',
+        requiresPaymentMethod: false,
+        respondedAt: hoursAgo(3),
+        sentAt: hoursAgo(48),
       },
+    );
+    await ensureTicket(
+      prisma,
+      neonConfirmed.id,
+      neonDiscoEvent.id,
+      neonDiscoEvent.startsAt,
+      neonDiscoEvent.countryCode,
     );
   }
 
@@ -362,9 +576,23 @@ export async function seedInvitations(prisma: PrismaClient) {
   }
 
   await fixAllQrPayloads(prisma);
+  await syncQrAvailableInvitations(prisma, user.id);
 
   const total = await prisma.invitation.count({ where: { recipientUserId: user.id } });
   console.log(`Seeded ${total} invitations for user ${user.fullName} (${user.phone})`);
-  console.log(`  Pending courtesy: ${pendingCourtesy.id}`);
-  console.log(`  Confirmed VIP: ${confirmed.id}`);
+  console.log('  Section 14.1 test matrix:');
+  console.log('    PENDING  Free (green)       → Concierto X');
+  console.log('    PENDING  Guaranteed (gold)   → YouFest 2026');
+  console.log('    PENDING  Discounted (purple) → Techno Warehouse');
+  console.log('    CONFIRMED Free (green)       → Festival Verano 2026, Neon Disco CDMX');
+  console.log('    CONFIRMED Guaranteed (gold)  → VIP Lounge Experience');
+  console.log('    CONFIRMED Discounted (purple)→ Caribe Night');
+  console.log(`    Pending courtesy id: ${pendingCourtesy.id}`);
+  console.log(`    Pending free id: ${pendingFree.id}`);
+  if (technoEvent) {
+    console.log('    Pending discounted → Techno Warehouse');
+  }
+  console.log(
+    `  QR unlocked for: ${QR_AVAILABLE_EVENT_KEYS.map((e) => e.title).join(', ')}`,
+  );
 }

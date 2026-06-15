@@ -5,12 +5,39 @@ import type {
   VenueTable,
   VenueZone,
 } from '@prisma/client';
+import { TABLE_LOCK_MINUTES } from './vip-venue.constants.js';
 
 type ZoneWithTables = VenueZone & { tables: VenueTable[] };
 type LayoutWithZones = EventVenueLayout & { zones: ZoneWithTables[] };
 type TableWithLocks = VenueTable & { locks: TableLock[] };
 
-export function formatTicketOffering(offering: EventTicketOffering, eventCurrency?: string) {
+export function resolveOfferingAvailability(
+  offering: EventTicketOffering,
+  now = new Date(),
+) {
+  const stockSoldOut =
+    offering.stockQuantity != null && offering.soldQuantity >= offering.stockQuantity;
+  const saleNotStarted =
+    offering.saleStartsAt != null && offering.saleStartsAt > now;
+  const saleExpired = offering.saleEndsAt != null && offering.saleEndsAt < now;
+  const is_sold_out =
+    stockSoldOut ||
+    saleExpired ||
+    (!offering.isActive &&
+      (offering.soldQuantity > 0 || offering.stockQuantity != null));
+  const is_selectable =
+    offering.isActive && !stockSoldOut && !saleExpired && !saleNotStarted;
+
+  return { is_sold_out, is_selectable, stockSoldOut, saleExpired, saleNotStarted };
+}
+
+export function formatTicketOffering(
+  offering: EventTicketOffering,
+  eventCurrency?: string,
+  now = new Date(),
+) {
+  const availability = resolveOfferingAvailability(offering, now);
+
   return {
     id: offering.slug,
     offering_id: offering.id,
@@ -25,6 +52,13 @@ export function formatTicketOffering(offering: EventTicketOffering, eventCurrenc
     max_per_order: offering.maxPerOrder,
     maps_to_tier: offering.mapsToTier,
     maps_to_type: offering.mapsToType,
+    is_sold_out: availability.is_sold_out,
+    is_selectable: availability.is_selectable,
+    is_active: offering.isActive,
+    stock_quantity: offering.stockQuantity,
+    sold_quantity: offering.soldQuantity,
+    sale_starts_at: offering.saleStartsAt?.toISOString() ?? null,
+    sale_ends_at: offering.saleEndsAt?.toISOString() ?? null,
   };
 }
 
@@ -60,6 +94,7 @@ export function formatVenueLayout(layout: LayoutWithZones) {
     venue_id: layout.id,
     event_id: layout.eventId,
     name: layout.venueName,
+    table_lock_minutes: layout.tableLockMinutes ?? TABLE_LOCK_MINUTES,
     dimensions: {
       width_meters: layout.widthMeters,
       height_meters: layout.heightMeters,
@@ -79,7 +114,9 @@ export function resolveTableApiStatus(
   if (table.status === 'sold') return 'sold';
   if (table.isPremium || table.status === 'premium') return 'premium';
 
-  const activeLock = table.locks.find((l) => l.expiresAt > now);
+  const activeLock = table.locks.find(
+    (l) => l.expiresAt > now && (l.status == null || l.status === 'ACTIVE'),
+  );
   if (activeLock) {
     return activeLock.userId === userId ? 'selected' : 'locked';
   }
@@ -95,7 +132,9 @@ export function formatVenueTable(
   eventCurrency?: string,
 ) {
   const apiStatus = resolveTableApiStatus(table, userId, now);
-  const activeLock = table.locks.find((l) => l.expiresAt > now);
+  const activeLock = table.locks.find(
+    (l) => l.expiresAt > now && (l.status == null || l.status === 'ACTIVE'),
+  );
 
   return {
     id: table.externalId,
@@ -125,7 +164,41 @@ export function formatTableLock(lock: TableLock) {
   return {
     lock_id: lock.id,
     table_id: lock.tableId,
+    status: lock.status,
+    locked_at: lock.createdAt.toISOString(),
     expires_at: lock.expiresAt.toISOString(),
-    expires_in_seconds: Math.max(0, Math.floor((lock.expiresAt.getTime() - Date.now()) / 1000)),
+    expires_in_seconds: Math.max(
+      0,
+      Math.floor((lock.expiresAt.getTime() - Date.now()) / 1000),
+    ),
+  };
+}
+
+export function formatTableLockStatus(
+  lock: TableLock | null,
+  userId?: string,
+  now = new Date(),
+) {
+  if (!lock || lock.expiresAt <= now || (lock.status != null && lock.status !== 'ACTIVE')) {
+    return {
+      lock_id: null,
+      status: 'NONE',
+      locked_at: null,
+      expires_at: null,
+      remaining_seconds: 0,
+      is_locked_by_me: false,
+    };
+  }
+
+  return {
+    lock_id: lock.id,
+    status: lock.status,
+    locked_at: lock.createdAt.toISOString(),
+    expires_at: lock.expiresAt.toISOString(),
+    remaining_seconds: Math.max(
+      0,
+      Math.floor((lock.expiresAt.getTime() - now.getTime()) / 1000),
+    ),
+    is_locked_by_me: userId ? lock.userId === userId : false,
   };
 }

@@ -60,6 +60,15 @@ export const ticketsController = {
     }
   },
 
+  cancelTicket: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await ticketsService.cancelTicket(req.user!.id, String(req.params.id));
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
   /** Assign screen — accepts ticket id, ticket_order_id, or event id */
   listAssignments: async (req: Request, res: Response, next: NextFunction) => {
     try {

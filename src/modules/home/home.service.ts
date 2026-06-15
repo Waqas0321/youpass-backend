@@ -2,8 +2,10 @@ import type { User } from '@prisma/client';
 import { buildHeaderGreeting } from '../../common/utils/display-name.js';
 import { POST_REGISTRATION_POLICY } from '../../common/constants/post-registration-policy.js';
 import { configService } from '../config/config.service.js';
+import { homeBannersService } from '../config/home-banners.service.js';
 import { eventsService } from '../events/events.service.js';
 import { invitationsService } from '../invitations/invitations.service.js';
+import { buildSearchFiltersConfig } from '../../common/constants/event-search-filters.js';
 import type { HomeFeedQuery } from '../events/events.validators.js';
 
 type HomeFeedUser = Pick<User, 'id' | 'fullName' | 'countryCode' | 'category' | 'phone'>;
@@ -19,16 +21,26 @@ export const homeService = {
     const userId = user?.id;
     const userPhone = user?.phone;
 
-    const [categories, featured, invitationHighlight] = await Promise.all([
+    const [categories, bannerResult, featured, invitationHighlight] = await Promise.all([
       configService.getHomeCategories(countryCode),
+      homeBannersService.resolveCarousel({
+        countryCode,
+        city: query.city,
+        userCategory: user?.category,
+        userId,
+        eventType,
+      }),
       eventsService.getFeaturedEvents({ country_code: countryCode, event_type: eventType, limit: 10 }, userId),
       userId && userPhone
         ? invitationsService.getHomeInvitationHighlight(userId, userPhone)
         : Promise.resolve(null),
     ]);
 
-    const bannerSlides = featured.slides.slice(0, 5);
-    const bannerIds = bannerSlides.map((s) => s.id);
+    const bannerSlides = bannerResult.slides;
+    const mainBanner = bannerResult.main_banner;
+    const bannerIds = bannerSlides
+      .map((slide) => slide.tap_action.event_id ?? slide.id)
+      .filter((value): value is string => Boolean(value));
 
     const upcoming = await eventsService.listUpcomingEvents(
       {
@@ -37,6 +49,9 @@ export const homeService = {
         page: query.upcoming_page,
         limit: query.upcoming_limit,
         exclude_ids: bannerIds,
+        near_me: query.near_me,
+        lat: query.lat,
+        lng: query.lng,
       },
       userId,
     );
@@ -49,23 +64,14 @@ export const homeService = {
           menu_enabled: true,
         },
         categories,
-        main_banner: {
-          curated_by: 'youpass',
-          title: 'Featured events curated by YouPass',
-          slides: bannerSlides,
-          indicators: {
-            total: bannerSlides.length,
-            active_index: 0,
-          },
-        },
+        main_banner: mainBanner,
         search: {
-          placeholder: 'Search events...',
+          placeholder: 'Search events by name',
           filters_enabled: true,
-          filters: {
-            country_code: countryCode ?? null,
-            event_type: eventType ?? null,
-            event_types: categories.event_types,
-          },
+          debounce_ms: 300,
+          empty_message: "We couldn't find any events with that term.",
+          history_limit: 10,
+          filters: buildSearchFiltersConfig(countryCode),
           search_endpoint: '/events',
           search_param: 'q',
         },

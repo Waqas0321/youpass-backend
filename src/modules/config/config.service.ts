@@ -40,29 +40,18 @@ export const configService = {
   },
 
   async getBrowseCategories() {
-    const [countries, eventTypes] = await Promise.all([
-      listActiveCountries(),
-      prisma.eventType.findMany({
-        where: { isActive: true },
-        orderBy: { displayOrder: 'asc' },
-      }),
-    ]);
+    const eventTypes = await prisma.eventType.findMany({
+      where: { isActive: true },
+      orderBy: { displayOrder: 'asc' },
+    });
 
-    return [
-      { id: 'all', label: 'All' },
-      ...countries.map((country) => ({
-        id: `country:${country.code}`,
-        label: country.name,
-        countryCode: country.code,
-        country_code: country.code,
-      })),
-      ...eventTypes.map((type) => ({
-        id: type.slug,
-        label: type.name,
-        eventTypeSlug: type.slug,
-        event_type_slug: type.slug,
-      })),
-    ];
+    return eventTypes.map((type) => ({
+      id: type.slug,
+      label: type.name,
+      eventTypeSlug: type.slug,
+      event_type_slug: type.slug,
+      icon: type.icon,
+    }));
   },
 
   async getHomeCategories(selectedCountryCode?: string) {

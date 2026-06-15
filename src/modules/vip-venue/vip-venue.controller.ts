@@ -77,6 +77,19 @@ export const vipVenueController = {
     }
   },
 
+  getTableLockStatus: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await vipVenueService.getTableLockStatus(
+        String(req.params.eventId),
+        String(req.params.tableId),
+        userId(req),
+      );
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
   getRealtimeAvailability: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await vipVenueService.getRealtimeAvailability(

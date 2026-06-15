@@ -6,6 +6,7 @@ import { eventsController } from './events.controller.js';
 import { createEventSchema, updateEventSchema } from './events.validators.js';
 import { ticketOrdersController } from '../ticket-orders/ticket-orders.controller.js';
 import { vipVenueRouter } from '../vip-venue/vip-venue.routes.js';
+import { eventWaitlistRouter } from '../waitlist/waitlist.routes.js';
 
 export const eventsRouter = Router();
 
@@ -14,7 +15,9 @@ eventsRouter.get('/featured', optionalAuthenticate, eventsController.featured);
 eventsRouter.get('/', optionalAuthenticate, eventsController.list);
 eventsRouter.post('/:eventId/checkout', authenticate, ticketOrdersController.checkout);
 eventsRouter.post('/:eventId/checkout/confirm', authenticate, ticketOrdersController.confirmCheckout);
+eventsRouter.get('/:id/availability', optionalAuthenticate, eventsController.getAvailability);
 eventsRouter.use('/:eventId', vipVenueRouter);
+eventsRouter.use('/:id/waitlist', eventWaitlistRouter);
 eventsRouter.get('/:id', optionalAuthenticate, eventsController.getById);
 
 eventsRouter.post('/', authenticate, validate(createEventSchema), eventsController.create);

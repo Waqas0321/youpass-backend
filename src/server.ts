@@ -2,9 +2,19 @@ import 'dotenv/config';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './config/database.js';
+import { startInvitationExpiryScheduler } from './modules/invitations/invitation-expiry.scheduler.js';
+import { startGuaranteedPassReminderScheduler } from './modules/invitations/guaranteed-pass-reminder.scheduler.js';
+import { startGuaranteedPassEventCloseScheduler } from './modules/invitations/guaranteed-pass-event-close.scheduler.js';
+import { startAccountDeletionScheduler } from './modules/users/account-deletion.scheduler.js';
+import { startTableLockExpiryScheduler } from './modules/vip-venue/table-lock-expiry.scheduler.js';
 
 async function main() {
   const app = createApp();
+  startInvitationExpiryScheduler();
+  startGuaranteedPassReminderScheduler();
+  startGuaranteedPassEventCloseScheduler();
+  startAccountDeletionScheduler();
+  startTableLockExpiryScheduler();
 
   app.listen(env.PORT, () => {
     console.log(`YOUPASS API running on http://localhost:${env.PORT}${env.API_PREFIX}`);

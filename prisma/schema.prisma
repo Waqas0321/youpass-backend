@@ -73,11 +73,15 @@ model User {
   profileCompletion UserProfileCompletion?
   authCodes         AuthCode[]             @relation("UserAuthCodes")
   eventFavorites    EventFavorite[]
+  producerFollows   ProducerFollow[]
   invitations       Invitation[]       @relation("ReceivedInvitations")
   sentInvitations   Invitation[]       @relation("SentInvitations")
   ticketOrders      TicketOrder[]
-  paymentMethods    UserPaymentMethod[]
-  tableLocks        TableLock[]
+  paymentMethods        UserPaymentMethod[]
+  invitationPreAuths    InvitationPreAuth[]
+  notificationSettings  UserNotificationSettings?
+  tableLocks            TableLock[]
+  waitlistEntries       WaitlistEntry[]
 
   @@index([email])
   @@index([countryCode])
@@ -200,12 +204,29 @@ model Country {
   @@map("countries")
 }
 
+enum BannerTapActionType {
+  event_detail
+  external_url
+  promoter_page
+  landing_page
+}
+
 // ─── Events (YouHome) ────────────────────────────────────────────────────────
 
 enum EventStatus {
   draft
   published
   cancelled
+}
+
+enum VenueKind {
+  stadium
+  club_nightclub
+  theatre
+  open_air
+  events_centre
+  bar_restaurant
+  other
 }
 
 model EventType {
@@ -226,9 +247,18 @@ model Event {
   title         String
   description   String?
   startsAt      DateTime    @map("starts_at")
+  endsAt        DateTime?   @map("ends_at")
+  entryTimeLabel String?    @map("entry_time_label")
   venueName     String      @map("venue_name")
   city          String
+  zone          String?
+  latitude      Float?
+  longitude     Float?
   countryCode   String      @map("country_code")
+  producerName  String?     @map("producer_name")
+  venueKind     VenueKind?  @map("venue_kind")
+  minPrice      Float?      @map("min_price")
+  currencyCode  String?     @map("currency_code")
   imageUrl      String?     @map("image_url")
   eventTypeId   String      @map("event_type_id") @db.ObjectId
   isFeatured    Boolean     @default(false) @map("is_featured")
@@ -243,11 +273,75 @@ model Event {
   ticketOrders      TicketOrder[]
   ticketOfferings   EventTicketOffering[]
   venueLayout       EventVenueLayout?
+  homeBannerSlides  HomeBannerSlide[]
+  invitationSettings InvitationSettings?
+  freedSlots        FreedInvitationSlot[]
+  waitlistEntries   WaitlistEntry[]
+  waitlistOffers    WaitlistOffer[]
 
   @@index([countryCode, status, startsAt])
   @@index([isFeatured, featuredOrder])
   @@index([eventTypeId])
+  @@index([city])
+  @@index([venueKind])
   @@map("events")
+}
+
+model HomeBannerSlide {
+  id              String              @id @default(auto()) @map("_id") @db.ObjectId
+  title           String?
+  subtitle        String?
+  imageUrl        String              @map("image_url")
+  tapActionType   BannerTapActionType @default(event_detail) @map("tap_action_type")
+  eventId         String?             @map("event_id") @db.ObjectId
+  externalUrl     String?             @map("external_url")
+  producerId      String?             @map("producer_id") @db.ObjectId
+  landingSlug     String?             @map("landing_slug")
+  displayStartsAt DateTime            @map("display_starts_at")
+  displayEndsAt   DateTime            @map("display_ends_at")
+  countryCodes    String[]            @default([]) @map("country_codes")
+  cities          String[]            @default([]) @map("cities")
+  userCategories  UserCategory[]      @default([]) @map("user_categories")
+  priority        Int                 @default(0)
+  aspectRatio     String              @default("16:9") @map("aspect_ratio")
+  isActive        Boolean             @default(true) @map("is_active")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  event    Event?    @relation(fields: [eventId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  producer Producer? @relation(fields: [producerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([isActive, priority])
+  @@index([displayStartsAt, displayEndsAt])
+  @@map("home_banner_slides")
+}
+
+model EventListingConfig {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  configKey      String   @unique @default("default") @map("config_key")
+  dateWeight     Float    @default(0.5) @map("date_weight")
+  locationWeight Float    @default(0.3) @map("location_weight")
+  featuredWeight Float    @default(0.2) @map("featured_weight")
+  pageSize       Int      @default(20) @map("page_size")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("event_listing_config")
+}
+
+model InvitationConfig {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  configKey  String   @unique @default("default") @map("config_key")
+  expiryDays Int      @default(3) @map("expiry_days")
+  enableFreeInvitations        Boolean @default(true) @map("enable_free_invitations")
+  enableGuaranteedPass         Boolean @default(true) @map("enable_guaranteed_pass")
+  enableDiscountedInvitations  Boolean @default(true) @map("enable_discounted_invitations")
+  freeCancellationDays         Int     @default(1) @map("free_cancellation_days")
+  guaranteedCancellationDays   Int     @default(3) @map("guaranteed_cancellation_days")
+  discountedCancellationDays   Int     @default(1) @map("discounted_cancellation_days")
+  guaranteedPassReminderTemplates Json? @map("gp_reminder_templates")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("invitation_config")
 }
 
 enum TicketOfferingSection {
@@ -274,6 +368,12 @@ enum VenueTableStatus {
   premium
 }
 
+enum TableLockStatus {
+  ACTIVE
+  EXPIRED
+  CONSUMED
+}
+
 model EventTicketOffering {
   id           String                @id @default(auto()) @map("_id") @db.ObjectId
   eventId      String                @map("event_id") @db.ObjectId
@@ -286,8 +386,12 @@ model EventTicketOffering {
   badgeLabel   String?               @map("badge_label")
   displayOrder Int                   @default(0) @map("display_order")
   maxPerOrder  Int                   @default(10) @map("max_per_order")
+  stockQuantity Int?                 @map("stock_quantity")
+  soldQuantity  Int                   @default(0) @map("sold_quantity")
+  saleStartsAt  DateTime?             @map("sale_starts_at")
+  saleEndsAt    DateTime?             @map("sale_ends_at")
   mapsToTier   InvitationTier        @map("maps_to_tier")
-  mapsToType   InvitationType        @map("maps_to_type")
+  mapsToType   TicketCatalogType     @map("maps_to_type")
   isActive     Boolean               @default(true) @map("is_active")
   createdAt    DateTime              @default(now()) @map("created_at")
   updatedAt    DateTime              @updatedAt @map("updated_at")
@@ -300,13 +404,14 @@ model EventTicketOffering {
 }
 
 model EventVenueLayout {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  eventId      String   @unique @map("event_id") @db.ObjectId
-  venueName    String   @map("venue_name")
-  widthMeters  Float    @map("width_meters")
-  heightMeters Float    @map("height_meters")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  eventId          String   @unique @map("event_id") @db.ObjectId
+  venueName        String   @map("venue_name")
+  widthMeters      Float    @map("width_meters")
+  heightMeters     Float    @map("height_meters")
+  tableLockMinutes Int      @default(10) @map("table_lock_minutes")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   event Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   zones VenueZone[]
@@ -368,18 +473,20 @@ model VenueTable {
 }
 
 model TableLock {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  tableId   String   @map("table_id") @db.ObjectId
-  userId    String   @map("user_id") @db.ObjectId
-  eventId   String   @map("event_id") @db.ObjectId
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String          @id @default(auto()) @map("_id") @db.ObjectId
+  tableId   String          @map("table_id") @db.ObjectId
+  userId    String          @map("user_id") @db.ObjectId
+  eventId   String          @map("event_id") @db.ObjectId
+  status    TableLockStatus @default(ACTIVE)
+  expiresAt DateTime        @map("expires_at")
+  createdAt DateTime        @default(now()) @map("created_at")
 
   table VenueTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
   user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tableId, expiresAt])
   @@index([userId, eventId])
+  @@index([status, expiresAt])
   @@map("table_locks")
 }
 
@@ -399,7 +506,7 @@ model EventFavorite {
 
 // ─── Invitations ─────────────────────────────────────────────────────────────
 
-enum InvitationType {
+enum TicketCatalogType {
   courtesy
   free
   general
@@ -408,18 +515,56 @@ enum InvitationType {
   discounted
 }
 
-enum InvitationTier {
-  general
-  vip
+/** Section 14.7 — invitation product type stored on invitations.type */
+enum InvitationProductType {
+  free
+  guaranteed
+  discount
 }
 
+/** Section 14.7 — invitation lifecycle status stored on invitations.status */
 enum InvitationStatus {
-  pending
-  confirmed
+  sent
+  viewed
+  accepted
   rejected
   expired
   canceled
   validated
+  charged
+  failed
+}
+
+enum InvitationPreAuthStatus {
+  pre_authorized
+  released
+  captured
+  failed
+}
+
+enum InvitationReminderType {
+  seven_days  @map("7_days")
+  five_days   @map("5_days")
+  deadline
+  twenty_four_h @map("24h")
+  three_h       @map("3h")
+}
+
+enum InvitationReminderChannel {
+  whatsapp
+  push
+  email
+}
+
+enum InvitationReminderStatus {
+  pending
+  sent
+  failed
+}
+
+enum InvitationTier {
+  general
+  vip
 }
 
 enum InvitationSource {
@@ -442,47 +587,85 @@ enum TicketSlotStatus {
 }
 
 model Producer {
-  id          String       @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  logoUrl     String?      @map("logo_url")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  invitations Invitation[]
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  logoUrl       String?  @map("logo_url")
+  description   String?
+  coverageLabel String?  @map("coverage_label")
+  followerCount Int      @default(0) @map("follower_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  followers         ProducerFollow[]
+  invitations       Invitation[]
+  homeBannerSlides  HomeBannerSlide[]
+  freedSlots        FreedInvitationSlot[]
 
   @@map("producers")
 }
 
-model Invitation {
-  id                    String           @id @default(auto()) @map("_id") @db.ObjectId
-  eventId               String           @map("event_id") @db.ObjectId
-  producerId            String           @map("producer_id") @db.ObjectId
-  recipientUserId       String?          @map("recipient_user_id") @db.ObjectId
-  inviterUserId         String?          @map("inviter_user_id") @db.ObjectId
-  source                InvitationSource @default(producer)
-  recipientPhone        String?          @map("recipient_phone")
-  recipientName         String?          @map("recipient_name")
-  claimToken            String?          @map("claim_token")
-  whatsappSentAt        DateTime?        @map("whatsapp_sent_at")
-  type                  InvitationType
-  tier                  InvitationTier
-  status                InvitationStatus @default(pending)
-  assignedSlot          String?          @map("assigned_slot")
-  customMessage         String?          @map("custom_message")
-  chargeAmount          Float?           @map("charge_amount")
-  chargeCurrency        String?          @map("charge_currency")
-  requiresPaymentMethod Boolean          @default(false) @map("requires_payment_method")
-  termsAcceptedRequired Boolean          @default(false) @map("terms_accepted_required")
-  cancellationDeadline  DateTime?        @map("cancellation_deadline")
-  viewedAt              DateTime?        @map("viewed_at")
-  respondedAt           DateTime?        @map("responded_at")
-  sentAt                DateTime         @default(now()) @map("sent_at")
-  createdAt             DateTime         @default(now()) @map("created_at")
-  updatedAt             DateTime         @updatedAt @map("updated_at")
+model ProducerFollow {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @map("user_id") @db.ObjectId
+  producerId String   @map("producer_id") @db.ObjectId
+  createdAt  DateTime @default(now()) @map("created_at")
 
-  event     Event              @relation(fields: [eventId], references: [id])
-  producer  Producer           @relation(fields: [producerId], references: [id])
-  recipient User?              @relation("ReceivedInvitations", fields: [recipientUserId], references: [id], onDelete: Cascade)
-  inviter   User?              @relation("SentInvitations", fields: [inviterUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  producer Producer @relation(fields: [producerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, producerId])
+  @@index([userId])
+  @@index([producerId])
+  @@map("producer_follows")
+}
+
+model ProducerPresaleConfig {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  configKey          String   @unique @default("default") @map("config_key")
+  presaleWindowHours Int      @default(24) @map("presale_window_hours")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("producer_presale_config")
+}
+
+model Invitation {
+  id                 String                @id @default(auto()) @map("_id") @db.ObjectId
+  eventId            String                @map("event_id") @db.ObjectId
+  producerId         String                @map("producer_id") @db.ObjectId
+  recipientPhone     String                @map("recipient_phone")
+  recipientUserId    String?               @map("recipient_user_id") @db.ObjectId
+  type               InvitationProductType
+  assignedSlot       String                @map("assigned_slot")
+  entryValue         Float                 @map("entry_value")
+  discountPercentage Int?                  @map("discount_percentage")
+  amountToPay        Float                 @map("amount_to_pay")
+  cancellationDeadline DateTime            @map("cancellation_deadline")
+  status             InvitationStatus      @default(sent)
+  sentAt             DateTime              @default(now()) @map("sent_at")
+  viewedAt           DateTime?             @map("viewed_at")
+  respondedAt        DateTime?             @map("responded_at")
+  canceledAt         DateTime?             @map("canceled_at")
+  customMessage      String?               @map("custom_message")
+  // Guest-ticket flow extensions (not in 14.7 spec but required by existing features)
+  inviterUserId      String?               @map("inviter_user_id") @db.ObjectId
+  source             InvitationSource      @default(producer)
+  recipientName      String?               @map("recipient_name")
+  claimToken         String?               @map("claim_token")
+  tier               InvitationTier        @default(general)
+  chargeCurrency     String?               @map("charge_currency")
+  expiresAt          DateTime?             @map("expires_at")
+  whatsappSentAt     DateTime?             @map("whatsapp_sent_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  event     Event                @relation(fields: [eventId], references: [id])
+  producer  Producer             @relation(fields: [producerId], references: [id])
+  recipient User?                @relation("ReceivedInvitations", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  inviter   User?                @relation("SentInvitations", fields: [inviterUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   ticket    InvitationTicket?
+  auditLogs InvitationAuditLog[]
+  preAuth   InvitationPreAuth?
+  reminders InvitationReminder[]
 
   @@index([recipientUserId, status])
   @@index([recipientPhone, status])
@@ -492,13 +675,170 @@ model Invitation {
   @@map("invitations")
 }
 
+model InvitationPreAuth {
+  id                    String                  @id @default(auto()) @map("_id") @db.ObjectId
+  invitationId          String                  @unique @map("invitation_id") @db.ObjectId
+  userId                String                  @map("user_id") @db.ObjectId
+  cardId                String                  @map("card_id") @db.ObjectId
+  amount                Float
+  gateway               PaymentGateway
+  gatewayTransactionId  String                  @map("gateway_transaction_id")
+  status                InvitationPreAuthStatus @default(pre_authorized)
+  expiresAt             DateTime                @map("expires_at")
+  createdAt             DateTime                @default(now()) @map("created_at")
+  capturedAt            DateTime?               @map("captured_at")
+  releasedAt            DateTime?               @map("released_at")
+
+  invitation Invitation        @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card       UserPaymentMethod @relation(fields: [cardId], references: [id], onDelete: NoAction)
+
+  @@index([userId])
+  @@index([status, expiresAt])
+  @@map("invitation_pre_auths")
+}
+
+model InvitationReminder {
+  id           String                    @id @default(auto()) @map("_id") @db.ObjectId
+  invitationId String                    @map("invitation_id") @db.ObjectId
+  reminderType InvitationReminderType    @map("reminder_type")
+  scheduledAt  DateTime                  @map("scheduled_at")
+  sentAt       DateTime?                 @map("sent_at")
+  channel      InvitationReminderChannel @default(whatsapp)
+  status       InvitationReminderStatus  @default(pending)
+
+  invitation Invitation @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+
+  @@unique([invitationId, reminderType])
+  @@index([status, scheduledAt])
+  @@map("invitation_reminders")
+}
+
+model InvitationAuditLog {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  invitationId String?  @map("invitation_id") @db.ObjectId
+  actorUserId  String?  @map("actor_user_id") @db.ObjectId
+  actorType    String   @map("actor_type")
+  action       String
+  result       String
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  invitation Invitation? @relation(fields: [invitationId], references: [id], onDelete: SetNull)
+
+  @@index([invitationId])
+  @@index([createdAt])
+  @@map("invitation_audit_logs")
+}
+
+model FreedInvitationSlot {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  eventId      String    @map("event_id") @db.ObjectId
+  producerId   String    @map("producer_id") @db.ObjectId
+  slotLabel    String    @map("slot_label")
+  invitationId String?   @map("invitation_id") @db.ObjectId
+  releasedAt   DateTime  @default(now()) @map("released_at")
+  reinvitedAt  DateTime? @map("reinvited_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  event    Event    @relation(fields: [eventId], references: [id])
+  producer Producer @relation(fields: [producerId], references: [id])
+
+  @@index([producerId, releasedAt])
+  @@index([eventId])
+  @@map("freed_invitation_slots")
+}
+
+enum WaitlistEntryStatus {
+  waiting
+  offered
+  claimed
+  left
+  expired_removed
+}
+
+enum WaitlistOfferStatus {
+  active
+  claimed
+  expired
+  canceled
+}
+
+model WaitlistEntry {
+  id        String              @id @default(auto()) @map("_id") @db.ObjectId
+  eventId   String              @map("event_id") @db.ObjectId
+  userId    String              @map("user_id") @db.ObjectId
+  status    WaitlistEntryStatus @default(waiting)
+  joinedAt  DateTime            @default(now()) @map("joined_at")
+  leftAt    DateTime?           @map("left_at")
+  removedAt DateTime?           @map("removed_at")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+
+  event  Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offers WaitlistOffer[]
+
+  @@unique([eventId, userId])
+  @@index([eventId, status, joinedAt])
+  @@index([userId, status])
+  @@map("waitlist_entries")
+}
+
+model WaitlistOffer {
+  id              String              @id @default(auto()) @map("_id") @db.ObjectId
+  eventId         String              @map("event_id") @db.ObjectId
+  userId          String              @map("user_id") @db.ObjectId
+  waitlistEntryId String              @map("waitlist_entry_id") @db.ObjectId
+  freedSlotId     String?             @map("freed_slot_id") @db.ObjectId
+  slotLabel       String              @map("slot_label")
+  producerId      String              @map("producer_id") @db.ObjectId
+  invitationId    String?             @map("invitation_id") @db.ObjectId
+  status          WaitlistOfferStatus @default(active)
+  offeredAt       DateTime            @default(now()) @map("offered_at")
+  expiresAt       DateTime            @map("expires_at")
+  reminderSentAt  DateTime?           @map("reminder_sent_at")
+  claimedAt       DateTime?           @map("claimed_at")
+  expiredAt       DateTime?           @map("expired_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  event         Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  waitlistEntry WaitlistEntry @relation(fields: [waitlistEntryId], references: [id], onDelete: Cascade)
+
+  @@index([status, expiresAt])
+  @@index([eventId, status])
+  @@index([userId, status])
+  @@map("waitlist_offers")
+}
+
+model InvitationSettings {
+  eventId                     String   @id @map("_id") @db.ObjectId
+  allowFree                   Boolean  @default(true) @map("allow_free")
+  allowGuaranteed             Boolean  @default(true) @map("allow_guaranteed")
+  allowDiscount               Boolean  @default(true) @map("allow_discount")
+  freeCancellationDays        Int      @default(7) @map("free_cancellation_days")
+  guaranteedCancellationDays  Int      @default(3) @map("guaranteed_cancellation_days")
+  discountCancellationDays    Int      @default(2) @map("discount_cancellation_days")
+  discountPercentage          Int?     @map("discount_percentage")
+  enableWaitingList           Boolean  @default(true) @map("enable_waiting_list")
+  enableManualReinvitation    Boolean  @default(true) @map("enable_manual_reinvitation")
+  waitlistOfferHours          Int      @default(4) @map("waitlist_offer_hours")
+  courtesySlotsTotal          Int      @default(0) @map("courtesy_slots_total")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("invitation_settings")
+}
+
 model TicketOrder {
   id                String            @id @default(auto()) @map("_id") @db.ObjectId
   buyerUserId       String            @map("buyer_user_id") @db.ObjectId
   eventId           String            @map("event_id") @db.ObjectId
   quantity          Int
   tier              InvitationTier
-  type              InvitationType    @default(general)
+  type              TicketCatalogType @default(general)
   unitPrice         Float             @map("unit_price")
   subtotalAmount    Float             @default(0) @map("subtotal_amount")
   serviceFeeRate    Float             @default(0.05) @map("service_fee_rate")
@@ -559,18 +899,92 @@ model InvitationTicket {
 }
 
 model UserPaymentMethod {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId         String   @map("user_id") @db.ObjectId
-  providerToken  String          @map("provider_token")
-  gateway        PaymentGateway? @default(stripe)
-  brand          String
-  lastFour       String   @map("last_four")
-  cardholderName String   @map("cardholder_name")
-  isDefault      Boolean  @default(true) @map("is_default")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id               String          @id @default(auto()) @map("_id") @db.ObjectId
+  userId           String          @map("user_id") @db.ObjectId
+  providerToken    String          @map("provider_token")
+  gateway          PaymentGateway? @default(klap)
+  brand            String
+  lastFour         String          @map("last_four")
+  expirationMonth  Int?            @map("expiration_month")
+  expirationYear   Int?            @map("expiration_year")
+  cardholderName   String          @map("cardholder_name")
+  isDefault        Boolean         @default(true) @map("is_default")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preAuths InvitationPreAuth[]
+
+  @@index([userId])
+  @@map("user_cards")
+}
+
+model UserNotificationSettings {
+  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String   @unique @map("user_id") @db.ObjectId
+  masterEnabled       Boolean  @default(true) @map("master_enabled")
+  emailEnabled        Boolean  @default(true) @map("email_enabled")
+  pushEnabled         Boolean  @default(true) @map("push_enabled")
+  whatsappEnabled     Boolean  @default(true) @map("whatsapp_enabled")
+  purchasesChannels   Json     @default("{\"email\":true,\"push\":true,\"whatsapp\":false}") @map("purchases_channels")
+  remindersChannels   Json     @default("{\"email\":true,\"push\":true,\"whatsapp\":true}") @map("reminders_channels")
+  promotionsChannels  Json     @default("{\"email\":true,\"push\":true,\"whatsapp\":false}") @map("promotions_channels")
+  socialChannels      Json     @default("{\"email\":false,\"push\":true,\"whatsapp\":true}") @map("social_channels")
+  nightSilenceEnabled Boolean  @default(false) @map("night_silence_enabled")
+  nightSilenceFromHour Int?    @map("night_silence_from_hour")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@map("user_payment_methods")
+  @@map("user_notification_settings")
+}
+
+// ─── Support (Section 9.8) ───────────────────────────────────────────────────
+
+model SupportConfig {
+  id                           String   @id @default(auto()) @map("_id") @db.ObjectId
+  configKey                    String   @unique @default("default") @map("config_key")
+  whatsappNumber               String   @map("whatsapp_number")
+  supportEmail                 String   @map("support_email")
+  whatsappTemplateEs           String   @map("whatsapp_template_es")
+  whatsappTemplateEn           String   @map("whatsapp_template_en")
+  emailSubjectEs               String   @map("email_subject_es")
+  emailSubjectEn               String   @map("email_subject_en")
+  emailBodyTemplateEs          String   @map("email_body_template_es")
+  emailBodyTemplateEn          String   @map("email_body_template_en")
+  businessHours                Json     @map("business_hours")
+  outsideHoursAutoReplyEs      String   @map("outside_hours_auto_reply_es")
+  outsideHoursAutoReplyEn      String   @map("outside_hours_auto_reply_en")
+  outsideHoursReplyWithinHours Int      @default(24) @map("outside_hours_reply_within_hours")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+
+  @@map("support_config")
+}
+
+model SupportFaqItem {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  faqKey       String   @unique @map("faq_key")
+  category     String
+  questionEs   String   @map("question_es")
+  questionEn   String   @map("question_en")
+  answerEs     String   @map("answer_es")
+  answerEn     String   @map("answer_en")
+  keywords     String[] @default([])
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([category, isActive, displayOrder])
+  @@map("support_faq_items")
+}
+
+model SupportFaqFeedback {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  faqKey    String   @map("faq_key")
+  helpful   Boolean
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([faqKey, createdAt])
+  @@map("support_faq_feedback")
 }

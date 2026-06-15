@@ -13,3 +13,4 @@ invitationsRouter.get('/:id/ticket', invitationsController.ticket);
 invitationsRouter.get('/:id', invitationsController.getById);
 invitationsRouter.post('/:id/confirm', invitationsController.confirm);
 invitationsRouter.post('/:id/reject', invitationsController.reject);
+invitationsRouter.post('/:id/cancel', invitationsController.cancel);

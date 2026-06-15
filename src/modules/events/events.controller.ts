@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { eventsService } from './events.service.js';
+import { vipVenueService } from '../vip-venue/vip-venue.service.js';
 import { successResponse } from '../../common/utils/crypto.js';
 import { featuredEventsQuerySchema, listEventsQuerySchema } from './events.validators.js';
 
@@ -40,6 +41,15 @@ export const eventsController = {
   getById: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await eventsService.getEventById(String(req.params.id), userId(req));
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  getAvailability: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await vipVenueService.getEventAvailability(String(req.params.id));
       res.json(successResponse(data));
     } catch (err) {
       next(err);

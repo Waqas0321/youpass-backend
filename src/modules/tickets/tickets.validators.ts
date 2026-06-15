@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const listPastTicketsQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
-  event_type: z.enum(['parties', 'concerts', 'bar']).optional(),
+  event_type: z.string().trim().min(2).max(50).optional(),
   status: z.enum(['attended', 'not_attended', 'cancelled']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),

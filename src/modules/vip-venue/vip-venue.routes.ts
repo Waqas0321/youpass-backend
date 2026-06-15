@@ -9,6 +9,7 @@ vipVenueRouter.get('/ticket-types', vipVenueController.listTicketTypes);
 vipVenueRouter.get('/venue-layout', optionalAuthenticate, vipVenueController.getVenueLayout);
 vipVenueRouter.get('/tables/availability/realtime', optionalAuthenticate, vipVenueController.getRealtimeAvailability);
 vipVenueRouter.get('/zones/:zoneId/tables', optionalAuthenticate, vipVenueController.listZoneTables);
+vipVenueRouter.get('/tables/:tableId/lock/status', optionalAuthenticate, vipVenueController.getTableLockStatus);
 vipVenueRouter.get('/tables/:tableId', optionalAuthenticate, vipVenueController.getTable);
 vipVenueRouter.post('/tables/:tableId/lock', authenticate, vipVenueController.lockTable);
 vipVenueRouter.delete('/tables/:tableId/lock', authenticate, vipVenueController.releaseTableLock);

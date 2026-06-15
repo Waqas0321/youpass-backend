@@ -1,0 +1,10 @@
+{
+  "watch": ["src", ".env"],
+  "ext": "ts,json",
+  "ignore": ["dist/**", "node_modules/**", "prisma/**"],
+  "exec": "tsx src/server.ts",
+  "signal": "SIGTERM",
+  "delay": 400,
+  "verbose": true,
+  "restartable": "rs"
+}

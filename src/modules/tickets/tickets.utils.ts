@@ -21,13 +21,40 @@ export function isEventPast(startsAt: Date, now = new Date()): boolean {
 export function resolveTicketStatus(
   invitation: Invitation,
   event: Event,
-  ticket: InvitationTicket,
+  ticket: InvitationTicket | null,
   now = new Date(),
+  orderStatus?: string | null,
 ): TicketDisplayStatus {
+  if (invitation.status === 'canceled') {
+    return orderStatus === 'refunded' ? 'refunded' : 'cancelled';
+  }
   if (event.status === 'cancelled') return 'cancelled';
+  if (!ticket) return 'cancelled';
   if (ticket.validatedAt || invitation.status === 'validated') return 'validated';
   if (isEventPast(event.startsAt, now)) return 'expired';
   return 'active';
+}
+
+export function eventStillActiveCutoff(now = new Date()): Date {
+  return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+}
+
+export function defaultCancellationDeadline(eventStartsAt: Date): Date {
+  return new Date(eventStartsAt.getTime() - 2 * 24 * 60 * 60 * 1000);
+}
+
+export function canCancelTicket(
+  invitation: Invitation,
+  event: Event,
+  now = new Date(),
+): boolean {
+  if (invitation.status !== 'accepted') return false;
+  if (event.status === 'cancelled') return false;
+  if (now >= event.startsAt) return false;
+
+  const deadline =
+    invitation.cancellationDeadline ?? defaultCancellationDeadline(event.startsAt);
+  return now <= deadline;
 }
 
 export function isUpcomingTicket(row: InvitationTicketRow, now = new Date()): boolean {
@@ -38,9 +65,25 @@ export function isUpcomingTicket(row: InvitationTicketRow, now = new Date()): bo
   return !isEventPast(row.event.startsAt, now);
 }
 
-export function isPastTicket(row: InvitationTicketRow, now = new Date()): boolean {
-  const status = resolveTicketStatus(row, row.event, row.ticket, now);
-  if (status === 'cancelled' || status === 'expired' || status === 'validated') return true;
+export function isPastTicket(
+  row: InvitationTicketRow,
+  now = new Date(),
+  orderStatus?: string | null,
+): boolean {
+  if (row.status === 'canceled') {
+    return true;
+  }
+
+  const status = resolveTicketStatus(row, row.event, row.ticket, now, orderStatus);
+  if (
+    status === 'cancelled' ||
+    status === 'refunded' ||
+    status === 'expired' ||
+    status === 'validated'
+  ) {
+    return true;
+  }
+
   return isEventPast(row.event.startsAt, now);
 }
 
@@ -62,8 +105,7 @@ export function formatEntryTime(date: Date, countryCode: string): string {
 }
 
 export function ticketTypeLabel(tier: Invitation['tier'], type: Invitation['type']): string {
-  if (type === 'vip_table') return 'VIP Table';
-  if (tier === 'vip') return 'VIP';
+  if (tier === 'vip' || type === 'guaranteed') return 'VIP';
   return 'General';
 }
 

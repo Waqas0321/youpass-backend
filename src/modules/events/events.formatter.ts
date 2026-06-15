@@ -35,15 +35,31 @@ export function formatEventDateShort(date: Date, timezone = 'UTC', languageCode 
   });
 }
 
-/** Home list card: "Monday Sept 8 2025" */
-export function formatEventDateListCard(date: Date, timezone = 'UTC', languageCode = 'es'): string {
+/** Event detail: "Saturday 15 May · 22:00" */
+export function formatEventDetailSchedule(date: Date, timezone = 'UTC', languageCode = 'es'): string {
   const weekday = formatInTimezone(date, timezone, languageCode, { weekday: 'long' });
-  const monthDayYear = formatInTimezone(date, timezone, languageCode, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+  const day = formatInTimezone(date, timezone, languageCode, { day: 'numeric' });
+  const month = formatInTimezone(date, timezone, languageCode, { month: 'long' });
+  const time = formatInTimezone(date, timezone, languageCode, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
   });
-  return `${weekday} ${monthDayYear}`.replace(/,/g, '');
+  return `${weekday} ${day} ${month} · ${time}`;
+}
+
+/** Home list card: "Wednesday, 11 March 2026" */
+export function formatEventListingDate(date: Date, timezone = 'UTC', languageCode = 'es'): string {
+  const weekday = formatInTimezone(date, timezone, languageCode, { weekday: 'long' });
+  const day = formatInTimezone(date, timezone, languageCode, { day: 'numeric' });
+  const month = formatInTimezone(date, timezone, languageCode, { month: 'long' });
+  const year = formatInTimezone(date, timezone, languageCode, { year: 'numeric' });
+  return `${weekday}, ${day} ${month} ${year}`;
+}
+
+/** @deprecated Use formatEventListingDate */
+export function formatEventDateListCard(date: Date, timezone = 'UTC', languageCode = 'es'): string {
+  return formatEventListingDate(date, timezone, languageCode);
 }
 
 function formatLocationDisplay(venueName: string, city: string): string {
@@ -91,6 +107,8 @@ export function formatEvent(
     city: event.city,
     country_code: event.countryCode,
     location_display: formatLocationDisplay(event.venueName, event.city),
+    latitude: event.latitude,
+    longitude: event.longitude,
     image_url: event.imageUrl,
     event_type: formatEventType(event.eventType),
     is_featured: event.isFeatured,
@@ -102,11 +120,38 @@ export function formatEvent(
   };
 }
 
-/** Compact card for YouHome "Upcoming events" list */
-export function formatUpcomingEventCard(
+export function formatEventProducerBlock(
+  producer: {
+    id: string;
+    name: string;
+    logoUrl: string | null;
+    followerCount: number;
+    description?: string | null;
+    coverageLabel?: string | null;
+  },
+  isFollowing: boolean,
+) {
+  return {
+    id: producer.id,
+    name: producer.name,
+    logo_url: producer.logoUrl,
+    description: producer.description ?? null,
+    coverage_label: producer.coverageLabel ?? null,
+    follower_count: producer.followerCount,
+    is_following: isFollowing,
+  };
+}
+
+/** Minimal listing card payload for home/search event lists (Section 8.6). */
+export function formatEventListingCard(
   event: EventWithType,
-  isFavorite = false,
-  options?: { timezone?: string; languageCode?: string },
+  options?: {
+    timezone?: string;
+    languageCode?: string;
+    distance_km?: number | null;
+    travel_time_minutes?: number | null;
+    waitlist?: Record<string, unknown> | null;
+  },
 ) {
   const timezone = options?.timezone ?? getTimezone(event.countryCode);
   const languageCode = options?.languageCode ?? 'es';
@@ -115,13 +160,32 @@ export function formatUpcomingEventCard(
     id: event.id,
     title: event.title,
     image_url: event.imageUrl,
-    date_display: formatEventDateListCard(event.startsAt, timezone, languageCode),
+    date_display: formatEventListingDate(event.startsAt, timezone, languageCode),
     location_display: formatLocationDisplay(event.venueName, event.city),
     starts_at: event.startsAt.toISOString(),
-    country_code: event.countryCode,
-    event_type: formatEventType(event.eventType),
-    is_favorite: isFavorite,
+    ...(options?.distance_km != null
+      ? {
+          distance_km: options.distance_km,
+          travel_time_minutes: options.travel_time_minutes ?? null,
+        }
+      : {}),
+    ...(options?.waitlist ? { waitlist: options.waitlist } : {}),
   };
+}
+
+/** Compact card for YouHome "Upcoming events" list */
+export function formatUpcomingEventCard(
+  event: EventWithType,
+  _isFavorite = false,
+  options?: {
+    timezone?: string;
+    languageCode?: string;
+    distance_km?: number | null;
+    travel_time_minutes?: number | null;
+    waitlist?: Record<string, unknown> | null;
+  },
+) {
+  return formatEventListingCard(event, options);
 }
 
 /** Hero carousel slide for main banner */

@@ -1,7 +1,16 @@
 import type { Event, EventType, Prisma } from '@prisma/client';
+import { invitationSettingsService } from '../invitations/invitation-settings.service.js';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
-import { formatEvent, formatEventType, formatUpcomingEventCard, formatBannerSlide } from './events.formatter.js';
+import { formatEvent, formatEventDetailSchedule, formatEventType, formatEventProducerBlock, formatUpcomingEventCard } from './events.formatter.js';
+import {
+  buildListingProximityMeta,
+  eventListingConfigService,
+  paginateSortedEvents,
+  sortEventsForListing,
+} from '../../common/services/event-listing-sort.service.js';
+import type { GeoPoint } from '../../common/utils/geo-distance.js';
+import { homeBannersService } from '../config/home-banners.service.js';
 import type {
   CreateEventInput,
   FeaturedEventsQuery,
@@ -9,7 +18,10 @@ import type {
   UpdateEventInput,
 } from './events.validators.js';
 import { vipVenueService } from '../vip-venue/vip-venue.service.js';
+import { producerFollowNotificationsService } from '../producers/producer-follow-notifications.service.js';
+import { waitlistService } from '../waitlist/waitlist.service.js';
 import { getCountrySync, getEventCurrencyMeta } from '../../common/services/country-config.service.js';
+import { resolveDateRange } from '../../common/utils/event-date-range.js';
 
 const eventInclude = { eventType: true } as const;
 
@@ -44,24 +56,61 @@ function buildPublishedWhere(
     event_type?: string;
     featured?: boolean;
     search?: string;
+    city?: string;
+    zone?: string;
+    date_preset?: 'today' | 'this_week' | 'this_weekend' | 'this_month' | 'custom';
+    date_from?: string;
+    date_to?: string;
+    venue_kind?: string;
+    min_price?: number;
+    max_price?: number;
+    free_only?: boolean;
     exclude_ids?: string[];
   },
   eventTypeId?: string,
 ): Prisma.EventWhereInput {
   const searchTerm = query.search?.trim();
+  const dateRange = resolveDateRange({
+    date_preset: query.date_preset === 'custom' ? undefined : query.date_preset,
+    date_from: query.date_from,
+    date_to: query.date_to,
+  });
+
+  const startsAtFilter: Prisma.DateTimeFilter = { gte: new Date() };
+  if (dateRange?.gte) startsAtFilter.gte = dateRange.gte;
+  if (dateRange?.lte) startsAtFilter.lte = dateRange.lte;
+
+  const priceFilters: Prisma.EventWhereInput[] = [];
+  if (query.free_only) {
+    priceFilters.push({ OR: [{ minPrice: 0 }, { minPrice: null }] });
+  } else {
+    if (query.min_price !== undefined) {
+      priceFilters.push({ OR: [{ minPrice: { gte: query.min_price } }, { minPrice: null }] });
+    }
+    if (query.max_price !== undefined) {
+      priceFilters.push({ OR: [{ minPrice: { lte: query.max_price } }, { minPrice: null }] });
+    }
+  }
+
   return {
     status: 'published',
-    startsAt: { gte: new Date() },
+    startsAt: startsAtFilter,
     ...(query.country_code ? { countryCode: query.country_code.toUpperCase() } : {}),
     ...(eventTypeId ? { eventTypeId } : {}),
     ...(query.featured === true ? { isFeatured: true } : {}),
     ...(query.exclude_ids?.length ? { id: { notIn: query.exclude_ids } } : {}),
+    ...(query.city ? { city: { equals: query.city, mode: 'insensitive' } } : {}),
+    ...(query.zone ? { zone: { equals: query.zone, mode: 'insensitive' } } : {}),
+    ...(query.venue_kind ? { venueKind: query.venue_kind as Event['venueKind'] } : {}),
+    ...(priceFilters.length ? { AND: priceFilters } : {}),
     ...(searchTerm
       ? {
           OR: [
             { title: { contains: searchTerm, mode: 'insensitive' } },
             { venueName: { contains: searchTerm, mode: 'insensitive' } },
             { city: { contains: searchTerm, mode: 'insensitive' } },
+            { zone: { contains: searchTerm, mode: 'insensitive' } },
+            { producerName: { contains: searchTerm, mode: 'insensitive' } },
           ],
         }
       : {}),
@@ -131,18 +180,19 @@ export const eventsService = {
     });
 
     const formatted = mapEvents(events, favoriteIds);
-    const slides = events.map((event) => {
-      const country = getCountrySync(event.countryCode);
-      return formatBannerSlide(event, favoriteIds.has(event.id), {
-        timezone: country?.timezone,
-        languageCode: country?.languageCode,
-      });
+    const bannerResult = await homeBannersService.resolveCarousel({
+      countryCode: query.country_code,
+      city: query.city,
+      userId,
+      eventType: query.event_type,
     });
 
     return {
-      carousel: slides.slice(0, 5),
+      carousel: bannerResult.slides,
       events: formatted,
-      slides,
+      slides: bannerResult.slides,
+      main_banner: bannerResult.main_banner,
+      carousel_config: bannerResult.carousel_config,
     };
   },
 
@@ -153,37 +203,58 @@ export const eventsService = {
       page?: number;
       limit?: number;
       exclude_ids?: string[];
+      near_me?: boolean;
+      lat?: number;
+      lng?: number;
     },
     userId?: string,
   ) {
+    const weights = await eventListingConfigService.getWeights();
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = query.limit ?? weights.pageSize;
     const eventType = query.event_type ? await resolveEventType(query.event_type) : undefined;
-    const favoriteIds = await getFavoriteIds(userId);
+    const userLocation: GeoPoint | null =
+      query.lat != null && query.lng != null
+        ? { latitude: query.lat, longitude: query.lng }
+        : null;
+
     const where = buildPublishedWhere(
       { country_code: query.country_code, event_type: query.event_type, exclude_ids: query.exclude_ids },
       eventType?.id,
     );
-    const skip = (page - 1) * limit;
 
-    const [events, total] = await Promise.all([
-      prisma.event.findMany({
-        where,
-        include: eventInclude,
-        orderBy: { startsAt: 'asc' },
-        skip,
-        take: limit,
-      }),
-      prisma.event.count({ where }),
-    ]);
+    const events = await prisma.event.findMany({
+      where,
+      include: eventInclude,
+    });
 
-    const items = events.map((event) => {
+    const sorted = sortEventsForListing(events, weights, {
+      userLocation,
+      nearMe: query.near_me === true && userLocation != null,
+    });
+    const pageItems = paginateSortedEvents(sorted, page, limit);
+
+    const waitlistMeta = userId
+      ? await waitlistService.getWaitlistListingMetaForUser(
+          pageItems.map((event) => event.id),
+          userId,
+        )
+      : null;
+
+    const items = pageItems.map((event) => {
       const country = getCountrySync(event.countryCode);
-      return formatUpcomingEventCard(event, favoriteIds.has(event.id), {
+      const proximity = buildListingProximityMeta(event, userLocation);
+      return formatUpcomingEventCard(event, false, {
         timezone: country?.timezone,
         languageCode: country?.languageCode,
+        distance_km: proximity.distance_km,
+        travel_time_minutes: proximity.travel_time_minutes,
+        waitlist: waitlistMeta?.get(event.id) ?? null,
       });
     });
+
+    const total = sorted.length;
+    const totalPages = Math.ceil(total / limit) || 1;
 
     return {
       items,
@@ -191,8 +262,10 @@ export const eventsService = {
         page,
         limit,
         total,
-        total_pages: Math.ceil(total / limit) || 1,
+        total_pages: totalPages,
+        has_more: page < totalPages,
       },
+      sort_weights: eventListingConfigService.formatWeights(weights),
     };
   },
 
@@ -216,12 +289,49 @@ export const eventsService = {
     }));
 
     const country = getCountrySync(event.countryCode);
+    const waitlist =
+      userId != null
+        ? await waitlistService.formatUserWaitlistStatus(id, userId)
+        : {
+            enabled: false,
+            joinable: await waitlistService.isCourtesySlotsFull(id),
+            status: null,
+            position: null,
+            offer_id: null,
+            offer_expires_at: null,
+            can_join: false,
+            can_leave: false,
+            offer_hours: 4,
+          };
+
+    let producer = null;
+    if (event.producerName?.trim()) {
+      producer = await prisma.producer.findFirst({
+        where: { name: event.producerName.trim() },
+      });
+    }
+
+    const isFollowingProducer =
+      producer && userId
+        ? !!(await prisma.producerFollow.findUnique({
+            where: { userId_producerId: { userId, producerId: producer.id } },
+          }))
+        : false;
+
+    const timezone = country?.timezone;
+    const languageCode = country?.languageCode;
+
     return {
       ...formatEvent(event, favoriteIds.has(event.id), {
-        timezone: country?.timezone,
-        languageCode: country?.languageCode,
+        timezone,
+        languageCode,
       }),
+      schedule_display: formatEventDetailSchedule(event.startsAt, timezone, languageCode),
+      producer: producer
+        ? formatEventProducerBlock(producer, isFollowingProducer)
+        : null,
       purchase,
+      waitlist,
     };
   },
 
@@ -249,9 +359,14 @@ export const eventsService = {
         isFeatured: input.is_featured ?? false,
         featuredOrder: input.featured_order ?? 0,
         status: input.status ?? 'draft',
+        producerName: input.producer_name?.trim(),
+        latitude: input.latitude,
+        longitude: input.longitude,
       },
       include: eventInclude,
     });
+
+    await invitationSettingsService.ensureInvitationSettings(event.id);
 
     return formatEvent(event, false);
   },
@@ -292,9 +407,24 @@ export const eventsService = {
         ...(input.is_featured !== undefined ? { isFeatured: input.is_featured } : {}),
         ...(input.featured_order !== undefined ? { featuredOrder: input.featured_order } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.producer_name !== undefined
+          ? { producerName: input.producer_name?.trim() || null }
+          : {}),
+        ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
+        ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
       },
       include: eventInclude,
     });
+
+    if (
+      input.status === 'published' &&
+      existing.status !== 'published'
+    ) {
+      await producerFollowNotificationsService.notifyFollowersOfPublishedEvent(
+        event.id,
+        event.producerName,
+      );
+    }
 
     return formatEvent(event, false);
   },

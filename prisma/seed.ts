@@ -64,10 +64,159 @@ const LATAM_COUNTRIES: CountrySeed[] = [
 const EVENT_TYPES = [
   { slug: 'parties', name: 'Parties', icon: '🎉', displayOrder: 1 },
   { slug: 'concerts', name: 'Concerts', icon: '🎵', displayOrder: 2 },
-  { slug: 'bar', name: 'Bar', icon: '🍸', displayOrder: 3 },
+  { slug: 'humour', name: 'Humour', icon: '😂', displayOrder: 3 },
+  { slug: 'theatre', name: 'Theatre', icon: '🎭', displayOrder: 4 },
+  { slug: 'sports', name: 'Sports', icon: '⚽', displayOrder: 5 },
+  { slug: 'cinema', name: 'Cinema', icon: '🎬', displayOrder: 6 },
+  { slug: 'food', name: 'Food', icon: '🍽️', displayOrder: 7 },
+  { slug: 'culture-art', name: 'Culture/Art', icon: '🎨', displayOrder: 8 },
+  { slug: 'family', name: 'Family', icon: '👨‍👩‍👧', displayOrder: 9 },
+  { slug: 'conferences', name: 'Conferences', icon: '🎤', displayOrder: 10 },
+  { slug: 'bar', name: 'Bar', icon: '🍸', displayOrder: 99, isActive: false },
 ];
 
-const SAMPLE_EVENTS = [
+type VenueKind =
+  | 'stadium'
+  | 'club_nightclub'
+  | 'theatre'
+  | 'open_air'
+  | 'events_centre'
+  | 'bar_restaurant'
+  | 'other';
+
+type SampleEventSeed = {
+  title: string;
+  description: string;
+  startsAt: Date;
+  venueName: string;
+  city: string;
+  countryCode: string;
+  imageUrl: string;
+  eventTypeSlug: string;
+  isFeatured: boolean;
+  featuredOrder: number;
+  zone?: string;
+  producerName?: string;
+  venueKind?: VenueKind;
+  minPrice?: number;
+};
+
+function deriveEventMeta(event: SampleEventSeed) {
+  const venueLower = event.venueName.toLowerCase();
+  let venueKind: VenueKind = event.venueKind ?? 'other';
+
+  if (!event.venueKind) {
+    if (event.eventTypeSlug === 'sports') venueKind = 'stadium';
+    else if (event.eventTypeSlug === 'parties') venueKind = 'club_nightclub';
+    else if (event.eventTypeSlug === 'theatre') venueKind = 'theatre';
+    else if (event.eventTypeSlug === 'bar') venueKind = 'bar_restaurant';
+    else if (venueLower.includes('park') || venueLower.includes('parque') || venueLower.includes('costanera')) {
+      venueKind = 'open_air';
+    } else if (venueLower.includes('teatro') || venueLower.includes('theatre')) {
+      venueKind = 'theatre';
+    } else if (venueLower.includes('bar') || venueLower.includes('club')) {
+      venueKind = venueLower.includes('club') ? 'club_nightclub' : 'bar_restaurant';
+    }
+  }
+
+  const currencyByCountry: Record<string, string> = {
+    CL: 'CLP',
+    CO: 'COP',
+    MX: 'MXN',
+    PE: 'PEN',
+    AR: 'ARS',
+  };
+
+  const defaultPrices: Record<string, number> = {
+    CL: 25000,
+    CO: 80000,
+    MX: 500,
+    PE: 60,
+    AR: 15000,
+  };
+
+  const zone =
+    event.zone ??
+    (event.city === 'Las Condes'
+      ? 'Las Condes'
+      : event.city === 'Santiago'
+        ? 'Providencia'
+        : null);
+
+  const coords = resolveCityCoordinates(event.city, event.countryCode);
+
+  return {
+    zone,
+    producerName: event.producerName ?? 'YouPass Events',
+    venueKind,
+    minPrice: event.minPrice ?? (event.eventTypeSlug === 'bar' ? 0 : defaultPrices[event.countryCode] ?? 0),
+    currencyCode: currencyByCountry[event.countryCode] ?? 'USD',
+    latitude: coords?.latitude,
+    longitude: coords?.longitude,
+  };
+}
+
+const CITY_COORDINATES: Record<string, { latitude: number; longitude: number }> = {
+  Santiago: { latitude: -33.4489, longitude: -70.6693 },
+  'Las Condes': { latitude: -33.4172, longitude: -70.6042 },
+  'Viña del Mar': { latitude: -33.0246, longitude: -71.5518 },
+  Concepción: { latitude: -36.8201, longitude: -73.0444 },
+  Bogotá: { latitude: 4.711, longitude: -74.0721 },
+  'Ciudad de México': { latitude: 19.4326, longitude: -99.1332 },
+  Lima: { latitude: -12.0464, longitude: -77.0428 },
+  Cartagena: { latitude: 10.391, longitude: -75.4794 },
+  Antofagasta: { latitude: -23.6509, longitude: -70.3975 },
+  Valparaíso: { latitude: -33.0472, longitude: -71.6127 },
+};
+
+function resolveCityCoordinates(city: string, countryCode: string) {
+  const direct = CITY_COORDINATES[city];
+  if (direct) {
+    return direct;
+  }
+
+  if (countryCode === 'CL') {
+    return CITY_COORDINATES.Santiago;
+  }
+
+  return undefined;
+}
+
+async function seedInvitationConfig() {
+  await prisma.invitationConfig.upsert({
+    where: { configKey: 'default' },
+    create: {
+      configKey: 'default',
+      expiryDays: 3,
+    },
+    update: {
+      expiryDays: 3,
+    },
+  });
+  console.log('Seeded invitation expiry config');
+}
+
+async function seedEventListingConfig() {
+  await prisma.eventListingConfig.upsert({
+    where: { configKey: 'default' },
+    create: {
+      configKey: 'default',
+      dateWeight: 0.5,
+      locationWeight: 0.3,
+      featuredWeight: 0.2,
+      pageSize: 20,
+    },
+    update: {
+      dateWeight: 0.5,
+      locationWeight: 0.3,
+      featuredWeight: 0.2,
+      pageSize: 20,
+    },
+  });
+  console.log('Seeded event listing sort config');
+}
+
+const SAMPLE_EVENTS: SampleEventSeed[] = [
   {
     title: 'URBAN NIGHT LIVE',
     description: 'Live urban music night in the heart of Santiago.',
@@ -266,15 +415,19 @@ async function main() {
   const typeBySlug = new Map<string, string>();
 
   for (const type of EVENT_TYPES) {
+    const { isActive, ...typeData } = type as (typeof EVENT_TYPES)[number] & { isActive?: boolean };
     const record = await prisma.eventType.upsert({
       where: { slug: type.slug },
       update: {
         name: type.name,
         icon: type.icon,
         displayOrder: type.displayOrder,
-        isActive: true,
+        ...(isActive === undefined ? {} : { isActive }),
       },
-      create: type,
+      create: {
+        ...typeData,
+        isActive: isActive ?? true,
+      },
     });
     typeBySlug.set(type.slug, record.id);
   }
@@ -289,6 +442,7 @@ async function main() {
     });
 
     if (existing) {
+      const meta = deriveEventMeta(event);
       await prisma.event.update({
         where: { id: existing.id },
         data: {
@@ -301,9 +455,11 @@ async function main() {
           isFeatured: event.isFeatured,
           featuredOrder: event.featuredOrder,
           status: 'published',
+          ...meta,
         },
       });
     } else {
+      const meta = deriveEventMeta(event);
       await prisma.event.create({
         data: {
           title: event.title,
@@ -317,14 +473,166 @@ async function main() {
           isFeatured: event.isFeatured,
           featuredOrder: event.featuredOrder,
           status: 'published',
+          ...meta,
         },
       });
     }
   }
   console.log(`Seeded ${SAMPLE_EVENTS.length} sample events`);
 
+  await seedEventListingConfig();
+  await seedInvitationConfig();
+  await seedHomeBannerSlides();
+
   const { seedInvitations } = await import('./seed-invitations.js');
   await seedInvitations(prisma);
+
+  const { seedWaitlist } = await import('./seed-waitlist.js');
+  await seedWaitlist(prisma);
+}
+
+async function seedHomeBannerSlides() {
+  const displayStartsAt = new Date('2025-01-01T00:00:00.000Z');
+  const displayEndsAt = new Date('2030-12-31T23:59:59.000Z');
+
+  const bannerSeeds = [
+    {
+      title: 'URBAN NIGHT LIVE',
+      subtitle: 'Premium urban music experience',
+      eventTitle: 'URBAN NIGHT LIVE',
+      priority: 1,
+      aspectRatio: '16:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'Caribe Night',
+      subtitle: 'Feel the Caribbean rhythm',
+      eventTitle: 'Caribe Night',
+      priority: 2,
+      aspectRatio: '16:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'Sunset Sessions',
+      subtitle: 'Open-air DJ sets at golden hour',
+      eventTitle: 'Sunset Sessions',
+      priority: 3,
+      aspectRatio: '16:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'Reggaeton Beach',
+      subtitle: 'Summer reggaeton on the coast',
+      eventTitle: 'Reggaeton Beach',
+      priority: 4,
+      aspectRatio: '16:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'Electronic Garden',
+      subtitle: 'Electronic music under the stars',
+      eventTitle: 'Electronic Garden',
+      priority: 5,
+      aspectRatio: '21:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'Indie Vibes Live',
+      subtitle: 'Independent bands from across Chile',
+      eventTitle: 'Indie Vibes Live',
+      priority: 6,
+      aspectRatio: '16:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'Latin Cocktail Night',
+      subtitle: 'Craft cocktails and Latin beats',
+      eventTitle: 'Latin Cocktail Night',
+      priority: 7,
+      aspectRatio: '16:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'Techno Warehouse',
+      subtitle: 'Underground techno until sunrise',
+      eventTitle: 'Techno Warehouse',
+      priority: 8,
+      aspectRatio: '16:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'VIP Lounge Experience',
+      subtitle: 'Exclusive lounge with live DJ',
+      eventTitle: 'VIP Lounge Experience',
+      priority: 9,
+      aspectRatio: '16:9',
+      countryCodes: ['CL'],
+    },
+    {
+      title: 'Rock al Parque',
+      subtitle: 'The biggest rock festival in Bogotá',
+      eventTitle: 'Rock al Parque',
+      priority: 10,
+      aspectRatio: '21:9',
+      countryCodes: ['CO'],
+    },
+    {
+      title: 'Neon Disco CDMX',
+      subtitle: 'Retro-futuristic disco experience',
+      eventTitle: 'Neon Disco CDMX',
+      priority: 11,
+      aspectRatio: '16:9',
+      countryCodes: ['MX'],
+    },
+  ];
+
+  let seeded = 0;
+
+  for (const seed of bannerSeeds) {
+    const event = await prisma.event.findFirst({
+      where: { title: seed.eventTitle, status: 'published' },
+    });
+
+    if (!event?.imageUrl) {
+      continue;
+    }
+
+    const existing = await prisma.homeBannerSlide.findFirst({
+      where: {
+        title: seed.title,
+        eventId: event.id,
+      },
+    });
+
+    const data = {
+      title: seed.title,
+      subtitle: seed.subtitle,
+      imageUrl: event.imageUrl,
+      tapActionType: 'event_detail' as const,
+      eventId: event.id,
+      displayStartsAt,
+      displayEndsAt,
+      countryCodes: seed.countryCodes,
+      cities: [] as string[],
+      userCategories: [],
+      priority: seed.priority,
+      aspectRatio: seed.aspectRatio,
+      isActive: true,
+    };
+
+    if (existing) {
+      await prisma.homeBannerSlide.update({
+        where: { id: existing.id },
+        data,
+      });
+    } else {
+      await prisma.homeBannerSlide.create({ data });
+    }
+
+    seeded += 1;
+  }
+
+  console.log(`Seeded ${seeded} home banner slides`);
 }
 
 main()

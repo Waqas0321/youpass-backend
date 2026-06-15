@@ -1,3 +1,4 @@
+import type { TableLock } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import {
@@ -6,11 +7,48 @@ import {
 import { DEFAULT_SERVICE_FEE_RATE, TABLE_LOCK_MINUTES } from './vip-venue.constants.js';
 import {
   formatTableLock,
+  formatTableLockStatus,
   formatTicketOffering,
   formatVenueLayout,
   formatVenueTable,
+  resolveOfferingAvailability,
   resolveTableApiStatus,
 } from './vip-venue.formatter.js';
+
+function isActiveLock(lock: TableLock, now = new Date()) {
+  const statusOk = lock.status == null || lock.status === 'ACTIVE';
+  return statusOk && lock.expiresAt > now;
+}
+
+const activeLockWhere = (now = new Date()) => ({
+  expiresAt: { gt: now },
+});
+
+async function getTableLockMinutes(eventId: string) {
+  const layout = await prisma.eventVenueLayout.findUnique({
+    where: { eventId },
+    select: { tableLockMinutes: true },
+  });
+  return layout?.tableLockMinutes ?? TABLE_LOCK_MINUTES;
+}
+
+export async function processExpiredTableLocks(now = new Date()): Promise<number> {
+  const expired = await prisma.tableLock.findMany({
+    where: { expiresAt: { lte: now } },
+    select: { id: true },
+  });
+
+  if (expired.length === 0) {
+    return 0;
+  }
+
+  const result = await prisma.tableLock.updateMany({
+    where: { id: { in: expired.map((lock) => lock.id) } },
+    data: { status: 'EXPIRED' },
+  });
+
+  return result.count;
+}
 
 async function getPublishedEvent(eventId: string) {
   const event = await prisma.event.findUnique({ where: { id: eventId } });
@@ -30,7 +68,7 @@ async function getLayoutForEvent(eventId: string) {
           tables: {
             orderBy: { number: 'asc' },
             include: {
-              locks: { where: { expiresAt: { gt: new Date() } } },
+              locks: { where: activeLockWhere() },
             },
           },
         },
@@ -77,15 +115,47 @@ export const vipVenueService = {
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
 
     const offerings = await prisma.eventTicketOffering.findMany({
-      where: { eventId, isActive: true },
+      where: { eventId },
       orderBy: { displayOrder: 'asc' },
     });
+
+    const now = new Date();
+    const formatted = offerings
+      .filter((offering) => {
+        const availability = resolveOfferingAvailability(offering, now);
+        if (availability.saleNotStarted) {
+          return false;
+        }
+        return (
+          offering.isActive ||
+          offering.soldQuantity > 0 ||
+          offering.stockQuantity != null
+        );
+      })
+      .map((o) => formatTicketOffering(o, currencyMeta.currency, now));
+
+    // Auto-deactivate offerings whose stock is fully sold.
+    await Promise.all(
+      offerings
+        .filter(
+          (offering) =>
+            offering.isActive &&
+            offering.stockQuantity != null &&
+            offering.soldQuantity >= offering.stockQuantity,
+        )
+        .map((offering) =>
+          prisma.eventTicketOffering.update({
+            where: { id: offering.id },
+            data: { isActive: false },
+          }),
+        ),
+    );
 
     return {
       event_id: eventId,
       ...currencyMeta,
       service_fee_rate: DEFAULT_SERVICE_FEE_RATE,
-      offerings: offerings.map((o) => formatTicketOffering(o, currencyMeta.currency)),
+      offerings: formatted,
     };
   },
 
@@ -134,10 +204,14 @@ export const vipVenueService = {
       throw new AppError(409, 'TABLE_NOT_AVAILABLE', 'This table is already sold');
     }
 
-    const activeLocks = table.locks.filter((l) => l.expiresAt > now);
+    const activeLocks = table.locks.filter((l) => isActiveLock(l, now));
     const otherLock = activeLocks.find((l) => l.userId !== userId);
     if (otherLock) {
-      throw new AppError(409, 'TABLE_LOCKED', 'This table is temporarily held by another user');
+      throw new AppError(
+        409,
+        'TABLE_LOCKED',
+        'This table is being reserved. Try again in a few minutes or choose another table.',
+      );
     }
 
     const myLock = activeLocks.find((l) => l.userId === userId);
@@ -148,11 +222,13 @@ export const vipVenueService = {
       };
     }
 
-    const expiresAt = new Date(now.getTime() + TABLE_LOCK_MINUTES * 60 * 1000);
+    const lockMinutes = await getTableLockMinutes(eventId);
+    const expiresAt = new Date(now.getTime() + lockMinutes * 60 * 1000);
 
     const lock = await prisma.$transaction(async (tx) => {
-      await tx.tableLock.deleteMany({
+      await tx.tableLock.updateMany({
         where: { tableId: table.id, expiresAt: { lte: now } },
+        data: { status: 'EXPIRED' },
       });
 
       return tx.tableLock.create({
@@ -161,6 +237,7 @@ export const vipVenueService = {
           userId,
           eventId,
           expiresAt,
+          status: 'ACTIVE',
         },
       });
     });
@@ -177,11 +254,33 @@ export const vipVenueService = {
     await getPublishedEvent(eventId);
     const { table } = await resolveTable(eventId, tableRef);
 
-    await prisma.tableLock.deleteMany({
-      where: { tableId: table.id, userId, eventId },
+    await prisma.tableLock.updateMany({
+      where: { tableId: table.id, userId, eventId, ...activeLockWhere() },
+      data: { status: 'EXPIRED' },
     });
 
     return { released: true, table_id: table.externalId };
+  },
+
+  async getTableLockStatus(
+    eventId: string,
+    tableRef: string,
+    userId?: string,
+  ) {
+    await getPublishedEvent(eventId);
+    const { table } = await resolveTable(eventId, tableRef);
+    const now = new Date();
+
+    const lock = await prisma.tableLock.findFirst({
+      where: {
+        tableId: table.id,
+        eventId,
+        ...activeLockWhere(now),
+      },
+      orderBy: { expiresAt: 'desc' },
+    });
+
+    return formatTableLockStatus(lock, userId, now);
   },
 
   async getRealtimeAvailability(eventId: string, userId?: string) {
@@ -221,15 +320,16 @@ export const vipVenueService = {
         tableId,
         userId,
         eventId,
-        expiresAt: { gt: now },
+        ...activeLockWhere(now),
       },
     });
 
     if (!lock) {
+      const lockMinutes = await getTableLockMinutes(eventId);
       throw new AppError(
         409,
         'TABLE_LOCK_REQUIRED',
-        'Reserve the table first. Your 10-minute hold may have expired.',
+        `Reserve the table first. Your ${lockMinutes}-minute hold may have expired.`,
       );
     }
 
@@ -242,7 +342,10 @@ export const vipVenueService = {
         where: { id: tableId },
         data: { status: 'sold' },
       });
-      await tx.tableLock.deleteMany({ where: { tableId } });
+      await tx.tableLock.updateMany({
+        where: { tableId, ...activeLockWhere() },
+        data: { status: 'CONSUMED' },
+      });
     });
   },
 
@@ -250,13 +353,17 @@ export const vipVenueService = {
     const offering = await prisma.eventTicketOffering.findFirst({
       where: {
         eventId,
-        isActive: true,
         OR: [{ id: offeringRef }, { slug: offeringRef }],
       },
     });
 
     if (!offering) {
       throw new AppError(404, 'TICKET_OFFERING_NOT_FOUND', 'Ticket offering not found');
+    }
+
+    const { is_selectable } = resolveOfferingAvailability(offering);
+    if (!is_selectable) {
+      throw new AppError(409, 'TICKET_OFFERING_SOLD_OUT', 'This ticket type is sold out');
     }
 
     return offering;
@@ -276,6 +383,47 @@ export const vipVenueService = {
       ...currencyMeta,
       has_ticket_offerings: offeringsCount > 0,
       has_venue_layout: Boolean(layout),
+      can_purchase: offeringsCount > 0 || Boolean(layout),
+    };
+  },
+
+  async getEventAvailability(eventId: string) {
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event || event.status === 'cancelled') {
+      throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
+    }
+
+    const offerings = await prisma.eventTicketOffering.findMany({
+      where: { eventId, isActive: true },
+    });
+
+    const has_general_tickets = offerings.some((offering) => offering.section === 'general');
+    const hasVipOfferings = offerings.some((offering) => offering.section === 'vip');
+
+    const layout = await prisma.eventVenueLayout.findUnique({
+      where: { eventId },
+      include: {
+        zones: {
+          where: { isSelectable: true },
+          include: { tables: true },
+        },
+      },
+    });
+
+    const hasAvailableVipTables =
+      layout?.zones.some((zone) =>
+        zone.tables.some((table) => table.status === 'available'),
+      ) ?? false;
+
+    const has_vip_tickets = hasVipOfferings || hasAvailableVipTables;
+    const sellsTickets = offerings.length > 0 || Boolean(layout);
+    const is_sold_out = sellsTickets && !has_general_tickets && !has_vip_tickets;
+
+    return {
+      event_id: eventId,
+      is_sold_out,
+      has_general_tickets,
+      has_vip_tickets,
     };
   },
 };

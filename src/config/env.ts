@@ -54,6 +54,7 @@ const envSchema = z.object({
   CLOUDINARY_PROFILE_FOLDER: z.string().default('youpass/profile-photos'),
   PROFILE_PHOTO_MAX_BYTES: z.coerce.number().default(5 * 1024 * 1024),
   APP_CLAIM_BASE_URL: z.string().default('https://youpass.app/claim'),
+  APP_DEEP_LINK_BASE: z.string().default('youpass://invitations'),
   TWILIO_WHATSAPP_INVITATION_CONTENT_SID: z.string().optional().default('').transform((v) => v.trim()),
   /** Optional — reuse OTP WhatsApp template for invitations when invite template not set */
   TWILIO_WHATSAPP_OTP_CONTENT_SID: z.string().optional().default('').transform((v) => v.trim()),
@@ -68,8 +69,14 @@ const envSchema = z.object({
   KLAP_API_KEY: z.string().optional().default('').transform((v) => v.trim()),
   KLAP_WEBHOOK_SECRET: z.string().optional().default('').transform((v) => v.trim()),
   KLAP_CHECKOUT_BASE_URL: z.string().optional().default('').transform((v) => v.trim()),
+  KLAP_TOKENIZATION_BASE_URL: z.string().optional().default('').transform((v) => v.trim()),
   STRIPE_SECRET_KEY: z.string().optional().default('').transform((v) => v.trim()),
   STRIPE_WEBHOOK_SECRET: z.string().optional().default('').transform((v) => v.trim()),
+  ADMIN_API_KEY: z.string().optional().default('').transform((v) => v.trim()),
+  SUPPORT_WHATSAPP_NUMBER: z.string().optional().default('+56912345678').transform((v) => v.trim()),
+  SUPPORT_EMAIL: z.string().optional().default('soporte@youpass.app').transform((v) => v.trim()),
+  ACCOUNT_DELETION_COOLING_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+  DELETE_ACCOUNT_OTP_BLOCK_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(60),
 });
 
 export type Env = z.infer<typeof envSchema>;
