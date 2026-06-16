@@ -1,8 +1,30 @@
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { formatEvent } from './events.formatter.js';
+import { producersService } from '../producers/producers.service.js';
 
 const eventInclude = { eventType: true } as const;
+
+async function autoFollowProducerForEvent(
+  userId: string,
+  producerName: string | null | undefined,
+) {
+  const name = producerName?.trim();
+  if (!name) {
+    return;
+  }
+
+  const producer = await prisma.producer.findFirst({
+    where: { name: { equals: name, mode: 'insensitive' } },
+    select: { id: true },
+  });
+
+  if (!producer) {
+    return;
+  }
+
+  await producersService.followProducer(userId, producer.id);
+}
 
 export const favoritesService = {
   async listFavoriteEvents(userId: string) {
@@ -35,6 +57,7 @@ export const favoritesService = {
 
     if (!existing) {
       await prisma.eventFavorite.create({ data: { userId, eventId } });
+      await autoFollowProducerForEvent(userId, event.producerName);
     }
 
     return formatEvent(event, true);

@@ -36,6 +36,12 @@ function buildInvitationBody(params: GuestInvitationMessageParams): string {
   );
 }
 
+export function buildGuestAssignWhatsAppUrl(params: GuestInvitationMessageParams): string {
+  const digits = params.guestPhone.replace(/\D/g, '');
+  const body = buildInvitationBody(params);
+  return `https://wa.me/${digits}?text=${encodeURIComponent(body)}`;
+}
+
 function invitationContentSid(): string | undefined {
   const sid = resolveInvitationContentSid();
   return sid || undefined;

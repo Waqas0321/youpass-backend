@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   adminApi,
   AdminEvent,
@@ -421,6 +422,9 @@ export function EventsPage() {
                 </option>
               ))}
             </select>
+            <span className="field__hint">
+              Add or edit promoters in <Link to="/producers">Producers</Link>.
+            </span>
           </label>
 
           <label className="field">
@@ -584,6 +588,9 @@ export function EventsPage() {
                   </option>
                 ))}
               </select>
+              <span className="field__hint">
+                Add or edit promoters in <Link to="/producers">Producers</Link>.
+              </span>
             </label>
 
             <label className="field">

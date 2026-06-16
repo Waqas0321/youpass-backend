@@ -79,6 +79,13 @@ export async function apiRequest<T>(
 export const adminApi = {
   overview: () => apiRequest<Record<string, number>>('/admin/overview'),
   producers: () => apiRequest<{ producers: Producer[] }>('/admin/producers'),
+  createProducer: (body: ProducerInput) =>
+    apiRequest<Producer>('/admin/producers', { method: 'POST', body: JSON.stringify(body) }),
+  updateProducer: (producerId: string, body: Partial<ProducerInput>) =>
+    apiRequest<Producer>(`/admin/producers/${producerId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   users: () => apiRequest<{ users: AdminUser[] }>('/admin/users'),
   events: () => apiRequest<{ events: AdminEvent[] }>('/admin/events'),
   createEvent: (body: AdminEventInput) =>
@@ -225,7 +232,19 @@ export type Producer = {
   id: string;
   name: string;
   logo_url: string | null;
+  type_label?: string | null;
+  description?: string | null;
+  coverage_label?: string | null;
   follower_count: number;
+  created_at?: string;
+};
+
+export type ProducerInput = {
+  name: string;
+  logo_url?: string | null;
+  type_label?: string | null;
+  description?: string | null;
+  coverage_label?: string | null;
 };
 
 export type AdminUser = {

@@ -6,6 +6,7 @@ export const ticketOrdersRouter = Router();
 
 ticketOrdersRouter.use(authenticate);
 
+ticketOrdersRouter.get('/guest-lookup', ticketOrdersController.lookupAssignGuests);
 ticketOrdersRouter.get('/:orderId/assignments', ticketOrdersController.listAssignments);
 ticketOrdersRouter.post('/:orderId/slots/:slotId/assign', ticketOrdersController.assignSlot);
 ticketOrdersRouter.delete('/:orderId/slots/:slotId/assign', ticketOrdersController.cancelAssignment);

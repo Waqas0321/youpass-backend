@@ -183,14 +183,17 @@ async function getTicketRowForUser(userId: string, ticketId: string): Promise<In
 export const ticketsService = {
   async listUpcoming(userId: string, query: ListUpcomingTicketsQuery) {
     const favoriteIds = await getFavoriteIds(userId);
-    const assignMap = await ticketOrdersService.getAssignabilityByEvent(userId);
     const now = new Date();
     const upcoming = await fetchUpcomingRows(userId, now);
+    const assignMap = await ticketOrdersService.getAssignabilityByInvitationIds(
+      userId,
+      upcoming.map((row) => row.id),
+    );
     const { items, meta } = paginate(upcoming, query.page, query.limit);
 
     return {
       tickets: items.map((row) => {
-        const assign = assignMap.get(row.eventId);
+        const assign = assignMap.get(row.id);
         const assignMeta = assign
           ? { order_id: assign.orderId, available_count: assign.available }
           : null;
@@ -245,8 +248,8 @@ export const ticketsService = {
   async getTicketDetail(userId: string, ticketId: string) {
     const row = await getTicketRowForUser(userId, ticketId);
     const favoriteIds = await getFavoriteIds(userId);
-    const assignMap = await ticketOrdersService.getAssignabilityByEvent(userId);
-    const assign = assignMap.get(row.eventId);
+    const assignMap = await ticketOrdersService.getAssignabilityByInvitationIds(userId, [row.id]);
+    const assign = assignMap.get(row.id);
     const assignMeta = assign
       ? { order_id: assign.orderId, available_count: assign.available }
       : null;

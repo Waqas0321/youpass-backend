@@ -80,3 +80,14 @@ export function IconSpark({ className }: IconProps) {
     </svg>
   );
 }
+
+export function IconUsers({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6" strokeLinecap="round" />
+      <path d="M16 8.5a3 3 0 1 1 0 6" strokeLinecap="round" />
+      <path d="M21 20c0-2.6-2-4.8-4.5-5.5" strokeLinecap="round" />
+    </svg>
+  );
+}

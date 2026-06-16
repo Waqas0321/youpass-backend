@@ -629,6 +629,7 @@ model Producer {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
   name          String
   logoUrl       String?  @map("logo_url")
+  typeLabel     String?  @map("type_label")
   description   String?
   coverageLabel String?  @map("coverage_label")
   followerCount Int      @default(0) @map("follower_count")

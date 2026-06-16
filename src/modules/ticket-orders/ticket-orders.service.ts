@@ -3,11 +3,10 @@ import type { Prisma, TicketSlot, TicketOrder, Event, User, Invitation } from '@
 import { env } from '../../config/env.js';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
-import { parseAndValidatePhone } from '../../common/utils/phone.js';
+import { parseAndValidatePhone, formatPhoneDisplay } from '../../common/utils/phone.js';
 import {
   buildClaimUrl,
-  invitationDeliveryMeta,
-  invitationDeliveryService,
+  buildGuestAssignWhatsAppUrl,
 } from '../messaging/invitation-delivery.service.js';
 import {
   eventDayStart,
@@ -18,7 +17,6 @@ import { getTimezone, getEventCurrencyMeta } from '../../common/services/country
 import { invitationConfigService } from '../../common/services/invitation-config.service.js';
 import type { AssignTicketSlotInput, CheckoutInput } from './ticket-orders.validators.js';
 import { vipVenueService } from '../vip-venue/vip-venue.service.js';
-import { producersService } from '../producers/producers.service.js';
 import { DEFAULT_SERVICE_FEE_RATE } from '../vip-venue/vip-venue.constants.js';
 import { getActiveCountry } from '../../common/services/country-config.service.js';
 import { defaultCancellationDeadline } from '../tickets/tickets.utils.js';
@@ -33,8 +31,10 @@ import {
   normalizeStatusAfterStockChange,
 } from '../ticket-offerings/ticket-offering.types.js';
 
+type SlotInvitationMeta = Pick<Invitation, 'id' | 'status' | 'whatsappSentAt'>;
+
 type SlotWithInvitation = TicketSlot & {
-  invitation: (Invitation & { ticket: { id: string } | null }) | null;
+  invitation: SlotInvitationMeta | null;
 };
 
 type OrderWithRelations = TicketOrder & {
@@ -80,13 +80,33 @@ async function getSystemProducerId(tx: DbClient = prisma): Promise<string> {
 
 async function attachInvitations(slots: TicketSlot[]): Promise<SlotWithInvitation[]> {
   const invitationIds = slots.map((s) => s.invitationId).filter((id): id is string => id != null);
-  const invitations = invitationIds.length
-    ? await prisma.invitation.findMany({
-        where: { id: { in: invitationIds } },
-        include: { ticket: true },
-      })
-    : [];
-  const byId = new Map(invitations.map((inv) => [inv.id, inv]));
+  const byId = new Map<string, SlotInvitationMeta>();
+
+  if (invitationIds.length > 0) {
+    const raw = (await prisma.$runCommandRaw({
+      find: 'Invitation',
+      filter: { _id: { $in: invitationIds.map((id) => ({ $oid: id })) } },
+      projection: { status: 1, whatsapp_sent_at: 1 },
+    })) as {
+      cursor?: {
+        firstBatch?: Array<{
+          _id?: { $oid?: string };
+          status?: Invitation['status'];
+          whatsapp_sent_at?: Date | string | null;
+        }>;
+      };
+    };
+
+    for (const doc of raw.cursor?.firstBatch ?? []) {
+      const id = doc._id?.$oid;
+      if (!id) continue;
+      byId.set(id, {
+        id,
+        status: doc.status ?? 'sent',
+        whatsappSentAt: doc.whatsapp_sent_at ? new Date(doc.whatsapp_sent_at) : null,
+      });
+    }
+  }
 
   return slots.map((slot) => ({
     ...slot,
@@ -103,6 +123,16 @@ async function resolveOrderIdForBuyer(buyerUserId: string, refId: string): Promi
     select: { id: true },
   });
   if (direct) return direct.id;
+
+  const ownerSlot = await prisma.ticketSlot.findFirst({
+    where: {
+      invitationId: refId,
+      status: 'owner',
+      order: { buyerUserId, status: 'paid' },
+    },
+    select: { orderId: true },
+  });
+  if (ownerSlot) return ownerSlot.orderId;
 
   const invitation = await prisma.invitation.findFirst({
     where: {
@@ -160,6 +190,24 @@ function formatSlotStatus(slot: SlotWithInvitation): string {
     if (slot.invitation?.status === 'rejected') return 'available';
   }
   return 'available';
+}
+
+function formatGuestLookupUser(user: {
+  id: string;
+  fullName: string;
+  phone: string;
+  countryCode: string;
+  profilePhotoUrl: string | null;
+}) {
+  return {
+    user_id: user.id,
+    full_name: user.fullName,
+    phone: user.phone,
+    phone_display: formatPhoneDisplay(user.phone, user.countryCode),
+    country_code: user.countryCode,
+    profile_photo_url: user.profilePhotoUrl,
+    is_registered: true,
+  };
 }
 
 function formatAssignmentSlot(slot: SlotWithInvitation) {
@@ -240,8 +288,6 @@ export const ticketOrdersService = {
     if (!event || event.status !== 'published') {
       throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
     }
-
-    await producersService.assertFollowerPresaleAccess(buyerUserId, eventId);
 
     if (input.payment_method_id) {
       const method = await prisma.userPaymentMethod.findFirst({
@@ -645,6 +691,64 @@ export const ticketOrdersService = {
     };
   },
 
+  async lookupAssignGuests(buyerUserId: string, query: string) {
+    const buyer = await prisma.user.findUniqueOrThrow({ where: { id: buyerUserId } });
+    const normalized = query.trim();
+    const digits = normalized.replace(/\D/g, '');
+    const guestSelect = {
+      id: true,
+      fullName: true,
+      phone: true,
+      countryCode: true,
+      profilePhotoUrl: true,
+    } as const;
+
+    if (digits.length >= 6) {
+      try {
+        const { e164 } = await parseAndValidatePhone(normalized, buyer.countryCode);
+        const exactMatch = await prisma.user.findFirst({
+          where: {
+            phone: e164,
+            accountStatus: 'active',
+            id: { not: buyerUserId },
+          },
+          select: guestSelect,
+        });
+        if (exactMatch) {
+          return { results: [formatGuestLookupUser(exactMatch)] };
+        }
+      } catch {
+        // Fall through to partial phone search while the user is still typing.
+      }
+
+      const phoneMatches = await prisma.user.findMany({
+        where: {
+          phone: { contains: digits },
+          accountStatus: 'active',
+          id: { not: buyerUserId },
+        },
+        take: 10,
+        orderBy: { fullName: 'asc' },
+        select: guestSelect,
+      });
+
+      return { results: phoneMatches.map(formatGuestLookupUser) };
+    }
+
+    const nameMatches = await prisma.user.findMany({
+      where: {
+        fullName: { contains: normalized, mode: 'insensitive' },
+        accountStatus: 'active',
+        id: { not: buyerUserId },
+      },
+      take: 10,
+      orderBy: { fullName: 'asc' },
+      select: guestSelect,
+    });
+
+    return { results: nameMatches.map(formatGuestLookupUser) };
+  },
+
   async listAssignments(buyerUserId: string, orderRef: string) {
     const order = await getOrderForBuyer(orderRef, buyerUserId);
     const slots = order.slots.map(formatAssignmentSlot);
@@ -655,6 +759,7 @@ export const ticketOrdersService = {
       order_id: order.id,
       event_id: order.eventId,
       event_title: order.event.title,
+      tier: order.tier,
       quantity: order.quantity,
       available_count: availableCount,
       pending_count: pendingCount,
@@ -684,8 +789,11 @@ export const ticketOrdersService = {
       throw new AppError(409, 'TICKET_SLOT_NOT_AVAILABLE', 'This ticket slot is not available');
     }
 
-    const { e164, countryCode } = await parseAndValidatePhone(input.guest_phone, input.country_code);
     const buyer = await prisma.user.findUniqueOrThrow({ where: { id: buyerUserId } });
+    const { e164, countryCode } = await parseAndValidatePhone(
+      input.guest_phone,
+      input.country_code?.toUpperCase() ?? buyer.countryCode,
+    );
 
     if (e164 === buyer.phone) {
       throw new AppError(422, 'CANNOT_ASSIGN_TO_SELF', 'Assign tickets to guests, not yourself');
@@ -735,42 +843,14 @@ export const ticketOrdersService = {
     });
 
     const claimUrl = buildClaimUrl(claimToken);
-
-    let deliveryResult;
-    try {
-      deliveryResult = await invitationDeliveryService.sendGuestInvitation({
-        guestPhone: e164,
-        guestName: input.guest_name.trim(),
-        inviterName: buyer.fullName,
-        eventTitle: order.event.title,
-        claimUrl,
-      });
-
-      await prisma.invitation.update({
-        where: { id: invitation.id },
-        data: { whatsappSentAt: new Date() },
-      });
-    } catch (err) {
-      await prisma.$transaction(async (tx) => {
-        await tx.ticketSlot.update({
-          where: { id: slot.id },
-          data: {
-            status: 'available',
-            guestName: null,
-            guestPhone: null,
-            guestCountryCode: null,
-            invitationId: null,
-          },
-        });
-        await tx.invitation.delete({ where: { id: invitation.id } });
-      });
-      throw new AppError(
-        502,
-        'WHATSAPP_SEND_FAILED',
-        'Could not send the invitation via WhatsApp. Please try again.',
-        { reason: err instanceof Error ? err.message : 'unknown' },
-      );
-    }
+    const whatsappParams = {
+      guestPhone: e164,
+      guestName: input.guest_name.trim(),
+      inviterName: buyer.fullName,
+      eventTitle: order.event.title,
+      claimUrl,
+    };
+    const whatsappUrl = buildGuestAssignWhatsAppUrl(whatsappParams);
 
     return {
       slot: formatAssignmentSlot({
@@ -782,15 +862,15 @@ export const ticketOrdersService = {
         invitationId: invitation.id,
         invitation: {
           ...invitation,
-          whatsappSentAt: new Date(),
+          whatsappSentAt: null,
           ticket: null,
         },
       }),
       claim_url: claimUrl,
-      ...invitationDeliveryMeta(deliveryResult),
-      message: deliveryResult.delivery_mode === 'mock'
-        ? 'Invitation saved (WhatsApp mock mode — set TWILIO_MOCK=false on server for live delivery).'
-        : 'Invitation sent via WhatsApp from YouPass',
+      whatsapp_url: whatsappUrl,
+      delivery_mode: 'deep_link',
+      whatsapp_sent: false,
+      message: 'Open WhatsApp and tap Send to deliver the invitation to your guest.',
     };
   },
 
@@ -865,28 +945,13 @@ export const ticketOrdersService = {
       throw new AppError(422, 'GUEST_PHONE_MISSING', 'Guest phone number is missing for this ticket slot.');
     }
 
-    let deliveryResult;
-    try {
-      deliveryResult = await invitationDeliveryService.sendGuestInvitation({
-        guestPhone,
-        guestName: slot.guestName ?? invitation.recipientName ?? 'Invitado',
-        inviterName,
-        eventTitle: order.event.title,
-        claimUrl,
-      });
-
-      await prisma.invitation.update({
-        where: { id: invitation.id },
-        data: { whatsappSentAt: new Date() },
-      });
-    } catch (err) {
-      throw new AppError(
-        502,
-        'WHATSAPP_SEND_FAILED',
-        'Could not send the invitation via WhatsApp. Please try again.',
-        { reason: err instanceof Error ? err.message : 'unknown' },
-      );
-    }
+    const whatsappUrl = buildGuestAssignWhatsAppUrl({
+      guestPhone,
+      guestName: slot.guestName ?? invitation.recipientName ?? 'Invitado',
+      inviterName,
+      eventTitle: order.event.title,
+      claimUrl,
+    });
 
     return {
       slot: formatAssignmentSlot({
@@ -894,17 +959,15 @@ export const ticketOrdersService = {
         guestPhone,
         invitation: {
           ...invitation,
-          whatsappSentAt: new Date(),
+          whatsappSentAt: invitation.whatsappSentAt,
           ticket: null,
         },
       }),
       claim_url: claimUrl,
-      ...invitationDeliveryMeta(deliveryResult),
-      message: deliveryResult.delivery_mode === 'mock'
-        ? 'Invitation saved (WhatsApp mock mode — set TWILIO_MOCK=false on server for live delivery).'
-        : deliveryResult.delivery_via === 'sandbox'
-          ? 'Invitation resent via WhatsApp (sandbox). Guest must join Twilio sandbox if they have not already.'
-          : 'Invitation resent via WhatsApp from YouPass',
+      whatsapp_url: whatsappUrl,
+      delivery_mode: 'deep_link',
+      whatsapp_sent: false,
+      message: 'Open WhatsApp and tap Send to resend the invitation to your guest.',
     };
   },
 
@@ -920,6 +983,36 @@ export const ticketOrdersService = {
       if (available > 0) {
         map.set(order.eventId, { orderId: order.id, available });
       }
+    }
+    return map;
+  },
+
+  async getAssignabilityByInvitationIds(
+    buyerUserId: string,
+    invitationIds: string[],
+  ): Promise<Map<string, { orderId: string; available: number }>> {
+    if (invitationIds.length === 0) {
+      return new Map();
+    }
+
+    const ownerSlots = await prisma.ticketSlot.findMany({
+      where: {
+        invitationId: { in: invitationIds },
+        status: 'owner',
+        order: { buyerUserId, status: 'paid' },
+      },
+      include: {
+        order: { include: { slots: true } },
+      },
+    });
+
+    const map = new Map<string, { orderId: string; available: number }>();
+    for (const slot of ownerSlots) {
+      if (!slot.invitationId) {
+        continue;
+      }
+      const available = slot.order.slots.filter((s) => s.status === 'available').length;
+      map.set(slot.invitationId, { orderId: slot.orderId, available });
     }
     return map;
   },

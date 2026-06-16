@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { successResponse } from '../../common/utils/crypto.js';
 import { ticketOrdersService } from './ticket-orders.service.js';
-import { assignTicketSlotSchema, checkoutSchema, confirmCheckoutSchema } from './ticket-orders.validators.js';
+import { assignTicketSlotSchema, checkoutSchema, confirmCheckoutSchema, guestLookupSchema } from './ticket-orders.validators.js';
 import { verifyRecaptchaToken } from '../../common/services/recaptcha.service.js';
 
 export const ticketOrdersController = {
@@ -36,6 +36,16 @@ export const ticketOrdersController = {
         req.user!.id,
         String(req.params.orderId),
       );
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  lookupAssignGuests: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const query = guestLookupSchema.parse(req.query);
+      const data = await ticketOrdersService.lookupAssignGuests(req.user!.id, query.q);
       res.json(successResponse(data));
     } catch (err) {
       next(err);

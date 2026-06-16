@@ -7,6 +7,7 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { deriveVenueKind } from '../src/common/utils/venue-kind-filter.js';
+import { seedVenueLayoutForEvent } from './seed-venue-layout.js';
 
 const prisma = new PrismaClient();
 
@@ -350,6 +351,16 @@ async function main() {
 
     if (seed.minPrice != null) {
       await seedOfferings(event.id, seed.countryCode, seed.minPrice);
+    }
+
+    if (seed.eventTypeSlug === 'parties') {
+      await seedVenueLayoutForEvent(prisma, {
+        id: event.id,
+        title: event.title,
+        venueName: event.venueName,
+        countryCode: event.countryCode,
+        minPrice: event.minPrice,
+      });
     }
 
     console.log(`✓ ${seed.title} (${seed.city}, ${seed.countryCode})`);

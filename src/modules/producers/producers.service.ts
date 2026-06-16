@@ -126,37 +126,8 @@ export const producersService = {
     };
   },
 
-  async assertFollowerPresaleAccess(userId: string, eventId: string) {
-    const event = await prisma.event.findUnique({
-      where: { id: eventId },
-      select: { producerName: true, createdAt: true, status: true },
-    });
-    if (!event || event.status !== 'published' || !event.producerName) {
-      throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
-    }
-
-    const producer = await prisma.producer.findFirst({
-      where: { name: event.producerName },
-    });
-    if (!producer) {
-      return { allowed: true, reason: 'no_producer_mapping' };
-    }
-
-    const following = await isFollowing(userId, producer.id);
-    const presaleWindowHours = await producerPresaleConfigService.getPresaleWindowHours();
-    const publishedRecently =
-      event.createdAt.getTime() > Date.now() - presaleWindowHours * 60 * 60 * 1000;
-
-    if (publishedRecently && !following) {
-      throw new AppError(
-        403,
-        'FOLLOWERS_PRESALE_ONLY',
-        'Exclusive pre-sale for followers only',
-        { producer_id: producer.id, producer_name: producer.name },
-      );
-    }
-
-    return { allowed: true, followers_presale_active: following && publishedRecently };
+  async assertFollowerPresaleAccess(_userId: string, _eventId: string) {
+    return { allowed: true };
   },
 };
 

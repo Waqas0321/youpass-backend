@@ -26,6 +26,46 @@ import {
 } from './admin-ticket-offerings.validators.js';
 import { getTwilioWhatsAppDiagnostics, submitOtpTemplateForWhatsAppApproval } from '../messaging/twilio-diagnostics.service.js';
 import { parseAndValidatePhone } from '../../common/utils/phone.js';
+import {
+  createProducerSchema,
+  updateProducerSchema,
+} from './admin-producers.validators.js';
+
+function formatAdminProducer(producer: {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+  typeLabel: string | null;
+  description: string | null;
+  coverageLabel: string | null;
+  followerCount: number;
+  createdAt: Date;
+}) {
+  return {
+    id: producer.id,
+    name: producer.name,
+    logo_url: producer.logoUrl,
+    type_label: producer.typeLabel,
+    description: producer.description,
+    coverage_label: producer.coverageLabel,
+    follower_count: producer.followerCount,
+    created_at: producer.createdAt.toISOString(),
+  };
+}
+
+async function assertProducerNameAvailable(name: string, excludeId?: string) {
+  const existing = await prisma.producer.findFirst({
+    where: {
+      name: { equals: name.trim(), mode: 'insensitive' },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    throw new AppError(409, 'PRODUCER_NAME_EXISTS', 'A producer with this name already exists');
+  }
+}
 
 export const adminController = {
   overview: async (_req: Request, res: Response, next: NextFunction) => {
@@ -78,6 +118,9 @@ export const adminController = {
           id: true,
           name: true,
           logoUrl: true,
+          typeLabel: true,
+          description: true,
+          coverageLabel: true,
           followerCount: true,
           createdAt: true,
         },
@@ -85,15 +128,73 @@ export const adminController = {
 
       res.json(
         successResponse({
-          producers: producers.map((producer) => ({
-            id: producer.id,
-            name: producer.name,
-            logo_url: producer.logoUrl,
-            follower_count: producer.followerCount,
-            created_at: producer.createdAt.toISOString(),
-          })),
+          producers: producers.map(formatAdminProducer),
         }),
       );
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  createProducer: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = createProducerSchema.parse(req.body);
+      await assertProducerNameAvailable(body.name);
+
+      const producer = await prisma.producer.create({
+        data: {
+          name: body.name.trim(),
+          logoUrl: body.logo_url?.trim() || null,
+          typeLabel: body.type_label?.trim() || null,
+          description: body.description?.trim() || null,
+          coverageLabel: body.coverage_label?.trim() || null,
+        },
+      });
+
+      res.status(201).json(successResponse(formatAdminProducer(producer)));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  updateProducer: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const producerId = String(req.params.producerId);
+      const body = updateProducerSchema.parse(req.body);
+
+      const existing = await prisma.producer.findUnique({ where: { id: producerId } });
+      if (!existing) {
+        throw new AppError(404, 'PRODUCER_NOT_FOUND', 'Producer not found');
+      }
+
+      if (body.name !== undefined) {
+        await assertProducerNameAvailable(body.name, producerId);
+      }
+
+      const nextName = body.name?.trim() ?? existing.name;
+      const producer = await prisma.producer.update({
+        where: { id: producerId },
+        data: {
+          ...(body.name !== undefined ? { name: nextName } : {}),
+          ...(body.logo_url !== undefined ? { logoUrl: body.logo_url?.trim() || null } : {}),
+          ...(body.type_label !== undefined ? { typeLabel: body.type_label?.trim() || null } : {}),
+          ...(body.description !== undefined
+            ? { description: body.description?.trim() || null }
+            : {}),
+          ...(body.coverage_label !== undefined
+            ? { coverageLabel: body.coverage_label?.trim() || null }
+            : {}),
+        },
+      });
+
+      if (body.name !== undefined && nextName !== existing.name) {
+        await prisma.event.updateMany({
+          where: { producerName: existing.name },
+          data: { producerName: nextName },
+        });
+      }
+
+      res.json(successResponse(formatAdminProducer(producer)));
     } catch (err) {
       next(err);
     }

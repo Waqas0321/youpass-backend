@@ -17,8 +17,9 @@ export function formatProducerFavorite(
     id: producer.id,
     name: producer.name,
     logo_url: producer.logoUrl,
+    type_label: producer.typeLabel ?? null,
     description: producer.description,
-    coverage_label: producer.coverageLabel ?? 'Events across Chile',
+    coverage_label: producer.coverageLabel ?? null,
     follower_count: producer.followerCount,
     is_following: options?.isFollowing ?? producer.is_following ?? true,
   };
@@ -33,10 +34,6 @@ export function formatProducerCalendarEvent(
   },
 ) {
   const timezone = getTimezone(event.countryCode);
-  const now = new Date();
-  const publishedRecently =
-    event.createdAt.getTime() > now.getTime() - options.presaleWindowHours * 60 * 60 * 1000;
-  const followersPresaleActive = options.isFollower && publishedRecently;
   const card = formatEventListingCard(event, { timezone, languageCode: 'es' });
 
   return {
@@ -50,11 +47,9 @@ export function formatProducerCalendarEvent(
     min_price: event.minPrice,
     currency_code: event.currencyCode,
     is_favorite: options.isFavorite ?? false,
-    ticket_cta: followersPresaleActive ? 'presale' : 'buy',
-    followers_presale_active: followersPresaleActive,
-    followers_presale_label: followersPresaleActive
-      ? `Exclusive pre-sale for followers`
-      : null,
+    ticket_cta: 'buy',
+    followers_presale_active: false,
+    followers_presale_label: null,
     can_purchase: true,
   };
 }

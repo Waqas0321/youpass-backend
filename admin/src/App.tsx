@@ -10,6 +10,7 @@ import { BannersPage } from './pages/BannersPage';
 import { InvitationsPage } from './pages/InvitationsPage';
 import { EventSettingsPage } from './pages/EventSettingsPage';
 import { SystemJobsPage } from './pages/SystemJobsPage';
+import { ProducersPage } from './pages/ProducersPage';
 import { WaitlistPage } from './pages/WaitlistPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="banners" element={<BannersPage />} />
         <Route path="invitations" element={<InvitationsPage />} />
         <Route path="event-settings" element={<EventSettingsPage />} />
+        <Route path="producers" element={<ProducersPage />} />
         <Route path="waitlist" element={<WaitlistPage />} />
         <Route path="system" element={<SystemJobsPage />} />
       </Route>

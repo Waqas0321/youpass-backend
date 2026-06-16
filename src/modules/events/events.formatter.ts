@@ -130,6 +130,7 @@ export function formatEventProducerBlock(
     logoUrl: string | null;
     followerCount: number;
     description?: string | null;
+    typeLabel?: string | null;
     coverageLabel?: string | null;
   },
   isFollowing: boolean,
@@ -138,6 +139,7 @@ export function formatEventProducerBlock(
     id: producer.id,
     name: producer.name,
     logo_url: producer.logoUrl,
+    type_label: producer.typeLabel ?? null,
     description: producer.description ?? null,
     coverage_label: producer.coverageLabel ?? null,
     follower_count: producer.followerCount,

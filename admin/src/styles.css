@@ -981,6 +981,125 @@ select {
   min-width: 200px;
 }
 
+.producer-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.producer-form .field--wide {
+  grid-column: 1 / -1;
+}
+
+.producer-form textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.producer-form__preview {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.producer-form__preview-label {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.producer-preview-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.producer-preview-card strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.producer-preview-card__bio {
+  margin-top: 8px;
+}
+
+.producer-form__actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.producer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.producer-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(229, 169, 6, 0.15);
+  color: var(--gold);
+  font-weight: 700;
+  border: 1px solid rgba(229, 169, 6, 0.35);
+}
+
+.producer-avatar--lg {
+  width: 56px;
+  height: 56px;
+  font-size: 1.2rem;
+}
+
+.producer-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.table-card__tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.table-card__search {
+  min-width: 220px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  font: inherit;
+}
+
+.field__hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.field__hint a {
+  color: var(--gold);
+}
+
 .form-stack {
   margin-top: 14px;
   display: grid;
@@ -1058,7 +1177,8 @@ select {
 
   .inline-form,
   .form-grid,
-  .form-grid--3 {
+  .form-grid--3,
+  .producer-form__grid {
     grid-template-columns: 1fr;
   }
 

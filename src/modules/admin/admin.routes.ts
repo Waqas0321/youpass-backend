@@ -12,6 +12,8 @@ adminRouter.get('/overview', adminController.overview);
 adminRouter.get('/twilio/whatsapp-diagnostics', adminController.twilioWhatsAppDiagnostics);
 adminRouter.post('/twilio/submit-otp-template-approval', adminController.submitTwilioOtpTemplateApproval);
 adminRouter.get('/producers', adminController.listProducers);
+adminRouter.post('/producers', adminController.createProducer);
+adminRouter.patch('/producers/:producerId', adminController.updateProducer);
 adminRouter.get('/users', adminController.listUsers);
 adminRouter.get('/events', adminController.listEvents);
 adminRouter.post('/events', adminController.createEvent);

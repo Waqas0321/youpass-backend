@@ -39,7 +39,11 @@ export const checkoutSchema = z
 export const assignTicketSlotSchema = z.object({
   guest_name: z.string().trim().min(2).max(120),
   guest_phone: z.string().trim().min(8).max(20),
-  country_code: z.string().trim().length(2),
+  country_code: z.string().trim().length(2).optional(),
+});
+
+export const guestLookupSchema = z.object({
+  q: z.string().trim().min(2).max(120),
 });
 
 export const confirmCheckoutSchema = z.object({
@@ -51,3 +55,4 @@ export const confirmCheckoutSchema = z.object({
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type ConfirmCheckoutInput = z.infer<typeof confirmCheckoutSchema>;
 export type AssignTicketSlotInput = z.infer<typeof assignTicketSlotSchema>;
+export type GuestLookupQuery = z.infer<typeof guestLookupSchema>;
