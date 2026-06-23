@@ -21,11 +21,12 @@
     "db:seed:more": "tsx prisma/seed-more-events.ts",
     "db:seed:tickets": "tsx prisma/seed-all-event-tickets.ts",
     "db:seed:venue-layout": "tsx prisma/seed-venue-layout.ts",
+    "db:seed:courtesy-drinks": "tsx scripts/seed-courtesy-drink-products.ts",
     "test:section-21": "tsx scripts/test-section-21.ts",
     "db:studio": "prisma studio",
     "admin:dev": "npm run dev --prefix admin",
     "admin:build": "npm run build --prefix admin",
-    "admin:install": "npm install --prefix admin",
+    "admin:install": "NODE_ENV=development npm install --prefix admin",
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate && npm run build && npm run admin:build"
   },

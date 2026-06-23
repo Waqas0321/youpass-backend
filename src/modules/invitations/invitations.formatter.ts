@@ -8,6 +8,7 @@ import {
 import { invitationConfigService } from '../../common/services/invitation-config.service.js';
 import {
   productKindFields,
+  isProducerFreeWithNoShowPolicy,
   requiresPaymentMethod,
   resolveInvitationProductKind,
   termsAcceptedRequired,
@@ -21,7 +22,7 @@ import {
 } from './invitation-status.utils.js';
 
 type InvitationWithRelations = Invitation & {
-  event: Event;
+  event: Event & { eventType: { slug: string; name: string } };
   producer: Producer;
   ticket: InvitationTicket | null;
   inviter?: User | null;
@@ -92,7 +93,15 @@ function pricingFields(invitation: InvitationWithRelations) {
   const currency = invitation.chargeCurrency ?? 'CLP';
   const entryValue = invitation.entryValue;
   const acceptAmount = invitation.amountToPay;
-  const noShowChargeAmount = productKind === 'guaranteed_pass' ? entryValue : null;
+  const noShowChargeAmount =
+    productKind === 'guaranteed_pass' ||
+    isProducerFreeWithNoShowPolicy({
+      type: invitation.type,
+      source: invitation.source,
+      entryValue,
+    })
+      ? entryValue
+      : null;
 
   return {
     ...productKindFields(invitation),
@@ -137,6 +146,10 @@ function baseFields(
     id: invitation.id,
     event_id: invitation.eventId,
     event_title: invitation.event.title,
+    event_type: {
+      slug: invitation.event.eventType.slug,
+      name: invitation.event.eventType.name,
+    },
     location: locationLabel(invitation.event),
     date_time_label: formatDateTimeLabel(invitation.event.startsAt, timezone),
     image_url: invitation.event.imageUrl,
@@ -147,8 +160,16 @@ function baseFields(
     lifecycle_state: lifecycle,
     status_label: statusLabel(invitation, productKind),
     deep_link: buildInvitationDeepLink(invitation.id),
-    requires_payment_method: requiresPaymentMethod(invitation.type),
-    terms_accepted_required: termsAcceptedRequired(invitation.type),
+    requires_payment_method: requiresPaymentMethod(
+      invitation.type,
+      invitation.source,
+      invitation.entryValue,
+    ),
+    terms_accepted_required: termsAcceptedRequired(
+      invitation.type,
+      invitation.source,
+      invitation.entryValue,
+    ),
     entry_code: qr.entry_code,
     qr_payload: qr.qr_payload,
     qr_status: qr.qr_status,
@@ -162,14 +183,12 @@ function baseFields(
 
 function computeFlags(
   invitation: InvitationWithRelations,
-  hasPaymentMethod: boolean,
   expiryDays: number,
 ) {
   const now = new Date();
   const qr = qrFields(invitation);
   const isPending = invitation.status === 'sent' || invitation.status === 'viewed';
   const isAccepted = invitation.status === 'accepted';
-  const needsPaymentMethod = requiresPaymentMethod(invitation.type);
   const pastDeadline = now > invitation.cancellationDeadline;
   const pastExpiry =
     isPending &&
@@ -180,8 +199,7 @@ function computeFlags(
       isPending &&
       !pastDeadline &&
       !pastExpiry &&
-      invitation.event.status === 'published' &&
-      (!needsPaymentMethod || hasPaymentMethod),
+      invitation.event.status === 'published',
     can_reject: isPending && !pastDeadline && !pastExpiry,
     can_cancel:
       isAccepted &&
@@ -200,11 +218,10 @@ export function formatInvitationListItem(
 
 export function formatInvitationDetail(
   invitation: InvitationWithRelations,
-  hasPaymentMethod: boolean,
   expiryDays: number,
 ) {
   const timezone = getTimezone(invitation.event.countryCode);
-  const flags = computeFlags(invitation, hasPaymentMethod, expiryDays);
+  const flags = computeFlags(invitation, expiryDays);
 
   return {
     ...baseFields(invitation, timezone, expiryDays),

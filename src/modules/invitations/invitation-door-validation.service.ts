@@ -1,6 +1,6 @@
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
-import { resolveInvitationProductKind } from './invitation-product-type.utils.js';
+import { requiresNoShowPreauth } from './invitation-product-type.utils.js';
 import {
   guaranteedPassNotificationService,
   resolveGuestContact,
@@ -44,10 +44,9 @@ export const invitationDoorValidationService = {
     }
 
     const now = new Date();
-    const productKind = resolveInvitationProductKind(invitation);
     let preauthReleased = false;
 
-    if (productKind === 'guaranteed_pass' && invitation.preAuth?.status === 'pre_authorized') {
+    if (requiresNoShowPreauth(invitation) && invitation.preAuth?.status === 'pre_authorized') {
       await releaseInvitationPreAuthHold(invitation.id);
       preauthReleased = true;
     }

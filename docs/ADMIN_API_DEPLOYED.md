@@ -1,8 +1,8 @@
 # YouPass — Admin Panel API Reference (Production)
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
-**Admin panel (production):** https://youpass-backend.vercel.app/admin/
+**Admin panel (production):** https://youpass-backend-two.vercel.app/admin/
 
 **Admin React source:** `admin/` folder (Vite) — built into `public/admin/` on deploy.
 
@@ -449,13 +449,13 @@ TypeScript API client: `admin/src/api/client.ts` — mirrors all endpoints above
 export ADMIN_KEY="your-vercel-admin-api-key"
 
 curl -s -H "X-Admin-Key: $ADMIN_KEY" \
-  https://youpass-backend.vercel.app/api/v1/admin/overview
+  https://youpass-backend-two.vercel.app/api/v1/admin/overview
 
 curl -s -H "X-Admin-Key: $ADMIN_KEY" \
-  https://youpass-backend.vercel.app/api/v1/admin/events
+  https://youpass-backend-two.vercel.app/api/v1/admin/events
 
 curl -s -H "X-Admin-Key: $ADMIN_KEY" \
-  https://youpass-backend.vercel.app/api/v1/admin/events/EVENT_ID/venue-layout
+  https://youpass-backend-two.vercel.app/api/v1/admin/events/EVENT_ID/venue-layout
 ```
 
 ---
@@ -486,4 +486,4 @@ See `.env.example` for full list.
 
 ---
 
-*Production — `https://youpass-backend.vercel.app/api/v1`*
+*Production — `https://youpass-backend-two.vercel.app/api/v1`*

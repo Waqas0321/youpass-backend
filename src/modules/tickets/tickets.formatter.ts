@@ -51,6 +51,9 @@ function formatStatistics(row: InvitationTicketRow, status: TicketDisplayStatus)
 type AssignMeta = {
   order_id: string;
   available_count: number;
+  pending_count?: number;
+  claimed_count?: number;
+  order_quantity?: number;
 };
 
 function baseTicketFields(
@@ -59,7 +62,7 @@ function baseTicketFields(
   status: TicketDisplayStatus,
   assignMeta?: AssignMeta | null,
 ) {
-  const typeLabel = ticketTypeLabel(row.tier, row.type);
+  const typeLabel = ticketTypeLabel(row.tier, row.type, row.entryValue);
   const qrStatus = resolveQrStatus(
     row.ticket.unlockAt,
     row.ticket.validatedAt,
@@ -75,7 +78,7 @@ function baseTicketFields(
     image_url: row.event.imageUrl,
     status,
     ticket_type_label: typeLabel,
-    ticket_count: 1,
+    ticket_count: assignMeta?.order_quantity ?? 1,
     tier: row.tier,
     type: row.type,
     origin: row.source === 'guest' && assignMeta ? ('purchase' as const) : ('invitation' as const),
@@ -83,6 +86,8 @@ function baseTicketFields(
     invitation_id: row.id,
     ticket_order_id: assignMeta?.order_id ?? null,
     assignable_count: assignMeta?.available_count ?? 0,
+    pending_assign_count: assignMeta?.pending_count ?? 0,
+    claimed_assign_count: assignMeta?.claimed_count ?? 0,
     producer: {
       id: row.producer.id,
       name: row.producer.name,
@@ -95,7 +100,12 @@ function baseTicketFields(
     is_favorite: isFavorite,
     ...productKindFields(row),
     can_view_qr: canViewQr(row),
-    can_assign_tickets: (assignMeta?.available_count ?? 0) > 0,
+    can_assign_tickets:
+      ((assignMeta?.available_count ?? 0) + (assignMeta?.pending_count ?? 0)) > 0,
+    can_view_assigned_tickets:
+      (assignMeta?.available_count ?? 0) === 0 &&
+      (assignMeta?.pending_count ?? 0) === 0 &&
+      (assignMeta?.claimed_count ?? 0) > 0,
     qr_status: qrStatus,
     entry_code: row.ticket.manualEntryId,
     starts_at: row.event.startsAt.toISOString(),

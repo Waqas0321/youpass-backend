@@ -2,11 +2,17 @@ import { Router } from 'express';
 import { requireAdminApiKey } from '../../common/middleware/admin-api-key.js';
 import { adminController } from './admin.controller.js';
 import { adminVenueLayoutController } from './admin-venue-layout.controller.js';
+import { adminEventDrinksController } from './admin-event-drinks.controller.js';
+import { adminEventDrinkOrdersController } from './admin-event-drink-orders.controller.js';
+import { adminUploadController } from './admin-upload.controller.js';
+import { uploadAdminImage } from '../../common/middleware/upload-admin-image.js';
 import { venuesController } from '../venues/venues.controller.js';
 
 export const adminRouter = Router();
 
 adminRouter.use(requireAdminApiKey);
+
+adminRouter.post('/uploads/image', uploadAdminImage, adminUploadController.uploadImage);
 
 adminRouter.get('/overview', adminController.overview);
 adminRouter.get('/twilio/whatsapp-diagnostics', adminController.twilioWhatsAppDiagnostics);
@@ -60,4 +66,56 @@ adminRouter.patch(
 adminRouter.delete(
   '/events/:eventId/venue-layout/zones/:zoneId/tables/:tableId',
   adminVenueLayoutController.deleteVenueTable,
+);
+adminRouter.get(
+  '/events/:eventId/drink-categories',
+  adminEventDrinksController.listCategories,
+);
+adminRouter.post(
+  '/events/:eventId/drink-categories',
+  adminEventDrinksController.createCategory,
+);
+adminRouter.get(
+  '/events/:eventId/drink-products',
+  adminEventDrinksController.listProducts,
+);
+adminRouter.post(
+  '/events/:eventId/drink-products',
+  adminEventDrinksController.createProduct,
+);
+adminRouter.patch(
+  '/events/:eventId/drink-products/:productId',
+  adminEventDrinksController.updateProduct,
+);
+adminRouter.post(
+  '/events/:eventId/drink-products/:productId/duplicate',
+  adminEventDrinksController.duplicateProduct,
+);
+adminRouter.delete(
+  '/events/:eventId/drink-products/:productId',
+  adminEventDrinksController.deleteProduct,
+);
+adminRouter.get(
+  '/events/:eventId/drink-orders',
+  adminEventDrinkOrdersController.list,
+);
+adminRouter.get(
+  '/events/:eventId/drink-orders/export',
+  adminEventDrinkOrdersController.exportCsv,
+);
+adminRouter.get(
+  '/events/:eventId/drink-orders/:orderId',
+  adminEventDrinkOrdersController.get,
+);
+adminRouter.post(
+  '/events/:eventId/drink-orders/:orderId/reissue-qr',
+  adminEventDrinkOrdersController.reissueQr,
+);
+adminRouter.post(
+  '/events/:eventId/drink-orders/:orderId/refund',
+  adminEventDrinkOrdersController.refund,
+);
+adminRouter.post(
+  '/events/:eventId/drink-orders/:orderId/invalidate',
+  adminEventDrinkOrdersController.invalidate,
 );

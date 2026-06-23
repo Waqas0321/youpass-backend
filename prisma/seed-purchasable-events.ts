@@ -54,6 +54,19 @@ const OFFERINGS_TEMPLATE = [
   },
 ];
 
+/** Single free general-admission wave for complimentary events. */
+const FREE_OFFERINGS_TEMPLATE = [
+  {
+    type: 'general' as const,
+    name: 'Free Entry',
+    price: 0,
+    displayOrder: 1,
+    stockTotal: 500,
+    stockRemaining: 500,
+    status: 'active' as const,
+  },
+];
+
 const ZONES = [
   {
     externalId: 'vip-1',
@@ -143,6 +156,8 @@ type PurchasableEventSeed = {
   featuredOrder?: number;
   /** Mark first wave sold out for Section 21 sold-out UI demo */
   soldOutEarlyBird?: boolean;
+  /** Only free general admission (min_price = 0, no VIP layout by default) */
+  freeTicketsOnly?: boolean;
   includeVipLayout?: boolean;
 };
 
@@ -197,6 +212,24 @@ const PURCHASABLE_EVENTS: PurchasableEventSeed[] = [
     featuredOrder: 0,
     includeVipLayout: false,
   },
+  {
+    title: 'Community Open Mic Night',
+    description:
+      'Free entry — register and get your digital ticket. Limited capacity, first come first served.',
+    startsAt: new Date('2026-08-15T19:00:00.000Z'),
+    venueName: 'Barrio Creativo',
+    city: 'Santiago',
+    countryCode: 'CL',
+    imageUrl: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800',
+    eventTypeSlug: 'concerts',
+    producerName: 'YouPass Events',
+    latitude: -33.4489,
+    longitude: -70.6693,
+    isFeatured: true,
+    featuredOrder: 1,
+    freeTicketsOnly: true,
+    includeVipLayout: false,
+  },
 ];
 
 function tablesForZone(zoneExternalId: string, count: number, capacity: number, basePrice: number) {
@@ -233,12 +266,23 @@ async function ensureProducer(name: string) {
 async function seedOfferings(
   eventId: string,
   countryCode: string,
-  options: { soldOutEarlyBird?: boolean },
+  options: { soldOutEarlyBird?: boolean; freeOnly?: boolean },
 ) {
   const country = await prisma.country.findUnique({ where: { code: countryCode } });
   const currency = country?.currencyCode ?? 'CLP';
+  const template = options.freeOnly ? FREE_OFFERINGS_TEMPLATE : OFFERINGS_TEMPLATE;
 
-  for (const offering of OFFERINGS_TEMPLATE) {
+  if (options.freeOnly) {
+    await prisma.eventTicketOffering.updateMany({
+      where: {
+        eventId,
+        type: { notIn: template.map((offering) => offering.type) },
+      },
+      data: { status: 'paused' },
+    });
+  }
+
+  for (const offering of template) {
     const isSoldOutWave = options.soldOutEarlyBird && offering.type === 'early_bird';
     const stockTotal = offering.stockTotal ?? null;
     const stockRemaining =
@@ -340,7 +384,7 @@ async function upsertPurchasableEvent(seed: PurchasableEventSeed) {
     isFeatured: seed.isFeatured ?? false,
     featuredOrder: seed.featuredOrder ?? 0,
     venueKind: 'club_nightclub' as const,
-    minPrice: 10000,
+    minPrice: seed.freeTicketsOnly ? 0 : 10000,
     currencyCode: 'CLP',
   };
 
@@ -350,6 +394,7 @@ async function upsertPurchasableEvent(seed: PurchasableEventSeed) {
 
   await seedOfferings(event.id, seed.countryCode, {
     soldOutEarlyBird: seed.soldOutEarlyBird,
+    freeOnly: seed.freeTicketsOnly,
   });
 
   if (seed.includeVipLayout !== false) {
@@ -362,7 +407,8 @@ async function upsertPurchasableEvent(seed: PurchasableEventSeed) {
   console.log(
     `✓ ${seed.title} (${event.id}) — ${offeringCount} ticket types` +
       `${layout ? ', VIP floor plan' : ''}` +
-      `${seed.soldOutEarlyBird ? ', Early bird SOLD OUT' : ''}`,
+      `${seed.soldOutEarlyBird ? ', Early bird SOLD OUT' : ''}` +
+      `${seed.freeTicketsOnly ? ', FREE tickets' : ''}`,
   );
 
   return event;

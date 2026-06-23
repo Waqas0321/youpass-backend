@@ -84,6 +84,7 @@ model User {
   lockedVenueTables     VenueTable[] @relation("VenueTableLockedBy")
   purchasedVenueTables  VenueTable[] @relation("VenueTableSoldTo")
   waitlistEntries       WaitlistEntry[]
+  drinkOrders           EventDrinkOrder[]
 
   @@index([email])
   @@index([countryCode])
@@ -283,6 +284,9 @@ model Event {
   freedSlots        FreedInvitationSlot[]
   waitlistEntries   WaitlistEntry[]
   waitlistOffers    WaitlistOffer[]
+  drinkCategories   EventDrinkCategory[]
+  drinkProducts     EventDrinkProduct[]
+  drinkOrders       EventDrinkOrder[]
 
   @@index([countryCode, status, startsAt])
   @@index([isFeatured, featuredOrder])
@@ -413,6 +417,125 @@ model EventTicketOffering {
   @@index([eventId, status])
   @@index([eventId, displayOrder])
   @@map("event_ticket_offerings")
+}
+
+enum EventDrinkProductStatus {
+  available
+  hidden
+  sold_out
+}
+
+model EventDrinkCategory {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  eventId      String   @map("event_id") @db.ObjectId
+  slug         String
+  name         String
+  icon         String?
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  event    Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  products EventDrinkProduct[]
+
+  @@unique([eventId, slug])
+  @@index([eventId, displayOrder])
+  @@map("event_drink_categories")
+}
+
+model EventDrinkProduct {
+  id             String                  @id @default(auto()) @map("_id") @db.ObjectId
+  eventId        String                  @map("event_id") @db.ObjectId
+  categoryId     String?                 @map("category_id") @db.ObjectId
+  name           String
+  description    String?
+  volumeMl       Int?                    @map("volume_ml")
+  priceClp       Int                     @map("price_clp")
+  imageUrl       String?                 @map("image_url")
+  stockTotal     Int?                    @map("stock_total")
+  stockRemaining Int?                    @map("stock_remaining")
+  status         EventDrinkProductStatus @default(available)
+  displayOrder   Int                     @default(0) @map("display_order")
+  isRecommended  Boolean                 @default(false) @map("is_recommended")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+
+  event    Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  category EventDrinkCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([eventId, status])
+  @@index([eventId, displayOrder])
+  @@index([categoryId])
+  @@map("event_drink_products")
+}
+
+enum EventDrinkOrderStatus {
+  confirmed
+  redeemed
+  cancelled
+  expired
+  refunded
+}
+
+model EventDrinkOrder {
+  id            String                @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String                @map("user_id") @db.ObjectId
+  eventId       String                @map("event_id") @db.ObjectId
+  subtotalClp   Int                   @map("subtotal_clp")
+  serviceFeeClp Int                   @default(1000) @map("service_fee_clp")
+  totalClp      Int                   @map("total_clp")
+  currency      String                @default("CLP")
+  itemCount     Int                   @map("item_count")
+  status        EventDrinkOrderStatus @default(confirmed)
+  isComplimentary Boolean             @default(false) @map("is_complimentary")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event       Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  lines       EventDrinkOrderLine[]
+  redemptions EventDrinkRedemption[]
+
+  @@index([userId, createdAt])
+  @@index([eventId, createdAt])
+  @@map("event_drink_orders")
+}
+
+model EventDrinkOrderLine {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId      String   @map("order_id") @db.ObjectId
+  productId    String?  @map("product_id") @db.ObjectId
+  productName  String   @map("product_name")
+  quantity     Int
+  unitPriceClp Int      @map("unit_price_clp")
+  lineTotalClp Int      @map("line_total_clp")
+  volumeMl     Int?     @map("volume_ml")
+  imageUrl     String?  @map("image_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  order      EventDrinkOrder        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  redemption EventDrinkRedemption?
+
+  @@index([orderId])
+  @@map("event_drink_order_lines")
+}
+
+model EventDrinkRedemption {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  orderId       String    @map("order_id") @db.ObjectId
+  lineId        String?   @unique @map("line_id") @db.ObjectId
+  manualEntryId String    @unique @map("manual_entry_id")
+  qrPayload     String    @unique @map("qr_payload")
+  unlockAt      DateTime  @map("unlock_at")
+  validatedAt   DateTime? @map("validated_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  order EventDrinkOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  line  EventDrinkOrderLine? @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("event_drink_redemptions")
 }
 
 model Venue {

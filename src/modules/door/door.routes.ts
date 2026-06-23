@@ -6,6 +6,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { validate } from '../../common/middleware/validate.js';
 import { successResponse } from '../../common/utils/crypto.js';
 import { invitationDoorValidationService } from '../invitations/invitation-door-validation.service.js';
+import { eventDrinkRedemptionService } from '../event-drinks/event-drink-redemption.service.js';
 
 const validateQrSchema = z.object({
   qr_payload: z.string().min(8),
@@ -27,6 +28,22 @@ doorRouter.post(
     try {
       assertDoorValidatorAuth(req);
       const data = await invitationDoorValidationService.validateQrPayload(
+        req.body.qr_payload,
+      );
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+doorRouter.post(
+  '/bar/validate',
+  validate(validateQrSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      assertDoorValidatorAuth(req);
+      const data = await eventDrinkRedemptionService.validateQrPayload(
         req.body.qr_payload,
       );
       res.json(successResponse(data));

@@ -46,7 +46,7 @@ import type {
 } from './producer-invitations.validators.js';
 
 const invitationInclude = {
-  event: true,
+  event: { include: { eventType: true } },
   producer: true,
   ticket: true,
   recipient: true,

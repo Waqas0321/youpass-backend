@@ -155,38 +155,6 @@ function buildPublishedWhere(
   };
 }
 
-async function findPublishedEventsForListing(
-  query: {
-    country_code?: string;
-    event_type?: string;
-    exclude_ids?: string[];
-  },
-  eventTypeId?: string,
-): Promise<EventWithType[]> {
-  const baseQuery = {
-    country_code: query.country_code,
-    event_type: query.event_type,
-  };
-
-  const withExclusions = buildPublishedWhere(
-    { ...baseQuery, exclude_ids: query.exclude_ids },
-    eventTypeId,
-  );
-
-  let events = await prisma.event.findMany({
-    where: withExclusions,
-    include: eventInclude,
-  });
-
-  if (events.length === 0 && query.exclude_ids?.length) {
-    events = await prisma.event.findMany({
-      where: buildPublishedWhere(baseQuery, eventTypeId),
-      include: eventInclude,
-    });
-  }
-
-  return events;
-}
 
 function mapEvents(events: EventWithType[], favoriteIds: Set<string>) {
   return events.map((event) => {
@@ -283,60 +251,117 @@ export const eventsService = {
     const weights = await eventListingConfigService.getWeights();
     const page = query.page ?? 1;
     const limit = query.limit ?? weights.pageSize;
+    const skip = (page - 1) * limit;
     const eventType = query.event_type ? await resolveEventType(query.event_type) : undefined;
     const userLocation: GeoPoint | null =
       query.lat != null && query.lng != null
         ? { latitude: query.lat, longitude: query.lng }
         : null;
+    const favoriteIds = await getFavoriteIds(userId);
 
-    const events = await findPublishedEventsForListing(
-      {
-        country_code: query.country_code,
-        event_type: query.event_type,
-        exclude_ids: query.exclude_ids,
-      },
-      eventType?.id,
-    );
+    const buildWhere = (excludeIds?: string[]) =>
+      buildPublishedWhere(
+        {
+          country_code: query.country_code,
+          event_type: query.event_type,
+          exclude_ids: excludeIds,
+        },
+        eventType?.id,
+      );
 
-    const sorted = sortEventsForListing(events, weights, {
-      userLocation,
-      nearMe: query.near_me === true && userLocation != null,
-    });
-    const pageItems = paginateSortedEvents(sorted, page, limit);
+    const mapPageItems = async (pageItems: EventWithType[], total: number) => {
+      const waitlistMeta = userId
+        ? await waitlistService.getWaitlistListingMetaForUser(
+            pageItems.map((event) => event.id),
+            userId,
+          )
+        : null;
 
-    const waitlistMeta = userId
-      ? await waitlistService.getWaitlistListingMetaForUser(
-          pageItems.map((event) => event.id),
-          userId,
-        )
-      : null;
-
-    const items = pageItems.map((event) => {
-      const country = getCountrySync(event.countryCode);
-      const proximity = buildListingProximityMeta(event, userLocation);
-      return formatUpcomingEventCard(event, false, {
-        timezone: country?.timezone,
-        languageCode: country?.languageCode,
-        distance_km: proximity.distance_km,
-        travel_time_minutes: proximity.travel_time_minutes,
-        waitlist: waitlistMeta?.get(event.id) ?? null,
+      const items = pageItems.map((event) => {
+        const country = getCountrySync(event.countryCode);
+        const proximity = buildListingProximityMeta(event, userLocation);
+        return formatUpcomingEventCard(event, favoriteIds.has(event.id), {
+          timezone: country?.timezone,
+          languageCode: country?.languageCode,
+          distance_km: proximity.distance_km,
+          travel_time_minutes: proximity.travel_time_minutes,
+          waitlist: waitlistMeta?.get(event.id) ?? null,
+        });
       });
-    });
 
-    const total = sorted.length;
-    const totalPages = Math.ceil(total / limit) || 1;
+      const totalPages = Math.ceil(total / limit) || 1;
 
-    return {
-      items,
-      pagination: {
-        page,
-        limit,
-        total,
-        total_pages: totalPages,
-        has_more: page < totalPages,
-      },
-      sort_weights: eventListingConfigService.formatWeights(weights),
+      return {
+        items,
+        pagination: {
+          page,
+          limit,
+          total,
+          total_pages: totalPages,
+          has_more: page < totalPages,
+        },
+        sort_weights: eventListingConfigService.formatWeights(weights),
+      };
     };
+
+    if (query.near_me === true && userLocation != null) {
+      const NEAR_ME_CANDIDATE_LIMIT = 250;
+      let where = buildWhere(query.exclude_ids);
+      let events = await prisma.event.findMany({
+        where: {
+          ...where,
+          latitude: { not: null },
+          longitude: { not: null },
+        },
+        include: eventInclude,
+        orderBy: { startsAt: 'asc' },
+        take: NEAR_ME_CANDIDATE_LIMIT,
+      });
+
+      if (events.length === 0 && query.exclude_ids?.length) {
+        where = buildWhere();
+        events = await prisma.event.findMany({
+          where: {
+            ...where,
+            latitude: { not: null },
+            longitude: { not: null },
+          },
+          include: eventInclude,
+          orderBy: { startsAt: 'asc' },
+          take: NEAR_ME_CANDIDATE_LIMIT,
+        });
+      }
+
+      const sorted = sortEventsForListing(events, weights, {
+        userLocation,
+        nearMe: true,
+      });
+      const pageItems = paginateSortedEvents(sorted, page, limit);
+      return mapPageItems(pageItems, sorted.length);
+    }
+
+    let where = buildWhere(query.exclude_ids);
+    const fetchPage = async (activeWhere: Prisma.EventWhereInput) => {
+      const [events, total] = await Promise.all([
+        prisma.event.findMany({
+          where: activeWhere,
+          include: eventInclude,
+          orderBy: [{ isFeatured: 'desc' }, { startsAt: 'asc' }],
+          skip,
+          take: limit,
+        }),
+        prisma.event.count({ where: activeWhere }),
+      ]);
+      return { events, total };
+    };
+
+    let { events, total } = await fetchPage(where);
+    if (events.length === 0 && page === 1 && query.exclude_ids?.length) {
+      where = buildWhere();
+      ({ events, total } = await fetchPage(where));
+    }
+
+    return mapPageItems(events, total);
   },
 
   async getEventById(id: string, userId?: string) {

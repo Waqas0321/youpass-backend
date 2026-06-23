@@ -63,7 +63,10 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().optional().default('').transform((v) => v.trim()),
   CLOUDINARY_API_SECRET: z.string().optional().default('').transform((v) => v.trim()),
   CLOUDINARY_PROFILE_FOLDER: z.string().default('youpass/profile-photos'),
+  CLOUDINARY_DRINK_PRODUCTS_FOLDER: z.string().default('youpass/drink-products'),
+  CLOUDINARY_EVENT_IMAGES_FOLDER: z.string().default('youpass/event-images'),
   PROFILE_PHOTO_MAX_BYTES: z.coerce.number().default(5 * 1024 * 1024),
+  ADMIN_IMAGE_MAX_BYTES: z.coerce.number().default(5 * 1024 * 1024),
   APP_CLAIM_BASE_URL: z.string().default('https://youpass.app/claim'),
   APP_DEEP_LINK_BASE: z.string().default('youpass://invitations'),
   TWILIO_WHATSAPP_INVITATION_CONTENT_SID: z.string().optional().default('').transform((v) => v.trim()),
@@ -95,6 +98,17 @@ const envSchema = z.object({
   SUPPORT_EMAIL: z.string().optional().default('soporte@youpass.app').transform((v) => v.trim()),
   ACCOUNT_DELETION_COOLING_DAYS: z.coerce.number().int().min(1).max(30).default(7),
   DELETE_ACCOUNT_OTP_BLOCK_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(60),
+  /** Comma-separated user ids that skip the venue geofence (QA / demo accounts). */
+  PARTY_MODE_BYPASS_USER_IDS: z
+    .string()
+    .optional()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
 });
 
 export type Env = z.infer<typeof envSchema>;

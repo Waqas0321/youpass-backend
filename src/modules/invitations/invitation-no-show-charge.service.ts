@@ -1,5 +1,5 @@
 import { prisma } from '../../config/database.js';
-import { resolveInvitationProductKind } from './invitation-product-type.utils.js';
+import { requiresNoShowPreauth } from './invitation-product-type.utils.js';
 import { capturePreauthorizedPayment } from './invitation-payment.service.js';
 import {
   guaranteedPassNotificationService,
@@ -25,7 +25,7 @@ export const invitationNoShowChargeService = {
       where: {
         eventId,
         status: { in: ['accepted', 'validated'] },
-        type: 'guaranteed',
+        type: { in: ['guaranteed', 'free'] },
       },
       include: {
         ticket: true,
@@ -39,8 +39,7 @@ export const invitationNoShowChargeService = {
     let failed = 0;
 
     for (const invitation of invitations) {
-      const productKind = resolveInvitationProductKind(invitation);
-      if (productKind !== 'guaranteed_pass') {
+      if (!requiresNoShowPreauth(invitation)) {
         continue;
       }
 

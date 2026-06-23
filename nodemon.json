@@ -1,8 +1,8 @@
 {
-  "watch": ["src", ".env"],
+  "watch": ["src", ".env", "prisma/schema.prisma"],
   "ext": "ts,json",
-  "ignore": ["dist/**", "node_modules/**", "prisma/**"],
-  "exec": "tsx src/server.ts",
+  "ignore": ["dist/**", "node_modules/**", "prisma/migrations/**"],
+  "exec": "npx prisma generate && tsx src/server.ts",
   "signal": "SIGTERM",
   "delay": 400,
   "verbose": true,

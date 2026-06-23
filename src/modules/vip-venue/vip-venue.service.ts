@@ -4,6 +4,7 @@ import {
   getEventCurrencyMeta,
 } from '../../common/services/country-config.service.js';
 import { DEFAULT_SERVICE_FEE_RATE, TABLE_LOCK_MINUTES } from './vip-venue.constants.js';
+import { isEventPurchasable } from '../events/events.utils.js';
 import {
   formatTableLockFromTable,
   formatTableLockStatus,
@@ -17,6 +18,7 @@ import {
   resolveOfferingRef,
 } from '../ticket-offerings/ticket-offering.types.js';
 import { isTableLockActive } from './venue-table.types.js';
+import { buildVenueTableRefFilter, buildOfferingRefFilter } from '../../common/utils/mongo-id.js';
 
 async function getTableLockMinutes(eventId: string) {
   const layout = await prisma.eventVenueLayout.findUnique({
@@ -91,30 +93,43 @@ async function resolveZone(eventId: string, zoneRef: string) {
 }
 
 async function resolveTable(eventId: string, tableRef: string) {
-  const layout = await getLayoutForEvent(eventId);
+  const table = await prisma.venueTable.findFirst({
+    where: {
+      eventId,
+      ...buildVenueTableRefFilter(tableRef),
+    },
+    include: { zone: true },
+  });
 
-  for (const zone of layout.zones) {
-    const table =
-      zone.tables.find((t) => t.id === tableRef || t.externalId === tableRef) ?? null;
-    if (table) {
-      return { layout, zone, table };
-    }
+  if (!table) {
+    throw new AppError(404, 'VENUE_TABLE_NOT_FOUND', 'Venue table not found');
   }
 
-  throw new AppError(404, 'VENUE_TABLE_NOT_FOUND', 'Venue table not found');
+  const { zone, ...tableFields } = table;
+  return { zone, table: tableFields };
 }
 
 export const vipVenueService = {
   async listTicketTypes(eventId: string) {
-    const event = await getPublishedEvent(eventId);
+    const now = new Date();
+
+    const [event, offerings, layoutMeta] = await Promise.all([
+      getPublishedEvent(eventId),
+      prisma.eventTicketOffering.findMany({
+        where: {
+          eventId,
+          status: { in: ['active', 'sold_out', 'paused'] },
+        },
+        orderBy: { displayOrder: 'asc' },
+      }),
+      prisma.eventVenueLayout.findUnique({
+        where: { eventId },
+        select: { id: true, tableLockMinutes: true },
+      }),
+    ]);
+
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
 
-    const offerings = await prisma.eventTicketOffering.findMany({
-      where: { eventId },
-      orderBy: { displayOrder: 'asc' },
-    });
-
-    const now = new Date();
     const formatted = offerings
       .filter((offering) => {
         const availability = resolveOfferingAvailability(offering, now);
@@ -129,26 +144,29 @@ export const vipVenueService = {
       })
       .map((o) => formatTicketOffering(o, currencyMeta.currency, now));
 
-    await Promise.all(
-      offerings
-        .filter(
-          (offering) =>
-            offering.status === 'active' &&
-            offering.stockRemaining != null &&
-            offering.stockRemaining <= 0,
-        )
-        .map((offering) =>
+    const soldOutUpdates = offerings.filter(
+      (offering) =>
+        offering.status === 'active' &&
+        offering.stockRemaining != null &&
+        offering.stockRemaining <= 0,
+    );
+    if (soldOutUpdates.length > 0) {
+      void Promise.all(
+        soldOutUpdates.map((offering) =>
           prisma.eventTicketOffering.update({
             where: { id: offering.id },
             data: { status: 'sold_out' },
           }),
         ),
-    );
+      ).catch(() => undefined);
+    }
 
     return {
       event_id: eventId,
       ...currencyMeta,
       service_fee_rate: DEFAULT_SERVICE_FEE_RATE,
+      has_venue_layout: Boolean(layoutMeta),
+      table_lock_minutes: layoutMeta?.tableLockMinutes ?? TABLE_LOCK_MINUTES,
       offerings: formatted,
     };
   },
@@ -189,13 +207,35 @@ export const vipVenueService = {
   },
 
   async lockTable(eventId: string, tableRef: string, userId: string) {
-    const event = await getPublishedEvent(eventId);
+    const [event, { zone, table: resolvedTable }, lockMinutes] = await Promise.all([
+      getPublishedEvent(eventId),
+      resolveTable(eventId, tableRef),
+      getTableLockMinutes(eventId),
+    ]);
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
-    const { zone, table } = await resolveTable(eventId, tableRef);
     const now = new Date();
+    let table = resolvedTable;
 
     if (table.status === 'sold') {
       throw new AppError(409, 'TABLE_NOT_AVAILABLE', 'This table is already sold');
+    }
+
+    if (
+      !isTableLockActive(table, now) &&
+      (table.status === 'locked' || table.status === 'reserved')
+    ) {
+      table = await prisma.venueTable.update({
+        where: { id: table.id },
+        data: {
+          status: 'available',
+          lockedByUserId: null,
+          lockedUntil: null,
+        },
+      });
+      await prisma.tableLock.updateMany({
+        where: { tableId: table.id, status: 'ACTIVE' },
+        data: { status: 'EXPIRED' },
+      });
     }
 
     if (isTableLockActive(table, now) && table.lockedByUserId !== userId) {
@@ -213,7 +253,6 @@ export const vipVenueService = {
       };
     }
 
-    const lockMinutes = await getTableLockMinutes(eventId);
     const lockedUntil = new Date(now.getTime() + lockMinutes * 60 * 1000);
 
     const updatedTable = await prisma.$transaction(async (tx) => {
@@ -372,7 +411,7 @@ export const vipVenueService = {
     const offering = await prisma.eventTicketOffering.findFirst({
       where: {
         eventId,
-        OR: [{ id: offeringRef }, ...(typeRef ? [{ type: typeRef }] : [])],
+        ...buildOfferingRefFilter(offeringRef, typeRef),
       },
     });
 
@@ -391,18 +430,36 @@ export const vipVenueService = {
   async getPurchaseMeta(eventId: string) {
     const event = await getPublishedEvent(eventId);
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
+    const now = new Date();
 
-    const [offeringsCount, layout] = await Promise.all([
-      prisma.eventTicketOffering.count({ where: { eventId, status: 'active' } }),
-      prisma.eventVenueLayout.findUnique({ where: { eventId }, select: { id: true } }),
+    const [offerings, layout] = await Promise.all([
+      prisma.eventTicketOffering.findMany({ where: { eventId } }),
+      prisma.eventVenueLayout.findUnique({
+        where: { eventId },
+        include: {
+          zones: {
+            where: { isSelectable: true },
+            include: { tables: true },
+          },
+        },
+      }),
     ]);
+
+    const hasSelectableOffering = offerings.some(
+      (offering) => resolveOfferingAvailability(offering, now).is_selectable,
+    );
+    const hasAvailableVipTables =
+      layout?.zones.some((zone) =>
+        zone.tables.some((table) => table.status === 'available'),
+      ) ?? false;
+    const purchasable = isEventPurchasable(event);
 
     return {
       service_fee_rate: DEFAULT_SERVICE_FEE_RATE,
       ...currencyMeta,
-      has_ticket_offerings: offeringsCount > 0,
+      has_ticket_offerings: offerings.length > 0,
       has_venue_layout: Boolean(layout),
-      can_purchase: offeringsCount > 0 || Boolean(layout),
+      can_purchase: purchasable && (hasSelectableOffering || hasAvailableVipTables),
     };
   },
 
@@ -412,15 +469,22 @@ export const vipVenueService = {
       throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
     }
 
+    const eventEnded = !isEventPurchasable(event);
+    const now = new Date();
+
     const offerings = await prisma.eventTicketOffering.findMany({
       where: { eventId, status: { in: ['active', 'sold_out'] } },
     });
 
     const has_general_tickets = offerings.some(
-      (offering) => offering.type !== 'vip_general' && offering.status === 'active',
+      (offering) =>
+        offering.type !== 'vip_general' &&
+        resolveOfferingAvailability(offering, now).is_selectable,
     );
     const hasVipOfferings = offerings.some(
-      (offering) => offering.type === 'vip_general' && offering.status === 'active',
+      (offering) =>
+        offering.type === 'vip_general' &&
+        resolveOfferingAvailability(offering, now).is_selectable,
     );
 
     const layout = await prisma.eventVenueLayout.findUnique({
@@ -440,7 +504,8 @@ export const vipVenueService = {
 
     const has_vip_tickets = hasVipOfferings || hasAvailableVipTables;
     const sellsTickets = offerings.length > 0 || Boolean(layout);
-    const is_sold_out = sellsTickets && !has_general_tickets && !has_vip_tickets;
+    const is_sold_out =
+      eventEnded || (sellsTickets && !has_general_tickets && !has_vip_tickets);
 
     return {
       event_id: eventId,

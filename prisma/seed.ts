@@ -398,6 +398,19 @@ const SAMPLE_EVENTS: SampleEventSeed[] = [
     isFeatured: false,
     featuredOrder: 0,
   },
+  {
+    title: 'Community Open Mic Night',
+    description: 'Free entry — register and get your digital ticket.',
+    startsAt: new Date('2026-08-15T19:00:00.000Z'),
+    venueName: 'Barrio Creativo',
+    city: 'Santiago',
+    countryCode: 'CL',
+    imageUrl: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800',
+    eventTypeSlug: 'concerts',
+    isFeatured: true,
+    featuredOrder: 1,
+    minPrice: 0,
+  },
 ];
 
 async function main() {

@@ -156,6 +156,7 @@ export function formatEventListingCard(
     distance_km?: number | null;
     travel_time_minutes?: number | null;
     waitlist?: Record<string, unknown> | null;
+    isFavorite?: boolean;
   },
 ) {
   const timezone = options?.timezone ?? getTimezone(event.countryCode);
@@ -168,6 +169,7 @@ export function formatEventListingCard(
     date_display: formatEventListingDate(event.startsAt, timezone, languageCode),
     location_display: formatLocationDisplay(event.venueName, event.city),
     starts_at: event.startsAt.toISOString(),
+    is_favorite: options?.isFavorite ?? false,
     ...(options?.distance_km != null
       ? {
           distance_km: options.distance_km,
@@ -181,7 +183,7 @@ export function formatEventListingCard(
 /** Compact card for YouHome "Upcoming events" list */
 export function formatUpcomingEventCard(
   event: EventWithType,
-  _isFavorite = false,
+  isFavorite = false,
   options?: {
     timezone?: string;
     languageCode?: string;
@@ -190,7 +192,10 @@ export function formatUpcomingEventCard(
     waitlist?: Record<string, unknown> | null;
   },
 ) {
-  return formatEventListingCard(event, options);
+  return formatEventListingCard(event, {
+    ...options,
+    isFavorite,
+  });
 }
 
 /** Hero carousel slide for main banner */

@@ -16,13 +16,16 @@ Twilio SMS/WhatsApp OTP authentication per YOUPASS master document v23.
 
 ## Production
 
-**Live API:** https://youpass-backend.vercel.app/api/v1
+**Live API:** https://youpass-backend-two.vercel.app/api/v1
+
+**Deploy / redeploy:** [docs/VERCEL_DEPLOYMENT.md](docs/VERCEL_DEPLOYMENT.md)
 
 | Check | URL |
 |-------|-----|
 | Health | `/api/v1/health` |
 | DB health | `/api/v1/health/db` |
 | Countries | `/api/v1/config/countries` |
+| Admin | `/admin` |
 
 ## Project structure
 

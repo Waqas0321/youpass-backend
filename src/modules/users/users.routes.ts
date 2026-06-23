@@ -17,6 +17,7 @@ import { invitationsController, paymentMethodsController } from '../invitations/
 import { ticketsRouter } from '../tickets/tickets.routes.js';
 import { ticketOrdersRouter } from '../ticket-orders/ticket-orders.routes.js';
 import { usersController } from './users.controller.js';
+import { eventDrinkOrdersController } from '../event-drinks/event-drink-orders.controller.js';
 
 export const usersRouter = Router();
 
@@ -24,6 +25,8 @@ usersRouter.use(authenticate);
 
 usersRouter.use('/me/tickets', ticketsRouter);
 usersRouter.use('/me/ticket-orders', ticketOrdersRouter);
+usersRouter.get('/me/drink-orders', eventDrinkOrdersController.listMine);
+usersRouter.get('/me/drink-orders/:orderId', eventDrinkOrdersController.getMine);
 
 usersRouter.get('/me', usersController.getProfile);
 usersRouter.get('/me/profile', usersController.getProfile);

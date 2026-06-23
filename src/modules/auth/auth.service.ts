@@ -642,6 +642,7 @@ export const authService = {
       channel,
       expires_in_seconds: result.expires_in_seconds,
       resend_available_in_seconds: result.resend_available_in_seconds,
+      ...(result.dev_otp_code ? { dev_otp_code: result.dev_otp_code } : {}),
     };
   },
 

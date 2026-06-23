@@ -34,7 +34,7 @@ import {
   preauthorizeInvitationPayment,
 } from './invitation-payment.service.js';
 import { invitationPreAuthService } from './invitation-preauth.service.js';
-import { resolveInvitationProductKind, termsAcceptedRequired } from './invitation-product-type.utils.js';
+import { resolveInvitationProductKind, isProducerFreeWithNoShowPolicy, isZeroValueFreeInvitation, termsAcceptedRequired } from './invitation-product-type.utils.js';
 import {
   guaranteedPassNotificationService,
   resolveGuestContact,
@@ -55,7 +55,7 @@ import { waitlistService } from '../waitlist/waitlist.service.js';
 import { triggerWaitlistForReleasedSlot } from '../waitlist/waitlist-slot-release.hook.js';
 
 const invitationInclude = {
-  event: true,
+  event: { include: { eventType: true } },
   producer: true,
   ticket: true,
   inviter: true,
@@ -247,6 +247,16 @@ function buildListWhere(userId: string, userPhone: string, query: ListInvitation
     where.source = query.source;
   }
 
+  if (query.event_type) {
+    const eventTypeFilter: Prisma.InvitationWhereInput = {
+      event: { eventType: { slug: query.event_type } },
+    };
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+      eventTypeFilter,
+    ];
+  }
+
   if (query.search) {
     const term = query.search.trim();
     where.AND = [
@@ -303,7 +313,6 @@ export const invitationsService = {
 
   async getInvitationDetail(userId: string, userPhone: string, id: string) {
     const invitation = await getInvitationForUser(id, userId, userPhone);
-    const hasPaymentMethod = await userHasPaymentMethod(userId);
     const { expiryDays } = await invitationConfigService.getConfig();
 
     if (invitation.status === 'sent') {
@@ -321,7 +330,7 @@ export const invitationsService = {
       invitation.viewedAt = new Date();
     }
 
-    return formatInvitationDetail(invitation, hasPaymentMethod, expiryDays);
+    return formatInvitationDetail(invitation, expiryDays);
   },
 
   async getSummary(userId: string, userPhone: string) {
@@ -344,8 +353,9 @@ export const invitationsService = {
       prisma.invitation.count({
         where: {
           ...recipientFilter,
+          // Unread = still in initial "sent" state (opening detail moves to "viewed").
+          // Do not filter on viewedAt — on MongoDB, missing fields do not match `null`.
           status: 'sent',
-          viewedAt: null,
         },
       }),
     ]);
@@ -468,7 +478,10 @@ export const invitationsService = {
     }
 
     if (productKind === 'guaranteed_pass') {
-      if (termsAcceptedRequired(invitation.type) && !input.accept_charge_terms) {
+      if (
+        termsAcceptedRequired(invitation.type, invitation.source, invitation.entryValue) &&
+        !input.accept_charge_terms
+      ) {
         throw new AppError(
           422,
           'TERMS_ACCEPTANCE_REQUIRED',
@@ -578,7 +591,113 @@ export const invitationsService = {
       return formatInvitationListItem(updated, expiryDays);
     }
 
-    // Type 1 — Free invitation
+    // Type 1 — Free invitation (zero-value — card on file, no pre-auth charge)
+    if (isZeroValueFreeInvitation(invitation)) {
+      if (
+        termsAcceptedRequired(invitation.type, invitation.source, invitation.entryValue) &&
+        !input.accept_charge_terms
+      ) {
+        throw new AppError(
+          422,
+          'TERMS_ACCEPTANCE_REQUIRED',
+          'You must accept the attendance terms before confirming',
+        );
+      }
+
+      await getDefaultPaymentMethod(userId, input.payment_method_id);
+
+      const timezone = getTimezone(invitation.event.countryCode);
+      const unlockAt = eventDayStart(invitation.event.startsAt, timezone);
+      const entryCode = generateEntryCode();
+      const ticketId = crypto.randomBytes(12).toString('hex');
+      const qrPayload = generateQrPayload(ticketId, invitation.eventId);
+
+      const updated = await prisma.$transaction(async (tx) =>
+        persistAcceptedInvitation(
+          tx,
+          invitation,
+          id,
+          userId,
+          { ticketId, entryCode, qrPayload, unlockAt },
+        ),
+      );
+
+      await invitationAuditService.log({
+        invitationId: id,
+        actorUserId: userId,
+        actorType: 'guest',
+        action: 'accept_invitation',
+        result: 'success',
+        metadata: { product_kind: 'free', zero_value: true },
+      });
+
+      return formatInvitationListItem(updated, expiryDays);
+    }
+
+    // Type 1 — Free invitation (producer courtesy with no-show pre-auth)
+    if (isProducerFreeWithNoShowPolicy(invitation)) {
+      if (
+        termsAcceptedRequired(invitation.type, invitation.source, invitation.entryValue) &&
+        !input.accept_charge_terms
+      ) {
+        throw new AppError(
+          422,
+          'TERMS_ACCEPTANCE_REQUIRED',
+          'You must accept the attendance terms before confirming',
+        );
+      }
+
+      const paymentMethod = await getDefaultPaymentMethod(userId, input.payment_method_id);
+      const amount = invitation.entryValue;
+      const currency = invitation.chargeCurrency ?? 'CLP';
+
+      const preauth = await preauthorizeInvitationPayment({
+        invitationId: id,
+        userId,
+        countryCode: invitation.event.countryCode,
+        amount,
+        currency,
+        paymentMethodToken: paymentMethod.providerToken,
+      });
+
+      const timezone = getTimezone(invitation.event.countryCode);
+      const unlockAt = eventDayStart(invitation.event.startsAt, timezone);
+      const entryCode = generateEntryCode();
+      const ticketId = crypto.randomBytes(12).toString('hex');
+      const qrPayload = generateQrPayload(ticketId, invitation.eventId);
+
+      const updated = await prisma.$transaction(async (tx) =>
+        persistAcceptedInvitation(
+          tx,
+          invitation,
+          id,
+          userId,
+          { ticketId, entryCode, qrPayload, unlockAt },
+        ),
+      );
+
+      await invitationPreAuthService.createInvitationPreAuth({
+        invitationId: id,
+        userId,
+        cardId: paymentMethod.id,
+        amount,
+        gateway: preauth.gateway,
+        gatewayTransactionId: preauth.preauth_reference,
+      });
+
+      await invitationAuditService.log({
+        invitationId: id,
+        actorUserId: userId,
+        actorType: 'guest',
+        action: 'accept_invitation',
+        result: 'success',
+        metadata: { product_kind: 'free', no_show_preauth: true },
+      });
+
+      return formatInvitationListItem(updated, expiryDays);
+    }
+
+    // Type 1 — Free invitation (purchased guest assignment — no payment hold)
     const timezone = getTimezone(invitation.event.countryCode);
     const unlockAt = eventDayStart(invitation.event.startsAt, timezone);
     const entryCode = generateEntryCode();

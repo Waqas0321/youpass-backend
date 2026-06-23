@@ -1,13 +1,17 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminApi, getSession, saveSession } from '../api/client';
-import { IconSpark } from '../components/ui/Icons';
 import { Alert } from '../components/ui/Alert';
+import { IconEye, IconLock, IconLogin, IconMail } from '../components/ui/Icons';
+import { useI18n } from '../i18n/useI18n';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const existing = getSession();
+  const [email, setEmail] = useState('admin@youpass.com');
   const [apiKey, setApiKey] = useState(existing?.apiKey ?? 'youpass-dev-admin-key');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -21,7 +25,7 @@ export function LoginPage() {
     setLoading(false);
 
     if (!result.ok) {
-      setError(result.error ?? 'Could not connect to API');
+      setError(result.error ?? t('login.error'));
       return;
     }
 
@@ -30,52 +34,64 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
-      <div className="login-page__backdrop" />
-      <div className="login-layout">
-        <section className="login-hero">
-          <span className="brand-mark brand-mark--large">
-            <IconSpark className="brand-mark__icon" />
-          </span>
-          <h1>Run YouPass operations from one place.</h1>
-          <p className="muted">
-            Manage categories, banners, producer invitations, and background jobs — all wired to
-            your live API.
-          </p>
-          <ul className="login-hero__list">
-            <li>Real-time platform metrics</li>
-            <li>Editorial home banner control</li>
-            <li>Guaranteed Pass invitation ops</li>
-          </ul>
-        </section>
+      <div className="login-page__orb login-page__orb--top-left" aria-hidden="true" />
+      <div className="login-page__orb login-page__orb--bottom-right" aria-hidden="true" />
 
-        <form className="login-card" onSubmit={onSubmit}>
-          <div className="login-card__header">
-            <h2>Sign in</h2>
-            <p className="muted">Enter your admin API key to continue.</p>
-          </div>
+      <form className="login-panel" onSubmit={onSubmit}>
+        <div className="login-panel__logo" aria-label="YouPass">
+          YouPass<sup>®</sup>
+        </div>
 
-          <label className="field">
-            <span className="field__label">Admin API key</span>
+        <div className="login-panel__subtitle">
+          <span className="login-panel__subtitle-line" />
+          <span className="login-panel__subtitle-text">{t('login.subtitle')}</span>
+          <span className="login-panel__subtitle-line" />
+        </div>
+
+        <label className="login-field">
+          <span className="login-field__label">{t('login.emailLabel')}</span>
+          <span className="login-field__control">
+            <IconMail className="login-field__icon" />
             <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t('login.emailPlaceholder')}
+              autoComplete="username"
+            />
+          </span>
+        </label>
+
+        <label className="login-field">
+          <span className="login-field__label">{t('login.passwordLabel')}</span>
+          <span className="login-field__control">
+            <IconLock className="login-field__icon" />
+            <input
+              type={showPassword ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="youpass-dev-admin-key"
-              autoComplete="off"
+              placeholder={t('login.passwordPlaceholder')}
+              autoComplete="current-password"
+              required
             />
-          </label>
+            <button
+              type="button"
+              className="login-field__toggle"
+              onClick={() => setShowPassword((value) => !value)}
+              aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
+            >
+              <IconEye className="login-field__toggle-icon" />
+            </button>
+          </span>
+        </label>
 
-          <p className="hint">
-            Sent as <code>x-admin-key</code> on every request. In local dev you can leave the
-            backend key empty for open access.
-          </p>
+        {error ? <Alert tone="error">{error}</Alert> : null}
 
-          {error ? <Alert tone="error">{error}</Alert> : null}
-
-          <button className="primary-btn primary-btn--full" disabled={loading} type="submit">
-            {loading ? 'Connecting…' : 'Enter console'}
-          </button>
-        </form>
-      </div>
+        <button className="login-panel__submit" disabled={loading} type="submit">
+          <IconLogin className="login-panel__submit-icon" />
+          <span>{loading ? t('login.connecting') : t('login.submit')}</span>
+        </button>
+      </form>
     </div>
   );
 }

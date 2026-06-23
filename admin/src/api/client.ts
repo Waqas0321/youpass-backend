@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '../config';
+
 const SESSION_KEY = 'youpass_admin_session';
 
 export type AdminSession = {
@@ -52,7 +54,7 @@ export async function apiRequest<T>(
     return { ok: false, status: 401, error: 'Not signed in' };
   }
 
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       ...adminHeaders(session, producerId),
@@ -73,6 +75,45 @@ export async function apiRequest<T>(
     ok: true,
     status: response.status,
     data: payload.data as T,
+  };
+}
+
+export async function uploadAdminImageRequest(
+  file: File,
+  folder: string,
+): Promise<ApiResult<{ url: string; folder: string }>> {
+  const session = getSession();
+  if (!session) {
+    return { ok: false, status: 401, error: 'Not signed in' };
+  }
+
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('folder', folder);
+
+  const response = await fetch(`${API_BASE_URL}/admin/uploads/image`, {
+    method: 'POST',
+    headers: {
+      'x-admin-key': session.apiKey,
+      'x-admin-api-key': session.apiKey,
+      ...(session.producerId ? { 'x-producer-id': session.producerId } : {}),
+    },
+    body: formData,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: payload?.error?.message ?? payload?.message ?? `Request failed (${response.status})`,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    data: payload.data as { url: string; folder: string },
   };
 }
 
@@ -226,6 +267,124 @@ export const adminApi = {
     }),
   deleteVenue: (venueId: string) =>
     apiRequest(`/admin/venues/${venueId}`, { method: 'DELETE' }),
+  eventDrinkCategories: (eventId: string) =>
+    apiRequest<{ event_id: string; categories: EventDrinkCategory[] }>(
+      `/admin/events/${eventId}/drink-categories`,
+    ),
+  createEventDrinkCategory: (eventId: string, body: EventDrinkCategoryInput) =>
+    apiRequest<EventDrinkCategory>(`/admin/events/${eventId}/drink-categories`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  eventDrinkProducts: (eventId: string, category?: string) => {
+    const query = category && category !== 'all' ? `?category=${encodeURIComponent(category)}` : '';
+    return apiRequest<{ event_id: string; products: EventDrinkProduct[] }>(
+      `/admin/events/${eventId}/drink-products${query}`,
+    );
+  },
+  createEventDrinkProduct: (eventId: string, body: EventDrinkProductInput) =>
+    apiRequest<EventDrinkProduct>(`/admin/events/${eventId}/drink-products`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateEventDrinkProduct: (
+    eventId: string,
+    productId: string,
+    body: Partial<EventDrinkProductInput>,
+  ) =>
+    apiRequest<EventDrinkProduct>(`/admin/events/${eventId}/drink-products/${productId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  duplicateEventDrinkProduct: (eventId: string, productId: string) =>
+    apiRequest<EventDrinkProduct>(
+      `/admin/events/${eventId}/drink-products/${productId}/duplicate`,
+      { method: 'POST', body: '{}' },
+    ),
+  deleteEventDrinkProduct: (eventId: string, productId: string) =>
+    apiRequest(`/admin/events/${eventId}/drink-products/${productId}`, {
+      method: 'DELETE',
+    }),
+  eventDrinkOrders: (
+    eventId: string,
+    params?: {
+      q?: string;
+      page?: number;
+      limit?: number;
+      product_id?: string;
+      qr_status?: AdminDrinkOrderQrStatus;
+      date_from?: string;
+      date_to?: string;
+    },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.q) query.set('q', params.q);
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.product_id) query.set('product_id', params.product_id);
+    if (params?.qr_status) query.set('qr_status', params.qr_status);
+    if (params?.date_from) query.set('date_from', params.date_from);
+    if (params?.date_to) query.set('date_to', params.date_to);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return apiRequest<AdminDrinkOrdersListResponse>(
+      `/admin/events/${eventId}/drink-orders${suffix}`,
+    );
+  },
+  eventDrinkOrder: (eventId: string, orderId: string) =>
+    apiRequest<AdminDrinkOrderDetail>(`/admin/events/${eventId}/drink-orders/${orderId}`),
+  reissueEventDrinkOrderQr: (eventId: string, orderId: string) =>
+    apiRequest<AdminDrinkOrderDetail>(
+      `/admin/events/${eventId}/drink-orders/${orderId}/reissue-qr`,
+      { method: 'POST', body: '{}' },
+    ),
+  refundEventDrinkOrder: (eventId: string, orderId: string) =>
+    apiRequest<AdminDrinkOrderDetail>(
+      `/admin/events/${eventId}/drink-orders/${orderId}/refund`,
+      { method: 'POST', body: '{}' },
+    ),
+  invalidateEventDrinkOrder: (eventId: string, orderId: string) =>
+    apiRequest<AdminDrinkOrderDetail>(
+      `/admin/events/${eventId}/drink-orders/${orderId}/invalidate`,
+      { method: 'POST', body: '{}' },
+    ),
+  exportEventDrinkOrders: async (
+    eventId: string,
+    params?: {
+      q?: string;
+      product_id?: string;
+      qr_status?: AdminDrinkOrderQrStatus;
+      date_from?: string;
+      date_to?: string;
+    },
+  ) => {
+    const session = getSession();
+    if (!session) {
+      return { ok: false as const, status: 401, error: 'Not signed in' };
+    }
+    const query = new URLSearchParams();
+    if (params?.q) query.set('q', params.q);
+    if (params?.product_id) query.set('product_id', params.product_id);
+    if (params?.qr_status) query.set('qr_status', params.qr_status);
+    if (params?.date_from) query.set('date_from', params.date_from);
+    if (params?.date_to) query.set('date_to', params.date_to);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    const response = await fetch(
+      `${API_BASE_URL}/admin/events/${eventId}/drink-orders/export${suffix}`,
+      { headers: adminHeaders(session) },
+    );
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      return {
+        ok: false as const,
+        status: response.status,
+        error: payload?.error?.message ?? `Export failed (${response.status})`,
+      };
+    }
+    const blob = await response.blob();
+    return { ok: true as const, status: response.status, blob };
+  },
+  uploadImage: (file: File, folder = 'youpass/drink-products') =>
+    uploadAdminImageRequest(file, folder),
 };
 
 export type Producer = {
@@ -577,4 +736,119 @@ export type EventWaitlistDashboard = {
     claimed_at: string | null;
     expired_at: string | null;
   }>;
+};
+
+export type EventDrinkCategory = {
+  category_id: string;
+  event_id: string;
+  slug: string;
+  name: string;
+  icon: string | null;
+  display_order: number;
+};
+
+export type EventDrinkCategoryInput = {
+  name: string;
+  slug?: string;
+  icon?: string | null;
+  display_order?: number;
+};
+
+export type EventDrinkProductStatus = 'available' | 'hidden' | 'sold_out';
+
+export type EventDrinkProduct = {
+  product_id: string;
+  event_id: string;
+  category_id: string | null;
+  category_slug: string | null;
+  category_name: string | null;
+  name: string;
+  description: string | null;
+  volume_ml: number | null;
+  price_clp: number;
+  image_url: string | null;
+  stock_total: number | null;
+  stock_remaining: number | null;
+  status: EventDrinkProductStatus;
+  display_order: number;
+  is_recommended: boolean;
+};
+
+export type EventDrinkProductInput = {
+  name: string;
+  description?: string | null;
+  category_id?: string | null;
+  volume_ml?: number | null;
+  price_clp: number;
+  image_url?: string | null;
+  stock_total?: number | null;
+  stock_remaining?: number | null;
+  status?: EventDrinkProductStatus;
+  display_order?: number;
+  is_recommended?: boolean;
+};
+
+export type AdminDrinkOrderQrStatus =
+  | 'paid'
+  | 'pending'
+  | 'redeemed'
+  | 'refunded'
+  | 'invalid';
+
+export type AdminDrinkOrderListItem = {
+  order_id: string;
+  display_order_id: string;
+  user: {
+    id: string;
+    full_name: string;
+    phone: string;
+    profile_photo_url: string | null;
+    initials: string;
+  };
+  product_summary: string;
+  payment_method: {
+    type: 'none';
+    label: string;
+    brand: string;
+    last_four: string | null;
+  };
+  created_at: string;
+  qr_status: AdminDrinkOrderQrStatus;
+  total_clp: number;
+  currency: string;
+  entry_code: string | null;
+  status: string;
+  line_items: Array<{
+    line_id: string;
+    product_id: string | null;
+    product_name: string;
+    quantity: number;
+    unit_price_clp: number;
+    line_total_clp: number;
+    volume_ml: number | null;
+    image_url: string | null;
+    entry_code: string | null;
+    qr_status: AdminDrinkOrderQrStatus;
+    qr_payload: string | null;
+  }>;
+};
+
+export type AdminDrinkOrderDetail = AdminDrinkOrderListItem & {
+  event_id: string;
+  event_title: string;
+  subtotal_clp: number;
+  service_fee_clp: number;
+  item_count: number;
+};
+
+export type AdminDrinkOrdersListResponse = {
+  orders: AdminDrinkOrderListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    total_pages: number;
+    from: number;
+    to: number;
+  };
 };

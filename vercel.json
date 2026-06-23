@@ -1,8 +1,8 @@
 {
   "version": 2,
   "framework": null,
-  "installCommand": "npm install && npm run admin:install",
-  "buildCommand": "npm run vercel-build",
+  "installCommand": "NODE_ENV=development npm install && npm run admin:install",
+  "buildCommand": "NODE_ENV=development npm run vercel-build",
   "outputDirectory": "public",
   "functions": {
     "api/index.ts": {

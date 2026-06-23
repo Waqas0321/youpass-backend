@@ -59,9 +59,10 @@ export function canCancelTicket(
 
 export function isUpcomingTicket(row: InvitationTicketRow, now = new Date()): boolean {
   const status = resolveTicketStatus(row, row.event, row.ticket, now);
-  if (status === 'cancelled' || status === 'expired') return false;
+  if (status === 'cancelled' || status === 'expired' || status === 'validated') {
+    return false;
+  }
   if (status === 'active') return true;
-  // Validated tickets stay in upcoming until the event window ends
   return !isEventPast(row.event.startsAt, now);
 }
 
@@ -104,7 +105,14 @@ export function formatEntryTime(date: Date, countryCode: string): string {
   }).format(date);
 }
 
-export function ticketTypeLabel(tier: Invitation['tier'], type: Invitation['type']): string {
+export function ticketTypeLabel(
+  tier: Invitation['tier'],
+  type: Invitation['type'],
+  entryValue = 0,
+): string {
+  if (type === 'free' && entryValue <= 0 && tier !== 'vip') {
+    return 'Free';
+  }
   if (tier === 'vip' || type === 'guaranteed') return 'VIP';
   return 'General';
 }

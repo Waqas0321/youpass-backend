@@ -310,6 +310,12 @@ export function EventsPage() {
                     >
                       Tickets
                     </button>
+                    <Link
+                      className="primary-btn primary-btn--sm drink-menu-entry-btn"
+                      to={`/events/${event.id}/drinks`}
+                    >
+                      Drink menu
+                    </Link>
                     <button className="ghost-btn ghost-btn--sm" onClick={() => togglePublish(event)}>
                       {event.status === 'published' ? 'Unpublish' : 'Publish'}
                     </button>

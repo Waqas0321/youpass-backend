@@ -216,7 +216,18 @@ export const homeBannersService = {
       take: HOME_BANNER_CAROUSEL.max_slides,
     });
 
-    return slides.filter((slide) => matchesSegmentation(slide, context));
+    return slides.filter((slide) => {
+      if (!matchesSegmentation(slide, context)) {
+        return false;
+      }
+
+      // Hide banners that link to events that already started.
+      if (slide.event?.startsAt && slide.event.startsAt.getTime() < now.getTime()) {
+        return false;
+      }
+
+      return true;
+    });
   },
 
   async getFeaturedEventFallbackSlides(

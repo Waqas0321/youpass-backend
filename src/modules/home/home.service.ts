@@ -1,6 +1,5 @@
 import type { User } from '@prisma/client';
 import { buildHeaderGreeting } from '../../common/utils/display-name.js';
-import { POST_REGISTRATION_POLICY } from '../../common/constants/post-registration-policy.js';
 import { configService } from '../config/config.service.js';
 import { homeBannersService } from '../config/home-banners.service.js';
 import { eventsService } from '../events/events.service.js';
@@ -8,6 +7,7 @@ import { invitationsService } from '../invitations/invitations.service.js';
 import { buildSearchFiltersConfig } from '../../common/constants/event-search-filters.js';
 import type { HomeFeedQuery } from '../events/events.validators.js';
 import { listActiveCountries } from '../../common/services/country-config.service.js';
+import { partyModeService } from '../party-mode/party-mode.service.js';
 
 type HomeFeedUser = Pick<User, 'id' | 'fullName' | 'countryCode' | 'category' | 'phone'>;
 
@@ -26,7 +26,8 @@ export const homeService = {
     const userId = user?.id;
     const userPhone = user?.phone;
 
-    const [categories, bannerResult, featured, invitationHighlight] = await Promise.all([
+    const [categories, bannerResult, featured, invitationHighlight, upcomingRaw] =
+      await Promise.all([
       configService.getHomeCategories(countryCode),
       homeBannersService.resolveCarousel({
         countryCode,
@@ -39,27 +40,27 @@ export const homeService = {
       userId && userPhone
         ? invitationsService.getHomeInvitationHighlight(userId, userPhone)
         : Promise.resolve(null),
+      eventsService.listUpcomingEvents(
+        {
+          country_code: countryCode,
+          event_type: eventType,
+          page: query.upcoming_page,
+          limit: query.upcoming_limit,
+          near_me: query.near_me,
+          lat: query.lat,
+          lng: query.lng,
+        },
+        userId,
+      ),
     ]);
 
     const bannerSlides = bannerResult.slides;
     const mainBanner = bannerResult.main_banner;
-    const bannerIds = bannerSlides
-      .map((slide) => slide.tap_action.event_id ?? slide.id)
-      .filter((value): value is string => Boolean(value));
-
-    const upcoming = await eventsService.listUpcomingEvents(
-      {
-        country_code: countryCode,
-        event_type: eventType,
-        page: query.upcoming_page,
-        limit: query.upcoming_limit,
-        exclude_ids: bannerIds,
-        near_me: query.near_me,
-        lat: query.lat,
-        lng: query.lng,
-      },
-      userId,
-    );
+    const upcoming = upcomingRaw;
+    const partyMode = await partyModeService.resolveForUser(userId, {
+      lat: query.lat,
+      lng: query.lng,
+    });
 
     return {
       country_code: countryCode ?? null,
@@ -98,10 +99,7 @@ export const homeService = {
       carousel: bannerSlides,
       featured_events: featured.events,
       event_types: categories.event_types,
-      party_mode: {
-        enabled: false,
-        banner_visible: POST_REGISTRATION_POLICY.show_party_mode_banner,
-      },
+      party_mode: partyMode,
       post_registration: context === 'post_register',
       invitations: invitationHighlight,
     };

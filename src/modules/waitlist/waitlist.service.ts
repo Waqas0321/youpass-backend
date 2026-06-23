@@ -572,7 +572,13 @@ export const waitlistService = {
     const { expiryDays } = await invitationConfigService.getConfig();
     const invitation = await prisma.invitation.findUniqueOrThrow({
       where: { id: created.id },
-      include: { event: true, producer: true, ticket: true, inviter: true, recipient: true },
+      include: {
+        event: { include: { eventType: true } },
+        producer: true,
+        ticket: true,
+        inviter: true,
+        recipient: true,
+      },
     });
 
     return {

@@ -1,8 +1,10 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { clearSession } from '../api/client';
+import { useI18n } from '../i18n/useI18n';
 import {
   IconCalendar,
   IconDashboard,
+  IconDrink,
   IconGrid,
   IconImage,
   IconLogout,
@@ -12,52 +14,43 @@ import {
   IconUsers,
   IconZap,
 } from './ui/Icons';
-
-const navSections = [
-  {
-    label: 'Overview',
-    items: [
-      { to: '/', label: 'Dashboard', end: true, icon: IconDashboard },
-    ],
-  },
-  {
-    label: 'Content',
-    items: [
-      { to: '/events', label: 'Events', icon: IconCalendar },
-      { to: '/producers', label: 'Producers', icon: IconUsers },
-      { to: '/venues', label: 'Venues', icon: IconMapPin },
-      { to: '/categories', label: 'Categories', icon: IconGrid },
-      { to: '/banners', label: 'Banners', icon: IconImage },
-    ],
-  },
-  {
-    label: 'Invitations',
-    items: [
-      { to: '/invitations', label: 'Producer invites', icon: IconMail },
-      { to: '/event-settings', label: 'Event settings', icon: IconGrid },
-      { to: '/waitlist', label: 'Waiting list', icon: IconMail },
-      { to: '/system', label: 'System jobs', icon: IconZap },
-    ],
-  },
-];
-
-const pageTitles: Record<string, string> = {
-  '/': 'Dashboard',
-  '/events': 'Events',
-  '/producers': 'Producers / Promoters',
-  '/venues': 'Physical venues',
-  '/categories': 'Event categories',
-  '/banners': 'Home banners',
-  '/invitations': 'Producer invitations',
-  '/event-settings': 'Event invitation settings',
-  '/waitlist': 'Waiting list',
-  '/system': 'System jobs',
-};
+import { LanguageToggle } from './ui/LanguageToggle';
 
 export function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const pageTitle = pageTitles[location.pathname] ?? 'Admin';
+  const { t } = useI18n();
+
+  const navSections = [
+    {
+      label: t('adminLayout.sectionOverview'),
+      items: [
+        { to: '/', label: t('adminLayout.dashboard'), end: true, icon: IconDashboard },
+      ],
+    },
+    {
+      label: t('adminLayout.sectionContent'),
+      items: [
+        { to: '/events', label: t('adminLayout.events'), icon: IconCalendar },
+        { to: '/drink-menus', label: t('adminLayout.drinkMenus'), icon: IconDrink },
+        { to: '/producers', label: t('adminLayout.producers'), icon: IconUsers },
+        { to: '/venues', label: t('adminLayout.venues'), icon: IconMapPin },
+        { to: '/categories', label: t('adminLayout.categories'), icon: IconGrid },
+        { to: '/banners', label: t('adminLayout.banners'), icon: IconImage },
+      ],
+    },
+    {
+      label: t('adminLayout.sectionInvitations'),
+      items: [
+        { to: '/invitations', label: t('adminLayout.producerInvites'), icon: IconMail },
+        { to: '/event-settings', label: t('adminLayout.eventSettings'), icon: IconGrid },
+        { to: '/waitlist', label: t('adminLayout.waitingList'), icon: IconMail },
+        { to: '/system', label: t('adminLayout.systemJobs'), icon: IconZap },
+      ],
+    },
+  ];
+
+  const pageTitle = t(`adminLayout.pageTitles.${location.pathname}`) || 'Admin';
 
   return (
     <div className="shell">
@@ -68,7 +61,7 @@ export function AdminLayout() {
           </span>
           <div>
             <strong>YOUPASS</strong>
-            <p>Admin Console</p>
+            <p>{t('common.adminConsole')}</p>
           </div>
         </div>
 
@@ -101,7 +94,7 @@ export function AdminLayout() {
         <div className="sidebar__footer">
           <div className="env-pill">
             <span className="env-pill__dot" />
-            Local development
+            {t('common.localDevelopment')}
           </div>
           <button
             className="ghost-btn ghost-btn--full"
@@ -111,7 +104,7 @@ export function AdminLayout() {
             }}
           >
             <IconLogout className="btn-icon" />
-            Sign out
+            {t('common.signOut')}
           </button>
         </div>
       </aside>
@@ -119,12 +112,15 @@ export function AdminLayout() {
       <div className="main">
         <header className="topbar">
           <div>
-            <p className="topbar__crumb">YouPass / Admin</p>
+            <p className="topbar__crumb">{t('common.youpassAdmin')}</p>
             <h2 className="topbar__title">{pageTitle}</h2>
           </div>
-          <div className="topbar__status">
-            <span className="topbar__status-dot" />
-            API connected
+          <div className="topbar__actions">
+            <LanguageToggle />
+            <div className="topbar__status">
+              <span className="topbar__status-dot" />
+              {t('common.apiConnected')}
+            </div>
           </div>
         </header>
         <main className="content">

@@ -11,6 +11,7 @@ export const listInvitationsQuerySchema = z.object({
     .enum(['free', 'guaranteed_pass', 'discounted'])
     .optional(),
   search: z.string().max(200).optional(),
+  event_type: z.string().trim().min(2).max(50).optional(),
   source: z.enum(['producer', 'guest']).optional(),
 });
 

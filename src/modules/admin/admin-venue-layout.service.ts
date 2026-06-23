@@ -5,6 +5,10 @@ import { venuesService } from '../venues/venues.service.js';
 import { formatVenue } from '../venues/venues.formatter.js';
 import { parseVenueDimensions } from '../venues/venues.types.js';
 import { buildTableIncludes, parseTableIncludes, parseTablePosition } from '../vip-venue/venue-table.types.js';
+import {
+  buildVenueTableAdminRefFilter,
+  buildVenueZoneRefFilter,
+} from '../../common/utils/mongo-id.js';
 import type {
   AdminVenueLayoutInput,
   AdminVenueTableInput,
@@ -57,7 +61,7 @@ async function resolveZone(layoutId: string, zoneRef: string) {
   const zone = await prisma.venueZone.findFirst({
     where: {
       layoutId,
-      OR: [{ id: zoneRef }, { externalId: zoneRef }],
+      ...buildVenueZoneRefFilter(zoneRef),
     },
   });
   if (!zone) {
@@ -70,7 +74,7 @@ async function resolveTable(zoneId: string, tableRef: string) {
   const table = await prisma.venueTable.findFirst({
     where: {
       zoneId,
-      OR: [{ id: tableRef }, { externalId: tableRef }, { label: tableRef }],
+      ...buildVenueTableAdminRefFilter(tableRef),
     },
   });
   if (!table) {

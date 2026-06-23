@@ -74,6 +74,119 @@ async function getOrderStatusByInvitationIds(
   return map;
 }
 
+type PurchaseSlotMeta = {
+  status: string;
+  order: {
+    id: string;
+    buyerUserId: string;
+    quantity: number;
+    eventId: string;
+    createdAt: Date;
+  };
+};
+
+async function getPurchaseSlotsByInvitationIds(
+  invitationIds: string[],
+): Promise<Map<string, PurchaseSlotMeta>> {
+  if (invitationIds.length === 0) {
+    return new Map();
+  }
+
+  const slots = await prisma.ticketSlot.findMany({
+    where: { invitationId: { in: invitationIds } },
+    select: {
+      invitationId: true,
+      status: true,
+      order: {
+        select: {
+          id: true,
+          buyerUserId: true,
+          quantity: true,
+          eventId: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+
+  const map = new Map<string, PurchaseSlotMeta>();
+  for (const slot of slots) {
+    if (slot.invitationId) {
+      map.set(slot.invitationId, slot as PurchaseSlotMeta);
+    }
+  }
+  return map;
+}
+
+function pickPreferredBuyerOwnerTicket(
+  current: { row: InvitationTicketRow; orderQty: number; orderCreatedAt: Date },
+  candidate: { row: InvitationTicketRow; orderQty: number; orderCreatedAt: Date },
+) {
+  if (candidate.orderQty > 1 && current.orderQty <= 1) {
+    return candidate;
+  }
+  if (current.orderQty > 1 && candidate.orderQty <= 1) {
+    return current;
+  }
+  return candidate.orderCreatedAt > current.orderCreatedAt ? candidate : current;
+}
+
+function filterMyTicketRows(
+  userId: string,
+  rows: InvitationTicketRow[],
+  slotsByInvitation: Map<string, PurchaseSlotMeta>,
+): InvitationTicketRow[] {
+  const kept: InvitationTicketRow[] = [];
+  const buyerOwnerByEvent = new Map<
+    string,
+    { row: InvitationTicketRow; orderQty: number; orderCreatedAt: Date }
+  >();
+
+  for (const row of rows) {
+    const slot = slotsByInvitation.get(row.id);
+
+    // Producer invitations and other non-purchase tickets.
+    if (!slot) {
+      if (row.source !== 'guest') {
+        kept.push(row);
+      }
+      continue;
+    }
+
+    // Guest tickets received from another buyer's assignment.
+    if (slot.order.buyerUserId !== userId) {
+      kept.push(row);
+      continue;
+    }
+
+    // Buyer purchase: only the owner slot is the My Tickets card.
+    // Assigned / claimed guest slots belong in VIEW ASSIGNED TICKETS.
+    if (slot.status !== 'owner') {
+      continue;
+    }
+
+    const candidate = {
+      row,
+      orderQty: slot.order.quantity,
+      orderCreatedAt: slot.order.createdAt,
+    };
+    const existing = buyerOwnerByEvent.get(row.eventId);
+    if (!existing) {
+      buyerOwnerByEvent.set(row.eventId, candidate);
+      continue;
+    }
+
+    buyerOwnerByEvent.set(
+      row.eventId,
+      pickPreferredBuyerOwnerTicket(existing, candidate),
+    );
+  }
+
+  kept.push(...[...buyerOwnerByEvent.values()].map((entry) => entry.row));
+  kept.sort((a, b) => a.event.startsAt.getTime() - b.event.startsAt.getTime());
+  return kept;
+}
+
 async function fetchUpcomingRows(userId: string, now = new Date()): Promise<InvitationTicketRow[]> {
   const cutoff = eventStillActiveCutoff(now);
   const rows = await prisma.invitation.findMany({
@@ -87,7 +200,9 @@ async function fetchUpcomingRows(userId: string, now = new Date()): Promise<Invi
     orderBy: { event: { startsAt: 'asc' } },
   });
 
-  return (rows as InvitationTicketRow[]).filter((row) => isUpcomingTicket(row, now));
+  const upcoming = (rows as InvitationTicketRow[]).filter((row) => isUpcomingTicket(row, now));
+  const slotsByInvitation = await getPurchaseSlotsByInvitationIds(upcoming.map((row) => row.id));
+  return filterMyTicketRows(userId, upcoming, slotsByInvitation);
 }
 
 async function fetchPastRows(userId: string, now = new Date()): Promise<InvitationTicketRow[]> {
@@ -97,6 +212,10 @@ async function fetchPastRows(userId: string, now = new Date()): Promise<Invitati
       recipientUserId: userId,
       OR: [
         { status: 'canceled' },
+        {
+          status: 'validated',
+          ticket: { isNot: null },
+        },
         {
           status: { in: ['accepted', 'validated'] },
           ticket: { isNot: null },
@@ -180,12 +299,35 @@ async function getTicketRowForUser(userId: string, ticketId: string): Promise<In
   return row as InvitationTicketRow;
 }
 
+function buildAssignMeta(assign: {
+  orderId: string;
+  available: number;
+  pending: number;
+  claimed: number;
+  quantity: number;
+}) {
+  return {
+    order_id: assign.orderId,
+    available_count: assign.available,
+    pending_count: assign.pending,
+    claimed_count: assign.claimed,
+    order_quantity: assign.quantity,
+  };
+}
+
+function resolveAssignMeta(
+  row: InvitationTicketRow,
+  byInvitation: Map<string, { orderId: string; available: number; pending: number; claimed: number; quantity: number }>,
+) {
+  return byInvitation.get(row.id) ?? null;
+}
+
 export const ticketsService = {
   async listUpcoming(userId: string, query: ListUpcomingTicketsQuery) {
     const favoriteIds = await getFavoriteIds(userId);
     const now = new Date();
     const upcoming = await fetchUpcomingRows(userId, now);
-    const assignMap = await ticketOrdersService.getAssignabilityByInvitationIds(
+    const assignByInvitation = await ticketOrdersService.getAssignabilityByInvitationIds(
       userId,
       upcoming.map((row) => row.id),
     );
@@ -193,10 +335,8 @@ export const ticketsService = {
 
     return {
       tickets: items.map((row) => {
-        const assign = assignMap.get(row.id);
-        const assignMeta = assign
-          ? { order_id: assign.orderId, available_count: assign.available }
-          : null;
+        const assign = resolveAssignMeta(row, assignByInvitation);
+        const assignMeta = assign ? buildAssignMeta(assign) : null;
         return formatUpcomingTicket(row, favoriteIds.has(row.eventId), assignMeta);
       }),
       meta: {
@@ -248,11 +388,12 @@ export const ticketsService = {
   async getTicketDetail(userId: string, ticketId: string) {
     const row = await getTicketRowForUser(userId, ticketId);
     const favoriteIds = await getFavoriteIds(userId);
-    const assignMap = await ticketOrdersService.getAssignabilityByInvitationIds(userId, [row.id]);
-    const assign = assignMap.get(row.id);
-    const assignMeta = assign
-      ? { order_id: assign.orderId, available_count: assign.available }
-      : null;
+    const assignByInvitation = await ticketOrdersService.getAssignabilityByInvitationIds(
+      userId,
+      [row.id],
+    );
+    const assign = resolveAssignMeta(row, assignByInvitation);
+    const assignMeta = assign ? buildAssignMeta(assign) : null;
     return formatTicketDetail(row, favoriteIds.has(row.eventId), assignMeta);
   },
 

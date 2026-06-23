@@ -12,6 +12,9 @@ import { EventSettingsPage } from './pages/EventSettingsPage';
 import { SystemJobsPage } from './pages/SystemJobsPage';
 import { ProducersPage } from './pages/ProducersPage';
 import { WaitlistPage } from './pages/WaitlistPage';
+import { DrinkMenusPage } from './pages/DrinkMenusPage';
+import { EventDrinkMenuPage } from './pages/EventDrinkMenuPage';
+import { EventOrdersPage } from './pages/EventOrdersPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!getSession()) {
@@ -25,6 +28,22 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
+        path="/events/:eventId/drinks"
+        element={
+          <RequireAuth>
+            <EventDrinkMenuPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/events/:eventId/orders"
+        element={
+          <RequireAuth>
+            <EventOrdersPage />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/"
         element={
           <RequireAuth>
@@ -34,6 +53,7 @@ export default function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="events" element={<EventsPage />} />
+        <Route path="drink-menus" element={<DrinkMenusPage />} />
         <Route path="venues" element={<VenuesPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="banners" element={<BannersPage />} />
