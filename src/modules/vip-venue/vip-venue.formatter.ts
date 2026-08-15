@@ -7,6 +7,7 @@ import type {
 import { TABLE_LOCK_MINUTES } from './vip-venue.constants.js';
 import { formatVenue } from '../venues/venues.formatter.js';
 import {
+  isAdminHeldVenueTable,
   isTableLockActive,
   parseTableIncludes,
   parseTablePosition,
@@ -21,7 +22,9 @@ function countZoneTables(zone: ZoneWithTables) {
   const total = zone.tables.length;
   const sold = zone.tables.filter((t) => t.status === 'sold').length;
   const available = zone.tables.filter(
-    (t) => t.status === 'available' || (t.status === 'locked' && !isTableLockActive(t)),
+    (t) =>
+      t.status === 'available' ||
+      (t.status === 'locked' && !isTableLockActive(t) && !isAdminHeldVenueTable(t)),
   ).length;
   return { total, sold, available };
 }
@@ -73,6 +76,10 @@ export function resolveTableApiStatus(
 ): 'available' | 'sold' | 'premium' | 'locked' | 'selected' | 'reserved' {
   if (table.status === 'sold') return 'sold';
   if (zone.kind === 'vip_premium_zone') return 'premium';
+
+  if (isAdminHeldVenueTable(table)) {
+    return table.status === 'reserved' ? 'reserved' : 'locked';
+  }
 
   if (table.status === 'reserved') {
     return isTableLockActive(table, now) ? 'reserved' : 'available';

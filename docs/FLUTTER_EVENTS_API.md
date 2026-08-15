@@ -1,6 +1,6 @@
 # Flutter — Events & Favorites API
 
-**Production base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Production base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 APIs for **YouHome** — featured carousel, event list, filters (country + event type), and favorites (heart icon).
 

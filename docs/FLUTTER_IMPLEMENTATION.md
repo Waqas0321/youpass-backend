@@ -1,6 +1,6 @@
 # Flutter — YouPass API Implementation Guide
 
-**Production base URL:** `https://youpass-backend.vercel.app/api/v1`  
+**Production base URL:** `https://youpass-backend-two.vercel.app/api/v1`  
 **Last updated:** June 2026
 
 This guide is for the **Flutter mobile app** integrating YouPass authentication (Twilio WhatsApp OTP, 6 digits), profile, and profile photo upload (Cloudinary).
@@ -66,7 +66,7 @@ This guide is for the **Flutter mobile app** integrating YouPass authentication 
 ## Configuration
 
 ```dart
-const String apiBaseUrl = 'https://youpass-backend.vercel.app/api/v1';
+const String apiBaseUrl = 'https://youpass-backend-two.vercel.app/api/v1';
 ```
 
 All requests: `Content-Type: application/json`
@@ -980,7 +980,7 @@ Future<void> registerFlow() async {
 
 ## Checklist for Flutter team
 
-- [ ] Base URL: `https://youpass-backend.vercel.app/api/v1`
+- [ ] Base URL: `https://youpass-backend-two.vercel.app/api/v1`
 - [ ] 6-digit OTP input only
 - [ ] Read `purpose` and `account_exists` from send-code response
 - [ ] Route to **register** or **login** based on `purpose`

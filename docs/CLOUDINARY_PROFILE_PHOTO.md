@@ -56,7 +56,7 @@ Redeploy after adding variables.
 
 ```bash
 # Replace TOKEN and path/to/photo.jpg
-curl -X POST https://youpass-backend.vercel.app/api/v1/users/me/profile-photo \
+curl -X POST https://youpass-backend-two.vercel.app/api/v1/users/me/profile-photo \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -F "photo=@/path/to/photo.jpg"
 ```

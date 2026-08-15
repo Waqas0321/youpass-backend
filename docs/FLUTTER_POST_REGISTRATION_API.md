@@ -1,6 +1,6 @@
 # Flutter — Post-Registration & YouHome Flow
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 This doc defines the **inviolable rule** after registration: **CREATE ACCOUNT → Welcome (2s) → YouHome directly**. No hamburger menu, no My Profile, no onboarding, no permission prompts.
 

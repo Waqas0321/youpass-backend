@@ -3,6 +3,12 @@ export const OTP_PURPOSE_LABELS = {
   register: 'AUTH_REGISTER',
   change_phone: 'AUTH_PHONE_CHANGE',
   delete_account: 'AUTH_DELETE_ACCOUNT',
+  staff_login: 'AUTH_STAFF_LOGIN',
+} as const;
+
+export const STAFF_AUTH_ERROR_CODES = {
+  STAFF_NOT_FOUND: 'STAFF_NOT_FOUND',
+  STAFF_INACTIVE: 'STAFF_INACTIVE',
 } as const;
 
 export const AUTH_ERROR_CODES = {

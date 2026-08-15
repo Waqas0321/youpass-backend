@@ -1,16 +1,24 @@
 import { prisma } from '../../config/database.js';
 import { env } from '../../config/env.js';
 import { haversineDistanceKm } from '../../common/utils/geo-distance.js';
+import { PARTY_MODE_GEOFENCE_RADIUS_KM } from './party-mode.constants.js';
 import {
-  PARTY_MODE_GEOFENCE_RADIUS_KM,
-  PARTY_MODE_POST_EVENT_HOURS,
-  PARTY_MODE_PRE_EVENT_HOURS,
-} from './party-mode.constants.js';
+  isEventLiveForPartyMode,
+  selectEventByDateTime,
+  type PartyModeEventTiming,
+} from './party-mode.selection.js';
 
 export type PartyModeRequirements = {
   has_purchased_ticket: boolean;
   ticket_scanned: boolean;
   at_event_location: boolean;
+};
+
+export type PartyModeEligibleEvent = {
+  event_id: string;
+  event_title: string;
+  starts_at: string;
+  ends_at: string | null;
 };
 
 export type PartyModeState = {
@@ -19,6 +27,8 @@ export type PartyModeState = {
   event_id: string | null;
   event_title: string | null;
   distance_km: number | null;
+  /** Events the user can open a drink menu for right now. */
+  eligible_events: PartyModeEligibleEvent[];
   requirements: PartyModeRequirements;
 };
 
@@ -27,22 +37,6 @@ const DISABLED_STATE: PartyModeRequirements = {
   ticket_scanned: false,
   at_event_location: false,
 };
-
-function isEventLiveForPartyMode(
-  event: { startsAt: Date; endsAt: Date | null },
-  now: Date,
-): boolean {
-  const windowStart = new Date(
-    event.startsAt.getTime() - PARTY_MODE_PRE_EVENT_HOURS * 60 * 60 * 1000,
-  );
-  const eventEnd =
-    event.endsAt ?? new Date(event.startsAt.getTime() + 24 * 60 * 60 * 1000);
-  const windowEnd = new Date(
-    eventEnd.getTime() + PARTY_MODE_POST_EVENT_HOURS * 60 * 60 * 1000,
-  );
-
-  return now >= windowStart && now <= windowEnd;
-}
 
 function buildDisabledState(
   requirements: PartyModeRequirements = DISABLED_STATE,
@@ -53,6 +47,7 @@ function buildDisabledState(
     event_id: null,
     event_title: null,
     distance_km: null,
+    eligible_events: [],
     requirements,
   };
 }
@@ -84,23 +79,93 @@ function isPartyModeLocationBypassUser(userId: string): boolean {
   return env.PARTY_MODE_BYPASS_USER_IDS.includes(userId);
 }
 
-function buildEnabledState(
-  eventId: string,
-  eventTitle: string,
-  distanceKm: number | null,
-): PartyModeState {
+function toEligibleEvent(event: {
+  id: string;
+  title: string;
+  startsAt: Date;
+  endsAt: Date | null;
+}): PartyModeEligibleEvent {
+  return {
+    event_id: event.id,
+    event_title: event.title,
+    starts_at: event.startsAt.toISOString(),
+    ends_at: event.endsAt?.toISOString() ?? null,
+  };
+}
+
+function uniqueEventsById(
+  events: Array<{
+    id: string;
+    title: string;
+    startsAt: Date;
+    endsAt: Date | null;
+  }>,
+): PartyModeEligibleEvent[] {
+  const seen = new Set<string>();
+  const result: PartyModeEligibleEvent[] = [];
+  for (const event of events) {
+    if (seen.has(event.id)) {
+      continue;
+    }
+    seen.add(event.id);
+    result.push(toEligibleEvent(event));
+  }
+  return result;
+}
+
+function buildEnabledState(input: {
+  eventId: string;
+  eventTitle: string;
+  distanceKm: number | null;
+  eligibleEvents: PartyModeEligibleEvent[];
+}): PartyModeState {
   return {
     enabled: true,
     banner_visible: true,
-    event_id: eventId,
-    event_title: eventTitle,
-    distance_km: distanceKm,
+    event_id: input.eventId,
+    event_title: input.eventTitle,
+    distance_km: input.distanceKm,
+    eligible_events: input.eligibleEvents,
     requirements: {
       has_purchased_ticket: true,
       ticket_scanned: true,
       at_event_location: true,
     },
   };
+}
+
+type ScannedInvitationRow = {
+  event: {
+    id: string;
+    title: string;
+    startsAt: Date;
+    endsAt: Date | null;
+    latitude: number | null;
+    longitude: number | null;
+  };
+};
+
+function withRowTiming(row: ScannedInvitationRow): PartyModeEventTiming & {
+  row: ScannedInvitationRow;
+} {
+  return {
+    id: row.event.id,
+    title: row.event.title,
+    startsAt: row.event.startsAt,
+    endsAt: row.event.endsAt,
+    row,
+  };
+}
+
+function pickScannedEventBySchedule(
+  scannedRows: ScannedInvitationRow[],
+  now: Date,
+): ScannedInvitationRow | null {
+  const selected = selectEventByDateTime(
+    scannedRows.map(withRowTiming),
+    now,
+  );
+  return selected?.row ?? null;
 }
 
 export const partyModeService = {
@@ -142,10 +207,29 @@ export const partyModeService = {
     }
 
     if (isPartyModeLocationBypassUser(userId)) {
-      const liveRow =
-        scannedRows.find((row) => isEventLiveForPartyMode(row.event, now)) ?? scannedRows[0];
+      const liveRows = scannedRows.filter((row) =>
+        isEventLiveForPartyMode(row.event, now),
+      );
+      const chooserPool = liveRows.length > 0 ? liveRows : scannedRows;
+      const selectedRow = pickScannedEventBySchedule(chooserPool, now);
+      if (!selectedRow) {
+        return buildDisabledState({
+          has_purchased_ticket: true,
+          ticket_scanned: true,
+          at_event_location: false,
+        });
+      }
 
-      return buildEnabledState(liveRow.event.id, liveRow.event.title, null);
+      const eligibleEvents = uniqueEventsById(
+        chooserPool.map((row) => row.event),
+      );
+
+      return buildEnabledState({
+        eventId: selectedRow.event.id,
+        eventTitle: selectedRow.event.title,
+        distanceKm: null,
+        eligibleEvents,
+      });
     }
 
     const lat = coords?.lat;
@@ -158,11 +242,9 @@ export const partyModeService = {
       });
     }
 
-    let closestMatch: {
-      eventId: string;
-      eventTitle: string;
-      distanceKm: number;
-    } | null = null;
+    const geofencedLive: Array<
+      ScannedInvitationRow & { distanceKm: number }
+    > = [];
 
     for (const row of scannedRows) {
       const event = row.event;
@@ -184,16 +266,10 @@ export const partyModeService = {
         continue;
       }
 
-      if (!closestMatch || distanceKm < closestMatch.distanceKm) {
-        closestMatch = {
-          eventId: event.id,
-          eventTitle: event.title,
-          distanceKm,
-        };
-      }
+      geofencedLive.push({ ...row, distanceKm });
     }
 
-    if (!closestMatch) {
+    if (geofencedLive.length === 0) {
       return buildDisabledState({
         has_purchased_ticket: true,
         ticket_scanned: true,
@@ -201,10 +277,26 @@ export const partyModeService = {
       });
     }
 
-    return buildEnabledState(
-      closestMatch.eventId,
-      closestMatch.eventTitle,
-      Math.round(closestMatch.distanceKm * 1000) / 1000,
+    const schedulePick = selectEventByDateTime(
+      geofencedLive.map((row) => ({
+        id: row.event.id,
+        title: row.event.title,
+        startsAt: row.event.startsAt,
+        endsAt: row.event.endsAt,
+        row,
+      })),
+      now,
     );
+    const selected = schedulePick?.row ?? geofencedLive[0];
+    const eligibleEvents = uniqueEventsById(
+      geofencedLive.map((row) => row.event),
+    );
+
+    return buildEnabledState({
+      eventId: selected.event.id,
+      eventTitle: selected.event.title,
+      distanceKm: Math.round(selected.distanceKm * 1000) / 1000,
+      eligibleEvents,
+    });
   },
 };

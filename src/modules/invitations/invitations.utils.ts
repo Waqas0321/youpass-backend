@@ -78,19 +78,12 @@ export function formatDeadlineLabel(date: Date, timezone: string): string {
 export type QrStatus = 'locked' | 'available' | 'redeemed' | 'expired';
 
 export function resolveQrStatus(
-  unlockAt: Date,
+  _unlockAt: Date,
   validatedAt: Date | null,
   eventStartsAt: Date,
 ): QrStatus {
   if (validatedAt) return 'redeemed';
   const eventEnd = new Date(eventStartsAt.getTime() + 24 * 60 * 60 * 1000);
   if (new Date() > eventEnd) return 'expired';
-
-  // Local dev: show QR immediately after confirm (production unlocks at 00:00 event day).
-  if (env.NODE_ENV === 'development' && env.CHECKOUT_MOCK_PAYMENT) {
-    return 'available';
-  }
-
-  if (new Date() < unlockAt) return 'locked';
   return 'available';
 }

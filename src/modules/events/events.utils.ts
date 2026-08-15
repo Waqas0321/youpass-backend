@@ -5,8 +5,12 @@ export function isEventUpcomingForListing(startsAt: Date, now = new Date()): boo
 
 /** Tickets can still be bought for this event. */
 export function isEventPurchasable(
-  event: { status: string; startsAt: Date },
+  event: { status: string; startsAt: Date; salesPaused?: boolean },
   now = new Date(),
 ): boolean {
-  return event.status === 'published' && isEventUpcomingForListing(event.startsAt, now);
+  return (
+    event.status === 'published' &&
+    !event.salesPaused &&
+    isEventUpcomingForListing(event.startsAt, now)
+  );
 }

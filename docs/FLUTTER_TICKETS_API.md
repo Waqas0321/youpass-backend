@@ -1,6 +1,6 @@
 # Flutter — My Tickets API
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`  
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`  
 **Auth:** `Authorization: Bearer <access_token>`
 
 My Tickets lists **confirmed invitation tickets** (purchase tickets will use the same endpoints later).

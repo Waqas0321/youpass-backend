@@ -1,6 +1,6 @@
 # Flutter — Security & Auth API Integration
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 This doc covers **attack protection**, **encryption**, and **Flutter changes** required to work with the secured backend.
 

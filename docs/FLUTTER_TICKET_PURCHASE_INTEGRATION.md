@@ -1,6 +1,6 @@
 # Flutter — Ticket Purchase Integration Guide
 
-**Production base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Production base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 Handoff for the **Buy tickets** flow: general pre-sales, VIP General, VIP tables, floor plan, lock, and checkout.
 
@@ -311,7 +311,7 @@ Prefer MongoDB `offering_id` from ticket-types response.
 ## 8. Quick test (curl)
 
 ```bash
-BASE=https://youpass-backend.vercel.app/api/v1
+BASE=https://youpass-backend-two.vercel.app/api/v1
 EVENT_ID=6a1fdcd36acaa91b865e7261
 
 curl -s "$BASE/events/$EVENT_ID/ticket-types" | jq '.data.offerings[] | {type, name, is_sold_out, is_selectable}'

@@ -79,15 +79,42 @@ export const featuredEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(10),
 });
 
+const sponsorSchema = z.object({
+  id: z.string().min(1).max(80),
+  label: z.string().min(1).max(120),
+  tone: z.string().min(4).max(32),
+  logo_url: z.string().max(2000).optional(),
+});
+
+const socialLinkSchema = z.object({
+  id: z.string().min(1).max(80),
+  platform: z.enum(['instagram', 'facebook', 'tiktok', 'other']),
+  handle: z.string().min(1).max(200),
+});
+
+const optionalUrlSchema = z.string().max(2000).optional();
+
 const eventBodyBaseSchema = z.object({
   title: z.string().min(2).max(200),
   description: z.string().max(5000).optional(),
   starts_at: z.string().datetime({ message: 'Use ISO 8601 datetime' }),
+  ends_at: z.string().datetime({ message: 'Use ISO 8601 datetime' }).optional(),
   venue_id: z.string().min(1).optional(),
   venue_name: z.string().min(2).max(200).optional(),
   city: z.string().min(2).max(100).optional(),
+  address_line: z.string().max(300).optional(),
   country_code: z.string().min(2).max(5).optional(),
-  image_url: z.string().url().max(2000).optional(),
+  image_url: optionalUrlSchema,
+  logo_url: optionalUrlSchema,
+  teaser_video_url: optionalUrlSchema,
+  carousel_images: z.array(z.string().max(2000)).max(20).optional(),
+  floor_plan_image_url: optionalUrlSchema,
+  min_age: z.number().int().min(0).max(99).optional(),
+  dress_code: z.string().max(80).optional(),
+  primary_color: z.string().max(32).optional(),
+  secondary_color: z.string().max(32).optional(),
+  sponsors: z.array(sponsorSchema).max(24).optional(),
+  social_links: z.array(socialLinkSchema).max(24).optional(),
   event_type: z.string().min(1).max(50),
   is_featured: z.boolean().optional().default(false),
   featured_order: z.number().int().min(0).optional().default(0),

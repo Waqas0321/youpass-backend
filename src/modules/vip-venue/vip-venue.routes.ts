@@ -5,6 +5,7 @@ import { vipVenueController } from './vip-venue.controller.js';
 
 export const vipVenueRouter = Router({ mergeParams: true });
 
+vipVenueRouter.get('/tickets', vipVenueController.listTicketTypes);
 vipVenueRouter.get('/ticket-types', vipVenueController.listTicketTypes);
 vipVenueRouter.get('/venue-layout', optionalAuthenticate, vipVenueController.getVenueLayout);
 vipVenueRouter.get('/tables/availability/realtime', optionalAuthenticate, vipVenueController.getRealtimeAvailability);

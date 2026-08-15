@@ -1,0 +1,746 @@
+.prod-reports-page {
+  padding: 8px 28px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 100%;
+  min-width: 0;
+}
+
+.prod-reports-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.prod-reports-page__intro h1 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: clamp(1.55rem, 2.5vw, 2rem);
+  letter-spacing: -0.02em;
+}
+
+.prod-reports-page__intro p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+}
+
+/* Toolbar */
+.prod-reports-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.5fr) minmax(200px, 0.75fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.prod-reports-toolbar__field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  color: #9ca3af;
+  line-height: 1.2;
+}
+
+.prod-reports-toolbar__search {
+  min-width: 0;
+}
+
+.prod-reports-toolbar__search-control {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.prod-reports-toolbar__icon {
+  width: 16px;
+  height: 16px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.prod-reports-toolbar__search input {
+  width: 100%;
+  margin-left: 10px;
+  border: 0;
+  background: transparent;
+  color: #f3f4f6;
+  font-size: 0.84rem;
+  outline: none;
+}
+
+.prod-reports-toolbar__search input::placeholder {
+  color: #6b7280;
+}
+
+.prod-reports-toolbar__date-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: #f3f4f6;
+  font-size: 0.84rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.prod-reports-toolbar__exports {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.prod-reports-toolbar__export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 184, 0, 0.45);
+  background: transparent;
+  color: var(--color-gold);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.prod-reports-toolbar__export-btn:hover {
+  border-color: var(--color-gold);
+  background: rgba(255, 184, 0, 0.08);
+}
+
+.prod-reports-toolbar__export-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Main grid — sales ~65%, demographics ~35% (mockup ratio) */
+.prod-reports-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(400px, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.prod-reports-panel {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 16px 18px 18px;
+  min-width: 0;
+}
+
+.prod-reports-panel__header {
+  margin-bottom: 14px;
+}
+
+.prod-reports-panel__header h2 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.prod-reports-panel--sales {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.prod-reports-panel--demographics {
+  display: flex;
+  flex-direction: column;
+}
+
+.prod-reports-panel--demographics .prod-reports-demographics {
+  flex: 1;
+}
+
+/* Sales panel */
+.prod-reports-sales {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.prod-reports-sales__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 0;
+  margin-bottom: 14px;
+}
+
+.prod-reports-sales__header h2 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.prod-reports-sales__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.prod-reports-sales__badge--active {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.prod-reports-sales__badge--paused {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+.prod-reports-sales__body-scroll {
+  overflow-x: auto;
+  padding: 0 18px 14px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prod-reports-sales__body {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.75fr) auto minmax(0, 1.65fr);
+  gap: 18px 20px;
+  align-items: start;
+  min-width: 0;
+}
+
+.prod-reports-sales__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.prod-reports-sales__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prod-reports-sales__stat span {
+  color: #9ca3af;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.prod-reports-sales__stat strong {
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.prod-reports-sales__donut {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  flex-shrink: 0;
+}
+
+.prod-reports-sales__donut svg {
+  display: block;
+  width: 140px;
+  height: 140px;
+  max-width: 140px;
+  max-height: 140px;
+}
+
+.prod-reports-sales__donut-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 14;
+}
+
+.prod-reports-sales__donut-slice {
+  fill: none;
+  stroke-width: 14;
+}
+
+.prod-reports-sales__donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.prod-reports-sales__donut-center strong {
+  font-size: 1.25rem;
+  line-height: 1.1;
+}
+
+.prod-reports-sales__donut-center span {
+  color: #9ca3af;
+  font-size: 0.72rem;
+}
+
+.prod-reports-sales__table-wrap {
+  min-width: 0;
+}
+
+.prod-reports-sales__table-wrap h3 {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #e5e7eb;
+}
+
+.prod-reports-sales__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  table-layout: fixed;
+}
+
+.prod-reports-sales__table th,
+.prod-reports-sales__table td {
+  padding: 7px 6px 7px 0;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+}
+
+.prod-reports-sales__table th {
+  color: #9ca3af;
+  font-weight: 500;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.prod-reports-sales__table th:nth-child(1),
+.prod-reports-sales__table td:nth-child(1) {
+  width: 22%;
+}
+
+.prod-reports-sales__table th:nth-child(2),
+.prod-reports-sales__table td:nth-child(2) {
+  width: 13%;
+}
+
+.prod-reports-sales__table th:nth-child(3),
+.prod-reports-sales__table td:nth-child(3) {
+  width: 17%;
+}
+
+.prod-reports-sales__table th:nth-child(4),
+.prod-reports-sales__table td:nth-child(4) {
+  width: 24%;
+}
+
+.prod-reports-sales__table th:nth-child(5),
+.prod-reports-sales__table td:nth-child(5) {
+  width: 24%;
+}
+
+.prod-reports-sales__table td {
+  white-space: nowrap;
+}
+
+.prod-reports-sales__table td:last-child,
+.prod-reports-sales__table th:last-child {
+  padding-right: 0;
+  text-align: right;
+}
+
+.prod-reports-sales__table td:nth-last-child(2),
+.prod-reports-sales__table th:nth-last-child(2) {
+  text-align: right;
+}
+
+.prod-reports-sales__category {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prod-reports-sales__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.prod-reports-sales__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.78rem;
+  color: #9ca3af;
+  margin-top: auto;
+}
+
+.prod-reports-sales__footer-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prod-reports-sales__footer-icon {
+  width: 16px;
+  height: 16px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.prod-reports-sales__footer-highlight {
+  color: #fb923c;
+}
+
+/* Demographics — gender + age side by side like mockup */
+.prod-reports-demographics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+}
+
+.prod-reports-demographics__gender,
+.prod-reports-demographics__age {
+  min-width: 0;
+}
+
+.prod-reports-demographics h3 {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.prod-reports-demographics__donut {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.prod-reports-demographics__donut svg {
+  display: block;
+  width: 104px;
+  height: 104px;
+  max-width: 104px;
+  max-height: 104px;
+  flex-shrink: 0;
+}
+
+.prod-reports-demographics__track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 14;
+}
+
+.prod-reports-demographics__slice {
+  fill: none;
+  stroke-width: 14;
+}
+
+.prod-reports-demographics__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.prod-reports-demographics__legend li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.76rem;
+  color: #d1d5db;
+}
+
+.prod-reports-demographics__legend strong {
+  color: #f3f4f6;
+  font-size: 0.76rem;
+}
+
+.prod-reports-demographics__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.prod-reports-demographics__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prod-reports-demographics__bars li {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 38px;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.7rem;
+  color: #d1d5db;
+}
+
+.prod-reports-demographics__bars li > span:first-child {
+  flex-shrink: 0;
+}
+
+.prod-reports-demographics__bars strong {
+  color: #f3f4f6;
+  font-size: 0.76rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.prod-reports-demographics__bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.prod-reports-demographics__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #a855f7;
+  max-width: 100%;
+}
+
+/* Bottom metrics — cards size to content; no stretch void */
+.prod-reports-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
+}
+
+.prod-reports-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  min-width: 0;
+  width: 100%;
+}
+
+.prod-reports-metric__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.prod-reports-metric__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.prod-reports-metric__body h3 {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9ca3af;
+  line-height: 1.35;
+}
+
+.prod-reports-metric__body strong {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 1.9vw, 1.75rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  word-break: break-word;
+}
+
+.prod-reports-metric__body p {
+  margin: 0;
+  font-size: 0.76rem;
+  color: #9ca3af;
+}
+
+.prod-reports-metric--gold .prod-reports-metric__icon {
+  background: rgba(255, 184, 0, 0.12);
+  color: var(--color-gold);
+}
+
+.prod-reports-metric--gold strong {
+  color: var(--color-gold);
+}
+
+.prod-reports-metric--purple .prod-reports-metric__icon {
+  background: rgba(168, 85, 247, 0.14);
+  color: #c4b5fd;
+}
+
+.prod-reports-metric--purple strong {
+  color: #c4b5fd;
+}
+
+.prod-reports-metric--pink .prod-reports-metric__icon {
+  background: rgba(236, 72, 153, 0.14);
+  color: #f9a8d4;
+}
+
+.prod-reports-metric--pink strong {
+  color: #f9a8d4;
+}
+
+/* Top products — same card shell as metrics */
+.prod-reports-panel--products {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.prod-reports-panel--products .prod-reports-panel__header {
+  margin-bottom: 4px;
+}
+
+.prod-reports-panel--products .prod-reports-panel__header h2 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9ca3af;
+  line-height: 1.35;
+}
+
+.prod-reports-products-table-wrap {
+  overflow-x: auto;
+}
+
+.prod-reports-products-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.prod-reports-products-table th,
+.prod-reports-products-table td {
+  padding: 5px 0;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.prod-reports-products-table th {
+  color: #9ca3af;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.prod-reports-products-table td:last-child,
+.prod-reports-products-table th:last-child {
+  text-align: right;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.prod-reports-products-table tbody td:first-child {
+  color: #f3f4f6;
+  font-weight: 500;
+}
+
+.prod-reports-products-table__rank {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: rgba(255, 184, 0, 0.14);
+  color: var(--color-gold);
+  font-size: 0.68rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+@media (max-width: 1280px) {
+  .prod-reports-main {
+    grid-template-columns: 1fr;
+  }
+
+  .prod-reports-panel--demographics {
+    max-width: none;
+  }
+
+  .prod-reports-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  .prod-reports-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .prod-reports-sales__body-scroll {
+    padding-inline: 14px;
+  }
+
+  .prod-reports-sales__body {
+    grid-template-columns: 1fr;
+    min-width: 0;
+  }
+
+  .prod-reports-sales__donut {
+    margin: 0 auto;
+  }
+
+  .prod-reports-demographics {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .prod-reports-page {
+    padding-inline: 16px;
+  }
+
+  .prod-reports-metrics {
+    grid-template-columns: 1fr;
+  }
+}

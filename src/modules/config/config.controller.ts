@@ -12,9 +12,17 @@ export const configController = {
     }
   },
 
-  getAuthConfig: async (_req: Request, res: Response, next: NextFunction) => {
+  getAuthConfig: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = configService.getAuthConfig();
+      const raw =
+        (typeof req.query.lang === 'string' && req.query.lang) ||
+        (typeof req.query.language === 'string' && req.query.language) ||
+        req.headers['accept-language']?.toString().split(',')[0]?.trim().slice(0, 2) ||
+        'es';
+      const languageCode = ['en', 'es', 'pt'].includes(raw.toLowerCase())
+        ? raw.toLowerCase()
+        : 'es';
+      const data = configService.getAuthConfig(languageCode);
       res.json(successResponse(data));
     } catch (err) {
       next(err);

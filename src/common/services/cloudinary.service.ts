@@ -54,6 +54,35 @@ export const cloudinaryService = {
     });
   },
 
+  uploadAdminVideo(
+    buffer: Buffer,
+    options: { folder: string; publicId?: string },
+  ): Promise<string> {
+    assertCloudinaryReady();
+
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: options.folder,
+          public_id: options.publicId,
+          overwrite: Boolean(options.publicId),
+          invalidate: true,
+          resource_type: 'video',
+        },
+        (error: Error | undefined, result: UploadApiResponse | undefined) => {
+          if (error || !result?.secure_url) {
+            console.error('Cloudinary video upload failed:', error);
+            reject(new AppError(502, 'UPLOAD_FAILED', 'Failed to upload video. Please try again.'));
+            return;
+          }
+          resolve(result.secure_url);
+        },
+      );
+
+      uploadStream.end(buffer);
+    });
+  },
+
   uploadProfilePhoto(userId: string, buffer: Buffer): Promise<string> {
     assertCloudinaryReady();
 

@@ -3,6 +3,7 @@ import type {
   EventDrinkProduct,
   EventDrinkProductStatus,
 } from '@prisma/client';
+import { drinkPriceToDisplay } from '../event-drinks/drink-price.utils.js';
 
 export type AdminEventDrinkCategoryDto = {
   category_id: string;
@@ -23,6 +24,9 @@ export type AdminEventDrinkProductDto = {
   description: string | null;
   volume_ml: number | null;
   price_clp: number;
+  price: number;
+  currency: string;
+  cost_clp: number | null;
   image_url: string | null;
   stock_total: number | null;
   stock_remaining: number | null;
@@ -50,6 +54,7 @@ type ProductWithCategory = EventDrinkProduct & {
 
 export function formatAdminEventDrinkProduct(
   product: ProductWithCategory,
+  currency: string,
 ): AdminEventDrinkProductDto {
   return {
     product_id: product.id,
@@ -61,6 +66,9 @@ export function formatAdminEventDrinkProduct(
     description: product.description,
     volume_ml: product.volumeMl,
     price_clp: product.priceClp,
+    price: drinkPriceToDisplay(product.priceClp, currency),
+    currency,
+    cost_clp: product.costClp,
     image_url: product.imageUrl,
     stock_total: product.stockTotal,
     stock_remaining: product.stockRemaining,

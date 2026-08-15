@@ -1,0 +1,84 @@
+:root {
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Instrument Sans', 'DM Sans', system-ui, sans-serif;
+  --color-bg: #000;
+  --color-gold: #ffb800;
+  --color-text: #f5f5f5;
+  --color-muted: #9ca3af;
+  --color-border: rgba(255, 255, 255, 0.14);
+  --radius-md: 10px;
+  --radius-lg: 18px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+.alert {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.alert--error {
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  color: #fca5a5;
+}
+
+.alert--info {
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  color: #93c5fd;
+}
+
+.language-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.language-toggle__btn {
+  min-width: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.language-toggle__btn.is-active {
+  background: rgba(255, 184, 0, 0.18);
+  color: var(--color-gold);
+}

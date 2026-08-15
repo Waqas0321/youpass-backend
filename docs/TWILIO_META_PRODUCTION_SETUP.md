@@ -8,7 +8,7 @@
 
 All WhatsApp delivery is handled by the **YOUPASS backend** via Twilio's WhatsApp API (Meta Business account linked in Twilio).
 
-**Production API:** `https://youpass-backend.vercel.app/api/v1`
+**Production API:** `https://youpass-backend-two.vercel.app/api/v1`
 
 ---
 
@@ -193,7 +193,7 @@ If misconfigured:
 ### 1. Check WhatsApp readiness
 
 ```bash
-curl -s -X POST https://youpass-backend.vercel.app/api/v1/auth/check-whatsapp \
+curl -s -X POST https://youpass-backend-two.vercel.app/api/v1/auth/check-whatsapp \
   -H "Content-Type: application/json" \
   -d '{"phone":"3216548001","country_code":"PK"}'
 ```
@@ -203,7 +203,7 @@ Expect: `"whatsapp_available": true`, `"message_key": "WHATSAPP_READY"`.
 ### 2. Send OTP (live)
 
 ```bash
-curl -s -X POST https://youpass-backend.vercel.app/api/v1/auth/send-code \
+curl -s -X POST https://youpass-backend-two.vercel.app/api/v1/auth/send-code \
   -H "Content-Type: application/json" \
   -d '{"phone":"3216548001","country_code":"PK","purpose":"login"}'
 ```

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "framework": null,
-  "installCommand": "NODE_ENV=development npm install && npm run admin:install",
+  "installCommand": "NODE_ENV=development npm install && npm run admin:install && npm run producer:install",
   "buildCommand": "NODE_ENV=development npm run vercel-build",
   "outputDirectory": "public",
   "functions": {
@@ -26,6 +26,14 @@
     {
       "source": "/admin/(.*)",
       "destination": "/admin/index.html"
+    },
+    {
+      "source": "/producer",
+      "destination": "/producer/index.html"
+    },
+    {
+      "source": "/producer/(.*)",
+      "destination": "/producer/index.html"
     }
   ]
 }

@@ -1,6 +1,6 @@
 # YouPass — Flutter API Reference (Production)
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 **Health:** `GET /health` · `GET /health/db`
 
@@ -267,10 +267,10 @@ POST /auth/register
 ## Quick test commands
 
 ```bash
-curl -s https://youpass-backend.vercel.app/api/v1/health
-curl -s https://youpass-backend.vercel.app/api/v1/config/auth
-curl -s "https://youpass-backend.vercel.app/api/v1/home/initial-feed?country_code=CL"
-curl -s "https://youpass-backend.vercel.app/api/v1/events?country_code=CL&limit=5"
+curl -s https://youpass-backend-two.vercel.app/api/v1/health
+curl -s https://youpass-backend-two.vercel.app/api/v1/config/auth
+curl -s "https://youpass-backend-two.vercel.app/api/v1/home/initial-feed?country_code=CL"
+curl -s "https://youpass-backend-two.vercel.app/api/v1/events?country_code=CL&limit=5"
 ```
 
 ---
@@ -296,4 +296,4 @@ curl -s "https://youpass-backend.vercel.app/api/v1/events?country_code=CL&limit=
 
 ---
 
-*Production deploy — base URL `youpass-backend.vercel.app`*
+*Production deploy — base URL `youpass-backend-two.vercel.app`*

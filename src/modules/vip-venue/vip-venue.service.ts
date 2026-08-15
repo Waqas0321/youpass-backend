@@ -17,7 +17,7 @@ import {
   resolveOfferingAvailability,
   resolveOfferingRef,
 } from '../ticket-offerings/ticket-offering.types.js';
-import { isTableLockActive } from './venue-table.types.js';
+import { isAdminHeldVenueTable, isTableLockActive } from './venue-table.types.js';
 import { buildVenueTableRefFilter, buildOfferingRefFilter } from '../../common/utils/mongo-id.js';
 
 async function getTableLockMinutes(eventId: string) {
@@ -220,9 +220,14 @@ export const vipVenueService = {
       throw new AppError(409, 'TABLE_NOT_AVAILABLE', 'This table is already sold');
     }
 
+    if (isAdminHeldVenueTable(table)) {
+      throw new AppError(409, 'TABLE_NOT_AVAILABLE', 'This table is not available');
+    }
+
     if (
       !isTableLockActive(table, now) &&
-      (table.status === 'locked' || table.status === 'reserved')
+      (table.status === 'locked' || table.status === 'reserved') &&
+      (table.lockedUntil != null || table.lockedByUserId != null)
     ) {
       table = await prisma.venueTable.update({
         where: { id: table.id },
@@ -513,5 +518,89 @@ export const vipVenueService = {
       has_general_tickets,
       has_vip_tickets,
     };
+  },
+
+  async getListingPurchaseMetaBatch(eventIds: string[]) {
+    const uniqueIds = [...new Set(eventIds.filter(Boolean))];
+    const meta = new Map<
+      string,
+      { has_ticket_offerings: boolean; can_purchase: boolean; is_sold_out: boolean }
+    >();
+
+    if (uniqueIds.length === 0) {
+      return meta;
+    }
+
+    const now = new Date();
+    const [events, offerings, layouts, availableTables] = await Promise.all([
+      prisma.event.findMany({
+        where: { id: { in: uniqueIds } },
+        select: { id: true, status: true, startsAt: true, salesPaused: true },
+      }),
+      prisma.eventTicketOffering.findMany({
+        where: { eventId: { in: uniqueIds }, status: { in: ['active', 'sold_out', 'paused'] } },
+      }),
+      prisma.eventVenueLayout.findMany({
+        where: { eventId: { in: uniqueIds } },
+        select: { eventId: true },
+      }),
+      // Query tables directly — nested includes crash if legacy rows have null event_id.
+      prisma.venueTable.findMany({
+        where: {
+          eventId: { in: uniqueIds },
+          status: 'available',
+        },
+        select: { eventId: true },
+      }),
+    ]);
+
+    const offeringsByEvent = new Map<string, typeof offerings>();
+    for (const offering of offerings) {
+      const current = offeringsByEvent.get(offering.eventId) ?? [];
+      current.push(offering);
+      offeringsByEvent.set(offering.eventId, current);
+    }
+
+    const layoutEventIds = new Set(layouts.map((layout) => layout.eventId));
+    const availableTableCountByEvent = new Map<string, number>();
+    for (const table of availableTables) {
+      availableTableCountByEvent.set(
+        table.eventId,
+        (availableTableCountByEvent.get(table.eventId) ?? 0) + 1,
+      );
+    }
+
+    for (const event of events) {
+      const eventOfferings = offeringsByEvent.get(event.id) ?? [];
+      const hasLayout = layoutEventIds.has(event.id);
+      const hasAvailableVipTables =
+        (availableTableCountByEvent.get(event.id) ?? 0) > 0;
+      const hasSelectableOffering = eventOfferings.some(
+        (offering) => resolveOfferingAvailability(offering, now).is_selectable,
+      );
+      const has_general_tickets = eventOfferings.some(
+        (offering) =>
+          offering.type !== 'vip_general' &&
+          resolveOfferingAvailability(offering, now).is_selectable,
+      );
+      const has_vip_tickets =
+        eventOfferings.some(
+          (offering) =>
+            offering.type === 'vip_general' &&
+            resolveOfferingAvailability(offering, now).is_selectable,
+        ) || hasAvailableVipTables;
+      const sellsTickets = eventOfferings.length > 0 || hasLayout;
+      const eventEnded = !isEventPurchasable(event, now);
+      const is_sold_out = eventEnded || (sellsTickets && !has_general_tickets && !has_vip_tickets);
+      const purchasable = isEventPurchasable(event, now);
+
+      meta.set(event.id, {
+        has_ticket_offerings: eventOfferings.length > 0,
+        can_purchase: purchasable && (hasSelectableOffering || hasAvailableVipTables),
+        is_sold_out,
+      });
+    }
+
+    return meta;
   },
 };

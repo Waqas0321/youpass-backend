@@ -1,6 +1,6 @@
 # Flutter — Product Decisions API Guide
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`  
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`  
 **Auth channel:** WhatsApp Business **only** (no SMS)  
 **Sandbox testing:** Twilio sandbox `+14155238886` (join code required on test phones)
 
@@ -314,4 +314,4 @@ For QA / release APK testing:
 
 ---
 
-*Last updated: June 2026 — production `youpass-backend.vercel.app`*
+*Last updated: June 2026 — production `youpass-backend-two.vercel.app`*

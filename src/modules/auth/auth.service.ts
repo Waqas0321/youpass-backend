@@ -1,6 +1,7 @@
 import type { AuthCodePurpose, User } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { env } from '../../config/env.js';
+import { isWhatsAppDeliveryMock } from '../../config/meta-whatsapp.config.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { AUTH_ERROR_CODES, OTP_PURPOSE_LABELS } from '../../config/constants.js';
 import {
@@ -169,6 +170,103 @@ function whereAuthCodeUnused() {
   return { OR: [{ usedAt: null }, { usedAt: { isSet: false } }] };
 }
 
+const REGISTER_FORM_GRACE_MS = 60 * 60 * 1000;
+
+async function verifyOtpCode(
+  e164: string,
+  _countryCode: string,
+  code: string,
+  purpose: AuthCodePurpose,
+  context?: OtpContext,
+  options?: { consume?: boolean },
+): Promise<{ verified: true; authCodeId: string }> {
+  const consume = options?.consume !== false;
+  await assertNotBlocked(e164);
+
+  // Only the latest OTP for this phone/purpose matters. Older unused expired
+  // rows must not surface as CODE_EXPIRED after a newer code was verified.
+  const latest = await prisma.authCode.findFirst({
+    where: { phone: e164, purpose },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!latest) {
+    const limit = await getOrCreateRateLimit(e164);
+    const attemptsAfter = limit.failedAttempts + 1;
+    const remainingAttempts = Math.max(0, env.OTP_MAX_FAILED_ATTEMPTS - attemptsAfter);
+    const blockMinutes = otpBlockMinutesForPurpose(purpose);
+    await incrementFailedAttempt(e164, blockMinutes);
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Invalid code', {
+      remaining_attempts: remainingAttempts,
+    });
+  }
+
+  const isValid = await verifyOtp(code, latest.codeHash);
+
+  await prisma.authAttempt.create({
+    data: {
+      phone: e164,
+      codeId: latest.id,
+      wasSuccessful: isValid,
+      deviceInfo: context?.deviceInfo as object | undefined,
+      ipAddress: context?.ipAddress,
+    },
+  });
+
+  if (!isValid) {
+    const limit = await getOrCreateRateLimit(e164);
+    const attemptsAfter = limit.failedAttempts + 1;
+    const remainingAttempts = Math.max(0, env.OTP_MAX_FAILED_ATTEMPTS - attemptsAfter);
+    const blockMinutes = otpBlockMinutesForPurpose(purpose);
+    await incrementFailedAttempt(e164, blockMinutes);
+    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Incorrect code', {
+      remaining_attempts: remainingAttempts,
+    });
+  }
+
+  const now = new Date();
+  const isUsed = latest.usedAt != null;
+  const isExpired = latest.expiresAt <= now;
+
+  if (isUsed) {
+    // Create-account after OTP screen already verified this code.
+    if (
+      purpose === 'register' &&
+      consume &&
+      latest.usedAt!.getTime() >= now.getTime() - REGISTER_FORM_GRACE_MS
+    ) {
+      await resetFailedAttempts(e164);
+      return { verified: true, authCodeId: latest.id };
+    }
+
+    throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, codeExpiredMessage());
+  }
+
+  if (isExpired) {
+    throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, codeExpiredMessage());
+  }
+
+  if (consume) {
+    await prisma.authCode.update({
+      where: { id: latest.id },
+      data: { usedAt: now },
+    });
+  } else if (purpose === 'register') {
+    // Keep the code alive while the user fills the registration form.
+    const extendedExpiry = new Date(now.getTime() + REGISTER_FORM_GRACE_MS);
+    if (latest.expiresAt < extendedExpiry) {
+      await prisma.authCode.update({
+        where: { id: latest.id },
+        data: { expiresAt: extendedExpiry },
+      });
+    }
+  }
+
+  await resetFailedAttempts(e164);
+
+  return { verified: true, authCodeId: latest.id };
+}
+
 async function invalidatePreviousCodes(phone: string, purpose: AuthCodePurpose): Promise<void> {
   await prisma.authCode.updateMany({
     where: { phone, purpose, expiresAt: { gt: new Date() }, ...whereAuthCodeUnused() },
@@ -265,6 +363,34 @@ function mapTwilioDeliveryError(err: unknown): AppError {
     );
   }
 
+  if (raw.includes('131030') || raw.includes('not in allowed list')) {
+    return new AppError(
+      400,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      'This phone number is not registered as a WhatsApp test recipient. Add it in Meta Developer Console (API Setup → test recipients) while the app is in Development mode.',
+    );
+  }
+
+  if (raw.includes('132001') || raw.includes('132000') || raw.includes('Template name does not exist')) {
+    return new AppError(
+      503,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      'WhatsApp OTP template is missing or not approved yet. Create an Authentication template in Meta WhatsApp Manager and set WHATSAPP_OTP_TEMPLATE_NAME.',
+    );
+  }
+
+  if (raw.includes('WHATSAPP_OTP_TEMPLATE_NAME') || raw.includes('WHATSAPP_ACCESS_TOKEN')) {
+    return new AppError(503, AUTH_ERROR_CODES.OTP_DELIVERY_FAILED, raw);
+  }
+
+  if (raw.includes('190') || raw.includes('Authentication Error') || raw.includes('access token')) {
+    return new AppError(
+      503,
+      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+      'WhatsApp credentials are invalid or expired. Regenerate WHATSAPP_ACCESS_TOKEN in Meta Developer Console.',
+    );
+  }
+
   return new AppError(
     502,
     AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
@@ -345,7 +471,7 @@ async function createAndSendOtp(
     throw mapTwilioDeliveryError(err);
   }
 
-  if (env.TWILIO_MOCK || env.NODE_ENV === 'development') {
+  if (isWhatsAppDeliveryMock() || env.NODE_ENV === 'development') {
     console.log('');
     console.log('════════════════════════════════════════');
     console.log(`[DEV OTP] phone=${e164} purpose=${purpose} code=${code}`);
@@ -356,74 +482,8 @@ async function createAndSendOtp(
   return {
     phone_display: formatPhoneDisplay(e164, countryCode),
     ...otpPolicyMeta(),
-    ...(env.TWILIO_MOCK ? { dev_otp_code: code } : {}),
+    ...(isWhatsAppDeliveryMock() ? { dev_otp_code: code } : {}),
   };
-}
-
-async function verifyOtpCode(
-  e164: string,
-  _countryCode: string,
-  code: string,
-  purpose: AuthCodePurpose,
-  context?: OtpContext,
-): Promise<{ verified: true; authCodeId: string }> {
-  await assertNotBlocked(e164);
-
-  const authCode = await prisma.authCode.findFirst({
-    where: {
-      phone: e164,
-      purpose,
-      ...whereAuthCodeUnused(),
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  if (!authCode) {
-    const limit = await getOrCreateRateLimit(e164);
-    const attemptsAfter = limit.failedAttempts + 1;
-    const remainingAttempts = Math.max(0, env.OTP_MAX_FAILED_ATTEMPTS - attemptsAfter);
-    const blockMinutes = otpBlockMinutesForPurpose(purpose);
-    await incrementFailedAttempt(e164, blockMinutes);
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Invalid code', {
-      remaining_attempts: remainingAttempts,
-    });
-  }
-
-  if (authCode.expiresAt <= new Date()) {
-    throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, codeExpiredMessage());
-  }
-
-  const isValid = await verifyOtp(code, authCode.codeHash);
-
-  await prisma.authAttempt.create({
-    data: {
-      phone: e164,
-      codeId: authCode.id,
-      wasSuccessful: isValid,
-      deviceInfo: context?.deviceInfo as object | undefined,
-      ipAddress: context?.ipAddress,
-    },
-  });
-
-  if (!isValid) {
-    const limit = await getOrCreateRateLimit(e164);
-    const attemptsAfter = limit.failedAttempts + 1;
-    const remainingAttempts = Math.max(0, env.OTP_MAX_FAILED_ATTEMPTS - attemptsAfter);
-    const blockMinutes = otpBlockMinutesForPurpose(purpose);
-    await incrementFailedAttempt(e164, blockMinutes);
-    throw new AppError(400, AUTH_ERROR_CODES.INVALID_CODE, 'Incorrect code', {
-      remaining_attempts: remainingAttempts,
-    });
-  }
-
-  await prisma.authCode.update({
-    where: { id: authCode.id },
-    data: { usedAt: new Date() },
-  });
-
-  await resetFailedAttempts(e164);
-
-  return { verified: true, authCodeId: authCode.id };
 }
 
 export const authService = {
@@ -503,7 +563,16 @@ export const authService = {
 
   async verifyCode(input: VerifyCodeInput, context?: OtpContext) {
     const { e164 } = await parseAndValidatePhone(input.phone, input.country_code);
-    await verifyOtpCode(e164, input.country_code.toUpperCase(), input.code, input.purpose, context);
+    // Register consumes the OTP on /register after the details form.
+    // Peek-verify here so the code stays valid while the user fills the form.
+    await verifyOtpCode(
+      e164,
+      input.country_code.toUpperCase(),
+      input.code,
+      input.purpose,
+      context,
+      { consume: input.purpose !== 'register' },
+    );
     return {
       verified: true,
       phone: e164,
@@ -581,13 +650,14 @@ export const authService = {
 
     const instagram = input.instagram_username?.replace(/^@/, '') ?? null;
     const hasInstagram = Boolean(instagram);
-    const country = await getActiveCountry(countryCode);
+    await getActiveCountry(countryCode);
 
     const user = await prisma.user.create({
       data: {
         phone: e164,
         countryCode,
-        preferredLanguage: input.preferred_language ?? country.languageCode,
+        // Language follows the client/device preference — not phone country.
+        preferredLanguage: input.preferred_language ?? 'en',
         fullName: input.full_name.trim(),
         rutOrPassport: input.rut_or_passport.trim(),
         email: input.email.toLowerCase().trim(),

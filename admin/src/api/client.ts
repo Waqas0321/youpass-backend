@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, tunnelRequestHeaders } from '../config';
 
 const SESSION_KEY = 'youpass_admin_session';
 
@@ -36,6 +36,7 @@ function adminHeaders(session: AdminSession, producerId?: string): HeadersInit {
     'Content-Type': 'application/json',
     'x-admin-key': session.apiKey,
     'x-admin-api-key': session.apiKey,
+    ...tunnelRequestHeaders(),
   };
   const resolvedProducer = producerId ?? session.producerId;
   if (resolvedProducer) {
@@ -117,6 +118,51 @@ export async function uploadAdminImageRequest(
   };
 }
 
+export async function uploadAdminVideoRequest(
+  file: File,
+  folder: string,
+): Promise<ApiResult<{ url: string; folder: string }>> {
+  const session = getSession();
+  if (!session) {
+    return { ok: false, status: 401, error: 'Not signed in' };
+  }
+
+  const formData = new FormData();
+  formData.append('video', file);
+  formData.append('folder', folder);
+
+  const response = await fetch(`${API_BASE_URL}/admin/uploads/video`, {
+    method: 'POST',
+    headers: {
+      'x-admin-key': session.apiKey,
+      'x-admin-api-key': session.apiKey,
+      ...(session.producerId ? { 'x-producer-id': session.producerId } : {}),
+    },
+    body: formData,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: payload?.error?.message ?? payload?.message ?? `Request failed (${response.status})`,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    data: payload.data as { url: string; folder: string },
+  };
+}
+
+/** Must match backend `CLOUDINARY_*_FOLDER` defaults in `.env.example`. */
+export const DRINK_PRODUCT_UPLOAD_FOLDER = 'youpass/drink-products';
+export const EVENT_IMAGE_UPLOAD_FOLDER = 'youpass/event-images';
+export const TICKET_IMAGE_UPLOAD_FOLDER = 'youpass/ticket-images';
+export const VENUE_LAYOUT_UPLOAD_FOLDER = 'youpass/venue-layouts';
+
 export const adminApi = {
   overview: () => apiRequest<Record<string, number>>('/admin/overview'),
   producers: () => apiRequest<{ producers: Producer[] }>('/admin/producers'),
@@ -128,13 +174,21 @@ export const adminApi = {
       body: JSON.stringify(body),
     }),
   users: () => apiRequest<{ users: AdminUser[] }>('/admin/users'),
-  events: () => apiRequest<{ events: AdminEvent[] }>('/admin/events'),
+  events: () =>
+    apiRequest<{ events: AdminEvent[]; summary?: AdminEventsListSummary }>('/admin/events'),
   createEvent: (body: AdminEventInput) =>
     apiRequest<AdminEvent>('/admin/events', { method: 'POST', body: JSON.stringify(body) }),
   updateEvent: (eventId: string, body: Partial<AdminEventInput>) =>
     apiRequest<AdminEvent>(`/admin/events/${eventId}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
+    }),
+  eventSalesStatus: (eventId: string) =>
+    apiRequest<AdminEventSalesStatus>(`/admin/events/${eventId}/sales`),
+  setEventSalesPaused: (eventId: string, salesPaused: boolean) =>
+    apiRequest<AdminEventSalesStatus>(`/admin/events/${eventId}/sales`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sales_paused: salesPaused }),
     }),
   deleteEvent: (eventId: string) =>
     apiRequest(`/admin/events/${eventId}`, { method: 'DELETE' }),
@@ -161,16 +215,68 @@ export const adminApi = {
   supportFaqs: () => apiRequest<{ faqs: SupportFaq[] }>('/support/admin/faqs'),
   producerStats: (producerId: string) =>
     apiRequest<ProducerInvitationStats>('/producer/invitations/stats', {}, producerId),
-  producerInvitations: (producerId: string, page = 1) =>
-    apiRequest<{ invitations: ProducerInvitation[]; pagination: Pagination }>(
-      `/producer/invitations?page=${page}&page_size=20`,
+  producerInvitations: (
+    producerId: string,
+    options: {
+      page?: number;
+      pageSize?: number;
+      eventId?: string;
+      search?: string;
+      status?: string;
+    } = {},
+  ) => {
+    const query = new URLSearchParams({
+      page: String(options.page ?? 1),
+      page_size: String(options.pageSize ?? 10),
+    });
+    if (options.eventId) {
+      query.set('event_id', options.eventId);
+    }
+    if (options.search) {
+      query.set('search', options.search);
+    }
+    if (options.status) {
+      query.set('status', options.status);
+    }
+    return apiRequest<{ invitations: ProducerInvitation[]; pagination: Pagination }>(
+      `/producer/invitations?${query.toString()}`,
       {},
       producerId,
-    ),
+    );
+  },
   producerAlerts: (producerId: string) =>
     apiRequest('/producer/invitations/alerts', {}, producerId),
   createInvitation: (producerId: string, body: CreateInvitationBody) =>
     apiRequest('/producer/invitations', { method: 'POST', body: JSON.stringify(body) }, producerId),
+  updateInvitation: (producerId: string, invitationId: string, body: UpdateInvitationBody) =>
+    apiRequest<ProducerInvitation>(
+      `/producer/invitations/${invitationId}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+      producerId,
+    ),
+  resendInvitation: (producerId: string, invitationId: string) =>
+    apiRequest<ProducerInvitation>(
+      `/producer/invitations/${invitationId}/resend`,
+      { method: 'POST', body: '{}' },
+      producerId,
+    ),
+  revokeInvitation: (producerId: string, invitationId: string) =>
+    apiRequest<{ revoked: boolean; id: string }>(
+      `/producer/invitations/${invitationId}`,
+      { method: 'DELETE' },
+      producerId,
+    ),
+  producerSuggestedCandidates: (producerId: string, eventId?: string, limit = 50) => {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (eventId) {
+      query.set('event_id', eventId);
+    }
+    return apiRequest<{ candidates: ProducerSuggestedCandidate[] }>(
+      `/producer/invitations/suggested-candidates?${query.toString()}`,
+      {},
+      producerId,
+    );
+  },
   runSystemJob: (
     job: 'release-expired' | 'send-reminders' | 'post-event-charges' | 'process-waitlist-offers',
   ) => apiRequest(`/system/invitations/${job}`, { method: 'POST', body: '{}' }),
@@ -248,6 +354,41 @@ export const adminApi = {
       `/admin/events/${eventId}/venue-layout/zones/${zoneId}/tables/${tableId}`,
       { method: 'DELETE' },
     ),
+  eventVipTables: (eventId: string) =>
+    apiRequest<AdminVipTablesList>(`/admin/events/${eventId}/vip-tables`),
+  ensureEventVipLayout: (eventId: string) =>
+    apiRequest<AdminVipTablesList>(`/admin/events/${eventId}/vip-tables/ensure-layout`, {
+      method: 'POST',
+      body: '{}',
+    }),
+  eventVipTableGuests: (eventId: string, tableId: string) =>
+    apiRequest<AdminVipTableGuestsResponse>(
+      `/admin/events/${eventId}/vip-tables/${tableId}/guests`,
+    ),
+  eventVipTableAction: (eventId: string, tableId: string, action: AdminVipTableAction) =>
+    apiRequest<AdminVipTablesList>(`/admin/events/${eventId}/vip-tables/${tableId}/actions`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
+  moveEventVipTable: (eventId: string, tableId: string, zoneId: string) =>
+    apiRequest<AdminVipTablesList>(`/admin/events/${eventId}/vip-tables/${tableId}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ zone_id: zoneId }),
+    }),
+  editEventVipTable: (
+    eventId: string,
+    tableId: string,
+    body: AdminVipTableEditInput,
+  ) =>
+    apiRequest<AdminVipTablesList>(`/admin/events/${eventId}/vip-tables/${tableId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  cancelEventVipTableGuest: (eventId: string, tableId: string, slotId: string) =>
+    apiRequest<AdminVipTableGuestsResponse>(
+      `/admin/events/${eventId}/vip-tables/${tableId}/guests/${slotId}`,
+      { method: 'DELETE' },
+    ),
   venues: (params?: { country?: string; city?: string; q?: string }) => {
     const search = new URLSearchParams();
     if (params?.country) search.set('country', params.country);
@@ -267,8 +408,59 @@ export const adminApi = {
     }),
   deleteVenue: (venueId: string) =>
     apiRequest(`/admin/venues/${venueId}`, { method: 'DELETE' }),
+  eventDashboard: (eventId: string) =>
+    apiRequest<AdminEventDashboard>(`/admin/events/${eventId}/dashboard`),
+  eventDashboardHourlySales: (eventId: string, period: DashboardSalesPeriod = 'today') =>
+    apiRequest<AdminDashboardHourlySales>(
+      `/admin/events/${eventId}/dashboard/hourly-ticket-sales?period=${period}`,
+    ),
+  eventDashboardPanels: (eventId: string, period: DashboardSalesPeriod) =>
+    apiRequest<AdminEventDashboardPanels>(`/admin/events/${eventId}/dashboard/panels?period=${period}`),
+  eventStaffQr: (eventId: string) =>
+    apiRequest<AdminEventStaffQrDashboard>(`/admin/events/${eventId}/staff-qr`),
+  eventStaffQrScans: (eventId: string, page = 1, limit = 20) =>
+    apiRequest<AdminEventStaffQrScanList>(
+      `/admin/events/${eventId}/staff-qr/scans?page=${page}&limit=${limit}`,
+    ),
+  listStaff: () => apiRequest<AdminStaffListResponse>('/admin/staff'),
+  createStaff: (body: AdminCreateStaffInput) =>
+    apiRequest<AdminStaffQrResponse>('/admin/staff', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateStaff: (staffId: string, body: AdminUpdateStaffInput) =>
+    apiRequest<AdminStaffMember>(`/admin/staff/${staffId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  resetStaffQr: (staffId: string) =>
+    apiRequest<AdminStaffQrResponse>(`/admin/staff/${staffId}/reset-qr`, {
+      method: 'POST',
+      body: '{}',
+    }),
+  getSupervisorPin: (staffId: string) =>
+    apiRequest<AdminStaffSupervisorPinResponse>(`/admin/staff/${staffId}/supervisor-pin`),
+  resetSupervisorPin: (staffId: string) =>
+    apiRequest<AdminStaffSupervisorPinResponse>(`/admin/staff/${staffId}/reset-supervisor-pin`, {
+      method: 'POST',
+      body: '{}',
+    }),
+  deleteStaff: (staffId: string) =>
+    apiRequest<{ id: string; deleted: boolean }>(`/admin/staff/${staffId}`, {
+      method: 'DELETE',
+    }),
+  createStaffRole: (body: { label: string; color?: string }) =>
+    apiRequest<AdminStaffRole>('/admin/staff/roles', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createStaffZone: (body: { label: string }) =>
+    apiRequest<{ id: string; label: string }>('/admin/staff/zones', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   eventDrinkCategories: (eventId: string) =>
-    apiRequest<{ event_id: string; categories: EventDrinkCategory[] }>(
+    apiRequest<{ event_id: string; currency: string; categories: EventDrinkCategory[] }>(
       `/admin/events/${eventId}/drink-categories`,
     ),
   createEventDrinkCategory: (eventId: string, body: EventDrinkCategoryInput) =>
@@ -276,9 +468,22 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  updateEventDrinkCategory: (
+    eventId: string,
+    categoryId: string,
+    body: Partial<EventDrinkCategoryInput>,
+  ) =>
+    apiRequest<EventDrinkCategory>(`/admin/events/${eventId}/drink-categories/${categoryId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteEventDrinkCategory: (eventId: string, categoryId: string) =>
+    apiRequest<{ deleted: boolean }>(`/admin/events/${eventId}/drink-categories/${categoryId}`, {
+      method: 'DELETE',
+    }),
   eventDrinkProducts: (eventId: string, category?: string) => {
     const query = category && category !== 'all' ? `?category=${encodeURIComponent(category)}` : '';
-    return apiRequest<{ event_id: string; products: EventDrinkProduct[] }>(
+    return apiRequest<{ event_id: string; currency: string; products: EventDrinkProduct[] }>(
       `/admin/events/${eventId}/drink-products${query}`,
     );
   },
@@ -383,8 +588,10 @@ export const adminApi = {
     const blob = await response.blob();
     return { ok: true as const, status: response.status, blob };
   },
-  uploadImage: (file: File, folder = 'youpass/drink-products') =>
+  uploadImage: (file: File, folder = DRINK_PRODUCT_UPLOAD_FOLDER) =>
     uploadAdminImageRequest(file, folder),
+  uploadVideo: (file: File, folder = EVENT_IMAGE_UPLOAD_FOLDER) =>
+    uploadAdminVideoRequest(file, folder),
 };
 
 export type Producer = {
@@ -447,27 +654,84 @@ export type AdminEvent = {
   physical_venue?: PhysicalVenue | null;
   country_code?: string;
   starts_at: string;
+  ends_at?: string | null;
   starts_at_display?: string;
+  starts_at_short?: string;
+  starts_at_time?: string;
+  ends_at_time?: string | null;
+  date_time_display?: string;
   location_display?: string;
+  address_line?: string | null;
   image_url?: string | null;
+  logo_url?: string | null;
+  teaser_video_url?: string | null;
+  carousel_images?: string[];
+  floor_plan_image_url?: string | null;
+  min_age?: number | null;
+  dress_code?: string | null;
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  sponsors?: Array<{ id: string; label: string; tone: string; logo_url?: string | null }>;
+  social_links?: Array<{
+    id: string;
+    platform: 'instagram' | 'facebook' | 'tiktok' | 'other';
+    handle: string;
+  }>;
   producer_name?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   status?: 'draft' | 'published' | 'cancelled';
+  sales_paused?: boolean;
   is_featured?: boolean;
   featured_order?: number;
   event_type?: { id: string; slug: string; name: string; icon?: string | null };
+  ticket_order_count?: number;
+  drink_order_count?: number;
+  tickets_sold?: number;
+  total_revenue_clp?: number;
+  revenue_delta_pct?: number;
+  currency_code?: string;
+  capacity_total?: number | null;
+  capacity_available?: number | null;
+  created_at?: string;
+};
+
+export type AdminEventsListSummary = {
+  total_events: number;
+  created_this_month: number;
+};
+
+export type AdminEventSalesStatus = {
+  event_id: string;
+  sales_paused: boolean;
+  status: 'draft' | 'published' | 'cancelled';
 };
 
 export type AdminEventInput = {
   title: string;
   description?: string;
   starts_at: string;
+  ends_at?: string;
   venue_id?: string;
   venue_name?: string;
   city?: string;
+  address_line?: string;
   country_code?: string;
   image_url?: string;
+  logo_url?: string;
+  teaser_video_url?: string;
+  carousel_images?: string[];
+  floor_plan_image_url?: string | null;
+  min_age?: number;
+  dress_code?: string;
+  primary_color?: string;
+  secondary_color?: string;
+  sponsors?: Array<{ id: string; label: string; tone: string; logo_url?: string }>;
+  social_links?: Array<{
+    id: string;
+    platform: 'instagram' | 'facebook' | 'tiktok' | 'other';
+    handle: string;
+  }>;
   event_type: string;
   producer_name?: string;
   latitude?: number;
@@ -607,6 +871,69 @@ export type AdminVenueTableInput = {
   extras?: string[];
 };
 
+export type AdminVipTableAction = 'reserve' | 'release' | 'block' | 'unblock';
+
+export type AdminVipTableRow = {
+  table_id: string;
+  zone_id: string;
+  zone_external_id: string;
+  zone_name: string;
+  zone_color: string;
+  number: number;
+  label: string;
+  capacity: number;
+  status: 'available' | 'reserved' | 'paid' | 'blocked';
+  backend_status: 'available' | 'locked' | 'reserved' | 'sold';
+  price: number;
+  currency: string;
+  buyer: {
+    user_id: string | null;
+    name: string;
+    phone: string;
+    avatar_initials: string;
+    avatar_url: string | null;
+  } | null;
+};
+
+export type AdminVipTablesList = {
+  event_id: string;
+  currency: string;
+  layout_configured: boolean;
+  tables: AdminVipTableRow[];
+};
+
+export type AdminVipTableGuest = {
+  slot_id: string;
+  name: string;
+  phone: string;
+  entry_status: 'confirmed' | 'sent' | 'rejected' | 'pending';
+  slot_status: string;
+  slot_number?: number;
+};
+
+export type AdminVipTableGuestsResponse = {
+  table_id: string;
+  zone_name: string;
+  number: number;
+  capacity: number;
+  status: 'available' | 'reserved' | 'paid' | 'blocked';
+  buyer: {
+    name: string;
+    phone: string;
+    avatar_initials: string;
+    avatar_url: string | null;
+  } | null;
+  guests: AdminVipTableGuest[];
+};
+
+export type AdminVipTableEditInput = {
+  number?: number;
+  label?: string;
+  price?: number;
+  capacity?: number;
+  status?: 'available' | 'locked' | 'reserved' | 'sold';
+};
+
 export type EventTypeOption = {
   id: string;
   slug: string;
@@ -657,17 +984,44 @@ export type ProducerInvitationStats = {
 
 export type ProducerInvitation = {
   id: string;
+  event_id?: string;
   event_title: string;
   recipient_phone?: string;
   recipient_name?: string | null;
+  recipient_avatar_url?: string | null;
   invitation_type: string;
+  type?: string;
+  tier?: string;
   lifecycle_state: string;
+  lifecycle_label?: string;
   status: string;
   slot_label?: string;
+  assigned_slot?: string;
+  qr_status?: 'locked' | 'available' | 'redeemed' | 'expired';
+  sent_at?: string;
+  entry_at?: string | null;
+  deep_link?: string;
+  custom_message?: string | null;
+};
+
+export type ProducerSuggestedCandidate = {
+  rank: number;
+  guest_name: string;
+  guest_phone: string;
+  reason: string;
+  score: number;
+  past_attendance_count: number;
+};
+
+export type UpdateInvitationBody = {
+  slot_label?: string;
+  personalised_message?: string;
+  recipient_name?: string;
 };
 
 export type Pagination = {
   page: number;
+  page_size?: number;
   total: number;
   total_pages: number;
 };
@@ -691,7 +1045,9 @@ export type EventInvitationSettings = {
 export type CreateInvitationBody = {
   event_id: string;
   type: 'free' | 'guaranteed' | 'discounted';
-  recipient_user_id: string;
+  recipient_user_id?: string;
+  recipient_phone?: string;
+  recipient_name?: string;
   slot_label: string;
   cancellation_deadline_days?: number;
   discount_percentage?: number;
@@ -766,6 +1122,9 @@ export type EventDrinkProduct = {
   description: string | null;
   volume_ml: number | null;
   price_clp: number;
+  price: number;
+  currency: string;
+  cost_clp: number | null;
   image_url: string | null;
   stock_total: number | null;
   stock_remaining: number | null;
@@ -780,6 +1139,7 @@ export type EventDrinkProductInput = {
   category_id?: string | null;
   volume_ml?: number | null;
   price_clp: number;
+  cost_clp?: number | null;
   image_url?: string | null;
   stock_total?: number | null;
   stock_remaining?: number | null;
@@ -851,4 +1211,220 @@ export type AdminDrinkOrdersListResponse = {
     from: number;
     to: number;
   };
+};
+
+export type AdminEventDashboardKpi = {
+  value: number;
+  delta_pct: number | null;
+  sparkline: number[];
+};
+
+export type AdminEventDashboardKpis = {
+  tickets_sold: AdminEventDashboardKpi;
+  total_revenue: AdminEventDashboardKpi;
+  bar_consumption: AdminEventDashboardKpi;
+  active_users: AdminEventDashboardKpi;
+};
+
+export type AdminEventDashboard = {
+  event_id: string;
+  currency: string;
+  kpis: AdminEventDashboardKpis;
+  kpis_by_period?: Record<DashboardSalesPeriod, AdminEventDashboardKpis>;
+  hourly_ticket_sales: Array<{ hour: number; value: number }>;
+  hourly_ticket_sales_last_24h?: Array<{ hour: number; value: number }>;
+  hourly_ticket_sales_by_period: Record<
+    DashboardSalesPeriod,
+    Array<{ hour: number; value: number }>
+  >;
+  hourly_revenue?: Array<{ hour: number; value: number }>;
+  hourly_revenue_by_period?: Record<DashboardSalesPeriod, Array<{ hour: number; value: number }>>;
+  top_bar_items: AdminDashboardTopBarItem[];
+  top_bar_items_by_period?: Record<DashboardSalesPeriod, AdminDashboardTopBarItem[]>;
+  tickets_by_category: AdminDashboardTicketCategory[];
+  tickets_by_category_by_period?: Record<DashboardSalesPeriod, AdminDashboardTicketCategory[]>;
+  consumption_by_category?: AdminDashboardSlice[];
+  consumption_by_category_by_period?: Record<DashboardSalesPeriod, AdminDashboardSlice[]>;
+  revenue_by_zone?: AdminDashboardZoneRevenue[];
+  revenue_by_zone_by_period?: Record<DashboardSalesPeriod, AdminDashboardZoneRevenue[]>;
+  top_spenders?: AdminDashboardTopSpender[];
+  top_spenders_by_period?: Record<DashboardSalesPeriod, AdminDashboardTopSpender[]>;
+  behavior_insights?: AdminDashboardBehaviorInsights;
+  behavior_insights_by_period?: Record<DashboardSalesPeriod, AdminDashboardBehaviorInsights>;
+  recent_activity: AdminDashboardActivity[];
+  recent_activity_by_period?: Record<DashboardSalesPeriod, AdminDashboardActivity[]>;
+};
+
+export type AdminEventDashboardPanels = {
+  event_id: string;
+  period: DashboardSalesPeriod;
+  top_bar_items: AdminDashboardTopBarItem[];
+  tickets_by_category: AdminDashboardTicketCategory[];
+  recent_activity: AdminDashboardActivity[];
+};
+
+export type AdminDashboardTopBarItem = {
+  product_id: string | null;
+  name: string;
+  count: number;
+};
+
+export type AdminDashboardTicketCategory = {
+  offering_id: string | null;
+  type: string;
+  label: string;
+  count: number;
+};
+
+export type AdminDashboardSlice = {
+  label: string;
+  value: number;
+};
+
+export type AdminDashboardZoneRevenue = {
+  zone_id: string;
+  label: string;
+  value: number;
+};
+
+export type AdminDashboardTopSpender = {
+  user_id: string;
+  name: string;
+  purchase_count: number;
+  total_spend: number;
+};
+
+export type AdminDashboardBehaviorInsights = {
+  entry_by_hour: number[];
+  consumption_by_hour: number[];
+  peak_entry_hour: number | null;
+  peak_consumption_hour: number | null;
+  recurring_users: number;
+  recurring_share_pct: number;
+  social_conversion_pct: number | null;
+};
+
+export type AdminDashboardActivity = {
+  id: string;
+  kind: 'ticket_purchase' | 'drink_purchase' | 'drink_redemption' | 'ticket_redemption' | 'table_assigned';
+  occurred_at: string;
+  actor_name: string;
+  product_name?: string;
+  quantity?: number;
+  offering_name?: string;
+  table_label?: string;
+  zone_name?: string;
+  subtitle?: string;
+};
+
+export type DashboardSalesPeriod = 'today' | 'yesterday' | 'last_7_days' | 'all_time';
+
+export type AdminDashboardHourlySales = {
+  event_id: string;
+  period: DashboardSalesPeriod;
+  timezone: string;
+  hourly_ticket_sales: Array<{ hour: number; value: number }>;
+};
+
+export type AdminStaffRole = {
+  id: string;
+  slug?: string;
+  label: string;
+  color: string;
+};
+
+export type AdminCreateStaffInput = {
+  name: string;
+  phone: string;
+  role_id: string;
+  zone: string;
+  permission_ids?: string[];
+};
+
+export type AdminUpdateStaffInput = {
+  status?: 'online' | 'away' | 'paused';
+  role_id?: string;
+  permission_ids?: string[];
+};
+
+export type AdminStaffQrResponse = AdminStaffMember & {
+  qr_token?: string | null;
+  qr_payload?: string | null;
+  qr_image: string;
+};
+
+export type AdminStaffSupervisorPinResponse = {
+  staff_id: string;
+  pin: string;
+  updated_at: string;
+};
+
+export type AdminStaffListResponse = {
+  staff: AdminStaffMember[];
+  roles: AdminStaffRole[];
+  zones: string[];
+  total: number;
+};
+
+export type AdminStaffPermission = {
+  id: string;
+  label: string;
+  enabled: boolean;
+};
+
+export type AdminStaffMember = {
+  id: string;
+  name: string;
+  phone: string;
+  role_id: string;
+  zone: string;
+  status: 'online' | 'away' | 'paused';
+  last_activity_at: string;
+  permission_ids: string[];
+  qr_payload?: string | null;
+  has_supervisor_pin?: boolean;
+};
+
+export type AdminEventStaffQrDashboard = {
+  event_id: string;
+  event_title: string;
+  fetched_at?: string;
+  roles: AdminStaffRole[];
+  permissions: AdminStaffPermission[];
+  summary: {
+    active_staff: number;
+    zones_assigned: number;
+    scans_today: number;
+    qr_efficiency_pct: number;
+    invalid_qr_today: number;
+    invalid_qr_share_pct?: number;
+  };
+  staff: AdminStaffMember[];
+  staff_total: number;
+  qr_live: AdminEventStaffQrScanItem[];
+  top_bar: {
+    name: string;
+    scans: number;
+    share_pct: number;
+  } | null;
+  activity_by_zone: Array<{ zone: string; count: number }>;
+};
+
+export type AdminEventStaffQrScanItem = {
+  id: string;
+  time_label: string;
+  staff_name: string;
+  detail: string;
+  zone: string;
+  kind: 'drink' | 'ticket';
+  outcome: string;
+  occurred_at: string;
+};
+
+export type AdminEventStaffQrScanList = {
+  event_id: string;
+  page: number;
+  limit: number;
+  total: number;
+  scans: AdminEventStaffQrScanItem[];
 };

@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { successResponse } from '../../common/utils/crypto.js';
 import {
   adminEventDrinkCategorySchema,
+  adminEventDrinkCategoryUpdateSchema,
   adminEventDrinkProductSchema,
   adminEventDrinkProductUpdateSchema,
 } from './admin-event-drinks.validators.js';
@@ -11,8 +12,8 @@ export const adminEventDrinksController = {
   listCategories: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const eventId = String(req.params.eventId);
-      const categories = await adminEventDrinksService.listCategories(eventId);
-      res.json(successResponse({ event_id: eventId, categories }));
+      const data = await adminEventDrinksService.listCategories(eventId);
+      res.json(successResponse(data));
     } catch (err) {
       next(err);
     }
@@ -29,6 +30,29 @@ export const adminEventDrinksController = {
     }
   },
 
+  updateCategory: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const eventId = String(req.params.eventId);
+      const categoryId = String(req.params.categoryId);
+      const body = adminEventDrinkCategoryUpdateSchema.parse(req.body);
+      const category = await adminEventDrinksService.updateCategory(eventId, categoryId, body);
+      res.json(successResponse(category));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  deleteCategory: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const eventId = String(req.params.eventId);
+      const categoryId = String(req.params.categoryId);
+      await adminEventDrinksService.deleteCategory(eventId, categoryId);
+      res.json(successResponse({ deleted: true }));
+    } catch (err) {
+      next(err);
+    }
+  },
+
   listProducts: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const eventId = String(req.params.eventId);
@@ -36,8 +60,8 @@ export const adminEventDrinksController = {
         typeof req.query.category === 'string' && req.query.category !== 'all'
           ? req.query.category
           : undefined;
-      const products = await adminEventDrinksService.listProducts(eventId, categorySlug);
-      res.json(successResponse({ event_id: eventId, products }));
+      const data = await adminEventDrinksService.listProducts(eventId, categorySlug);
+      res.json(successResponse(data));
     } catch (err) {
       next(err);
     }

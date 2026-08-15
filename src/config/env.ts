@@ -22,7 +22,7 @@ const envSchema = z.object({
     .optional()
     .transform((v) => v !== 'false' && v !== '0'),
   OTP_LENGTH: z.coerce.number().default(6),
-  OTP_TTL_MINUTES: z.coerce.number().default(3),
+  OTP_TTL_MINUTES: z.coerce.number().default(15),
   OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().default(60),
   OTP_MAX_RESENDS_PER_HOUR: z.coerce.number().default(5),
   OTP_MAX_FAILED_ATTEMPTS: z.coerce.number().default(3),
@@ -65,8 +65,12 @@ const envSchema = z.object({
   CLOUDINARY_PROFILE_FOLDER: z.string().default('youpass/profile-photos'),
   CLOUDINARY_DRINK_PRODUCTS_FOLDER: z.string().default('youpass/drink-products'),
   CLOUDINARY_EVENT_IMAGES_FOLDER: z.string().default('youpass/event-images'),
+  CLOUDINARY_TICKET_IMAGES_FOLDER: z.string().default('youpass/ticket-images'),
+  CLOUDINARY_VENUE_LAYOUTS_FOLDER: z.string().default('youpass/venue-layouts'),
+  CLOUDINARY_ADMIN_FOLDER: z.string().default('youpass/admin'),
   PROFILE_PHOTO_MAX_BYTES: z.coerce.number().default(5 * 1024 * 1024),
   ADMIN_IMAGE_MAX_BYTES: z.coerce.number().default(5 * 1024 * 1024),
+  ADMIN_VIDEO_MAX_BYTES: z.coerce.number().default(200 * 1024 * 1024),
   APP_CLAIM_BASE_URL: z.string().default('https://youpass.app/claim'),
   APP_DEEP_LINK_BASE: z.string().default('youpass://invitations'),
   TWILIO_WHATSAPP_INVITATION_CONTENT_SID: z.string().optional().default('').transform((v) => v.trim()),
@@ -83,6 +87,28 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === 'true' || v === '1'),
+  /** WhatsApp delivery provider: meta (Cloud API) or twilio (legacy). */
+  WHATSAPP_PROVIDER: z
+    .enum(['meta', 'twilio'])
+    .optional()
+    .default('twilio'),
+  WHATSAPP_MOCK: z
+    .string()
+    .optional()
+    .transform((v) => resolveTwilioMockFlag(v, process.env.NODE_ENV ?? 'development')),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_API_VERSION: z.string().optional().default('v25.0').transform((v) => v.trim()),
+  WHATSAPP_OTP_TEMPLATE_NAME: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_OTP_TEMPLATE_LANGUAGE: z.string().optional().default('es').transform((v) => v.trim()),
+  WHATSAPP_TEMPLATE_LOGIN: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_TEMPLATE_REGISTER: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_TEMPLATE_PHONE_CHANGE: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_TEMPLATE_DELETE_ACCOUNT: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_TEMPLATE_STAFF_LOGIN: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional().default('').transform((v) => v.trim()),
+  WHATSAPP_APP_SECRET: z.string().optional().default('').transform((v) => v.trim()),
   CHECKOUT_MOCK_PAYMENT: z
     .string()
     .optional()

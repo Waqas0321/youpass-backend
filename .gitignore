@@ -1,9 +1,15 @@
 node_modules/
 dist/
 public/admin/
+public/producer/
 .env
 *.log
 .DS_Store
 coverage/
 .prisma/
 .vercel
+
+# Local admin env (do not commit)
+admin/.env.development
+admin/.env.production
+admin/.env.local

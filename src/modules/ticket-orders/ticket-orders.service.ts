@@ -9,14 +9,14 @@ import {
   buildGuestAssignWhatsAppUrl,
 } from '../messaging/invitation-delivery.service.js';
 import {
-  eventDayStart,
   generateEntryCode,
   generateQrPayload,
 } from '../invitations/invitations.utils.js';
-import { getTimezone, getEventCurrencyMeta } from '../../common/services/country-config.service.js';
+import { getEventCurrencyMeta } from '../../common/services/country-config.service.js';
 import { invitationConfigService } from '../../common/services/invitation-config.service.js';
 import type { AssignTicketSlotInput, CheckoutInput } from './ticket-orders.validators.js';
 import { vipVenueService } from '../vip-venue/vip-venue.service.js';
+import { isAdminHeldVenueTable } from '../vip-venue/venue-table.types.js';
 import { DEFAULT_SERVICE_FEE_RATE } from '../vip-venue/vip-venue.constants.js';
 import { getActiveCountry } from '../../common/services/country-config.service.js';
 import { defaultCancellationDeadline } from '../tickets/tickets.utils.js';
@@ -373,8 +373,7 @@ async function createBuyerTicket(
   assignedSlotLabel?: string,
 ) {
   const producerId = await getSystemProducerId(tx);
-  const timezone = getTimezone(event.countryCode);
-  const unlockAt = eventDayStart(event.startsAt, timezone);
+  const unlockAt = new Date();
   const ticketId = crypto.randomBytes(12).toString('hex');
   const entryCode = generateEntryCode();
   const qrPayload = generateQrPayload(ticketId, event.id);
@@ -434,6 +433,10 @@ export const ticketOrdersService = {
       throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
     }
 
+    if (event.salesPaused) {
+      throw new AppError(409, 'SALES_PAUSED', 'Ticket sales are temporarily paused for this event');
+    }
+
     if (!isEventPurchasable(event)) {
       throw new AppError(409, 'EVENT_NOT_PURCHASABLE', 'This event has already started and tickets are no longer available');
     }
@@ -473,6 +476,10 @@ export const ticketOrdersService = {
 
       if (table.status === 'sold') {
         throw new AppError(409, 'TABLE_NOT_AVAILABLE', 'This table is no longer available');
+      }
+
+      if (isAdminHeldVenueTable(table)) {
+        throw new AppError(409, 'TABLE_NOT_AVAILABLE', 'This table is not available');
       }
 
       await vipVenueService.assertUserTableLock(eventId, table.id, buyerUserId);

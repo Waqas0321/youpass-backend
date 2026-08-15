@@ -10,7 +10,16 @@ export function validate<T>(schema: ZodSchema<T>, part: RequestPart = 'body'): R
       next(result.error);
       return;
     }
-    req[part] = result.data as Request['body'];
+
+    if (part === 'body') {
+      req.body = result.data as Request['body'];
+    } else if (part === 'query') {
+      // Express 5 exposes req.query as a read-only getter.
+      req.validatedQuery = result.data;
+    } else {
+      req.validatedParams = result.data;
+    }
+
     next();
   };
 }

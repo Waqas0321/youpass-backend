@@ -1,0 +1,686 @@
+.prod-dash {
+  padding: 8px 28px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.prod-dash-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.prod-dash-header__intro h1 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: clamp(1.55rem, 2.5vw, 2rem);
+  letter-spacing: -0.02em;
+}
+
+.prod-dash-header__intro p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+}
+
+.prod-dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.prod-dash-grid__col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.prod-dash-panel {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 16px 16px 18px;
+}
+
+.prod-dash-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.prod-dash-panel__header h2 {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.prod-dash-panel__link {
+  color: var(--color-gold);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.prod-dash-panel__link:hover {
+  text-decoration: underline;
+}
+
+.prod-dash-panel__link--button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.prod-dash-panel__footer {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.prod-dash-panel__footer--end {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.prod-dash-producers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prod-dash-producers__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.prod-dash-producers__avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.prod-dash-producers__label {
+  font-size: 0.84rem;
+  color: #f3f4f6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prod-dash-producers__track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.prod-dash-producers__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.prod-dash-producers__value {
+  font-size: 0.84rem;
+  color: #fff;
+  min-width: 1rem;
+  text-align: right;
+}
+
+.prod-dash-kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.prod-dash-kpi__label {
+  display: block;
+  font-size: 0.74rem;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+.prod-dash-kpi__value {
+  display: block;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.prod-dash-kpi__delta {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+.prod-dash-kpi__delta--up {
+  color: #86efac;
+}
+
+.prod-dash-line-chart h3 {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  color: #d1d5db;
+  font-weight: 600;
+}
+
+.prod-dash-line-chart__canvas {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+  min-height: 120px;
+}
+
+.prod-dash-line-chart__y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 0.62rem;
+  color: #6b7280;
+  padding: 2px 0;
+}
+
+.prod-dash-line-chart__canvas svg {
+  width: 100%;
+  height: 120px;
+}
+
+.prod-dash-line-chart__area {
+  fill: rgba(168, 85, 247, 0.14);
+}
+
+.prod-dash-line-chart__line {
+  fill: none;
+  stroke: #a855f7;
+  stroke-width: 2.5;
+}
+
+.prod-dash-line-chart__x-axis {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 8px;
+  padding-left: 44px;
+  font-size: 0.62rem;
+  color: #6b7280;
+}
+
+.prod-dash-mini-bars__track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.prod-dash-mini-bars__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.prod-dash-calendar {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.prod-dash-calendar__item {
+  display: grid;
+  grid-template-columns: 52px 48px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.prod-dash-calendar__item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.prod-dash-calendar__date {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #9ca3af;
+  letter-spacing: 0.04em;
+}
+
+.prod-dash-calendar__thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #111;
+}
+
+.prod-dash-calendar__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.prod-dash-calendar__title {
+  display: block;
+  font-size: 0.88rem;
+  margin-bottom: 2px;
+}
+
+.prod-dash-calendar__producer {
+  margin: 0 0 2px;
+  font-size: 0.74rem;
+  color: #d1d5db;
+}
+
+.prod-dash-calendar__meta {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+.prod-dash-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.prod-dash-tag--concert {
+  background: rgba(168, 85, 247, 0.16);
+  color: #c084fc;
+}
+
+.prod-dash-tag--festival {
+  background: rgba(96, 165, 250, 0.16);
+  color: #93c5fd;
+}
+
+.prod-dash-tag--party {
+  background: rgba(244, 114, 182, 0.16);
+  color: #f9a8d4;
+}
+
+.prod-dash-demographics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.prod-dash-mini-panel {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.22);
+  padding: 12px;
+}
+
+.prod-dash-mini-panel h3 {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  color: #d1d5db;
+}
+
+.prod-dash-mini-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prod-dash-mini-bars li {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.prod-dash-mini-bars strong {
+  font-size: 0.72rem;
+}
+
+.prod-dash-mini-donut {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.prod-dash-mini-donut svg {
+  width: 88px;
+  height: 88px;
+}
+
+.prod-dash-mini-donut__track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 12;
+}
+
+.prod-dash-mini-donut__slice {
+  fill: none;
+  stroke-width: 12;
+}
+
+.prod-dash-mini-donut__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prod-dash-mini-donut__legend li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.68rem;
+  color: #d1d5db;
+}
+
+.prod-dash-mini-donut__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.prod-dash-ticket-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prod-dash-ticket-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px minmax(0, 1.1fr);
+  gap: 14px;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.prod-dash-ticket-card:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.prod-dash-ticket-card__heading strong {
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 2px;
+}
+
+.prod-dash-ticket-card__heading span {
+  font-size: 0.74rem;
+  color: #9ca3af;
+}
+
+.prod-dash-ticket-card__stats {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+.prod-dash-ticket-card__chart {
+  position: relative;
+  width: 104px;
+  height: 104px;
+  justify-self: center;
+}
+
+.prod-dash-ticket-card__chart svg {
+  width: 104px;
+  height: 104px;
+}
+
+.prod-dash-ticket-card__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 8px;
+}
+
+.prod-dash-ticket-card__center strong {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.prod-dash-ticket-card__center span {
+  margin-top: 4px;
+  font-size: 0.62rem;
+  color: #9ca3af;
+}
+
+.prod-dash-ticket-card__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.prod-dash-ticket-card__legend li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.prod-dash-featured {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.prod-dash-event-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.prod-dash-event-select__label {
+  font-size: 0.68rem;
+  color: #9ca3af;
+}
+
+.prod-dash-event-select__control {
+  position: relative;
+}
+
+.prod-dash-event-select__control select {
+  width: 100%;
+  appearance: none;
+  min-height: 36px;
+  padding: 0 30px 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.35);
+  color: #f3f4f6;
+  font-size: 0.8rem;
+}
+
+.prod-dash-event-select__chevron {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.prod-dash-featured__poster {
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 3 / 4;
+  background: #111;
+}
+
+.prod-dash-featured__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.prod-dash-featured__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.prod-dash-featured__title-row h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.prod-dash-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.prod-dash-badge--active {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.prod-dash-featured__meta {
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.prod-dash-featured__meta div {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.prod-dash-featured__meta dt {
+  color: #6b7280;
+  padding-top: 2px;
+}
+
+.prod-dash-featured__meta dt svg {
+  width: 16px;
+  height: 16px;
+}
+
+.prod-dash-featured__meta dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.prod-dash-featured__meta dd span {
+  font-size: 0.68rem;
+  color: #9ca3af;
+}
+
+.prod-dash-featured__meta dd strong {
+  font-size: 0.8rem;
+  color: #f3f4f6;
+  font-weight: 600;
+}
+
+.prod-dash-featured__status {
+  color: #86efac !important;
+}
+
+@media (max-width: 1280px) {
+  .prod-dash-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .prod-dash-grid__col--right {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+}
+
+@media (max-width: 900px) {
+  .prod-dash {
+    padding-inline: 18px;
+  }
+
+  .prod-dash-grid,
+  .prod-dash-grid__col--right {
+    grid-template-columns: 1fr;
+  }
+
+  .prod-dash-demographics {
+    grid-template-columns: 1fr;
+  }
+
+  .prod-dash-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .prod-dash-calendar__item {
+    grid-template-columns: 48px 44px minmax(0, 1fr);
+  }
+
+  .prod-dash-calendar__item .prod-dash-tag {
+    grid-column: 2 / -1;
+    justify-self: start;
+    margin-top: -4px;
+  }
+
+  .prod-dash-ticket-card {
+    grid-template-columns: 1fr;
+  }
+
+  .prod-dash-line-chart__x-axis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

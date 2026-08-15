@@ -5,6 +5,10 @@ export const activeSessionWhere: Pick<Prisma.UserSessionWhereInput, 'OR'> = {
   OR: [{ revokedAt: null }, { revokedAt: { isSet: false } }],
 };
 
+export const staffActiveSessionWhere: Pick<Prisma.StaffSessionWhereInput, 'OR'> = {
+  OR: [{ revokedAt: null }, { revokedAt: { isSet: false } }],
+};
+
 export function isSessionActive(revokedAt: Date | null | undefined): boolean {
   return revokedAt == null;
 }

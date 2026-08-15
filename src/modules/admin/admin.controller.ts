@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../../config/database.js';
+import { loadAdminEventListStats } from './admin-events-list.service.js';
 import { successResponse } from '../../common/utils/crypto.js';
 import { invitationSettingsService } from '../invitations/invitation-settings.service.js';
 import {
@@ -12,8 +13,7 @@ import { waitlistService } from '../waitlist/waitlist.service.js';
 import { eventsService } from '../events/events.service.js';
 import { createEventSchema, updateEventSchema } from '../events/events.validators.js';
 import { formatEvent } from '../events/events.formatter.js';
-import { getCountrySync } from '../../common/services/country-config.service.js';
-import { getEventCurrencyMeta } from '../../common/services/country-config.service.js';
+import { getCountrySync, getEventCurrencyMeta } from '../../common/services/country-config.service.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { formatAdminTicketOffering } from '../ticket-offerings/ticket-offering.formatter.js';
 import {
@@ -237,6 +237,9 @@ export const adminController = {
         include: { eventType: true, venue: true },
       });
 
+      const eventIds = events.map((event) => event.id);
+      const { statsByEventId, createdThisMonth } = await loadAdminEventListStats(eventIds);
+
       res.json(
         successResponse({
           events: events.map((event) => {
@@ -245,13 +248,31 @@ export const adminController = {
               timezone: country?.timezone,
               languageCode: country?.languageCode,
             });
+            const stats = statsByEventId.get(event.id);
+            const currencyCode =
+              event.currencyCode?.trim() ||
+              getEventCurrencyMeta(event.countryCode).currency;
 
             return {
               ...formatted,
               description: event.description,
               producer_name: event.producerName,
+              created_at: event.createdAt.toISOString(),
+              currency_code: currencyCode,
+              sales_paused: event.salesPaused,
+              ticket_order_count: stats?.ticket_order_count ?? 0,
+              drink_order_count: stats?.drink_order_count ?? 0,
+              tickets_sold: stats?.tickets_sold ?? 0,
+              total_revenue_clp: stats?.total_revenue_clp ?? 0,
+              revenue_delta_pct: stats?.revenue_delta_pct ?? 0,
+              capacity_total: stats?.capacity_total ?? null,
+              capacity_available: stats?.capacity_available ?? null,
             };
           }),
+          summary: {
+            total_events: events.length,
+            created_this_month: createdThisMonth,
+          },
         }),
       );
     } catch (err) {

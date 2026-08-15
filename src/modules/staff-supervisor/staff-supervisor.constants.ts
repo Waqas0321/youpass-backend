@@ -1,0 +1,2 @@
+export const SUPERVISOR_PIN_LENGTH = 4;
+export const TEMPORARY_QR_VALIDITY_MINUTES = 30;

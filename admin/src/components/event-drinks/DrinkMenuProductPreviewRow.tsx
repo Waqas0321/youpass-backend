@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom';
 import { EventDrinkProduct } from '../../api/client';
-import { formatDrinkPriceClp } from '../../utils/drinkPrice';
+import { formatDrinkPrice } from '../../utils/drinkPrice';
 
 type Props = {
   product: EventDrinkProduct;
   eventId: string;
 };
 
-function formatPrice(clp: number) {
-  return formatDrinkPriceClp(clp);
+function formatPrice(amount: number, currency: string) {
+  return formatDrinkPrice(amount, currency);
 }
 
 function statusClass(status: EventDrinkProduct['status']) {
@@ -47,7 +47,9 @@ export function DrinkMenuProductPreviewRow({ product, eventId }: Props) {
         ) : null}
       </div>
       <div className="drink-menu-product-row__meta">
-        <span className="drink-menu-product-row__price">{formatPrice(product.price_clp)}</span>
+        <span className="drink-menu-product-row__price">
+          {formatPrice(product.price_clp, product.currency ?? 'CLP')}
+        </span>
         <span className="muted">Stock {stockLabel}</span>
       </div>
       <Link className="ghost-btn ghost-btn--sm" to={`/events/${eventId}/drinks`}>

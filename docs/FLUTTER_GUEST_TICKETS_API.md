@@ -1,6 +1,6 @@
 # Flutter — Guest Ticket Assignment & Invitations
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 This doc covers the **client flow**: purchase tickets → assign to contacts → WhatsApp from YouPass → guest claims → accept/reject in Invitations.
 

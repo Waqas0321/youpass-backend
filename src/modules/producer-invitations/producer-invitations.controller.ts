@@ -10,6 +10,7 @@ import {
   reinviteProducerInvitationSchema,
   suggestedCandidatesQuerySchema,
   updateEventInvitationSettingsSchema,
+  updateProducerInvitationSchema,
 } from './producer-invitations.validators.js';
 
 export const producerInvitationsController = {
@@ -127,6 +128,47 @@ export const producerInvitationsController = {
       const data = await waitlistService.getProducerWaitlistDashboard(
         producerId,
         String(req.query.event_id),
+      );
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  update: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const producerId = resolveProducerId(req);
+      const body = updateProducerInvitationSchema.parse(req.body);
+      const data = await producerInvitationsService.updateInvitation(
+        producerId,
+        String(req.params.id),
+        body,
+      );
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  resend: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const producerId = resolveProducerId(req);
+      const data = await producerInvitationsService.resendInvitation(
+        producerId,
+        String(req.params.id),
+      );
+      res.json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  revoke: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const producerId = resolveProducerId(req);
+      const data = await producerInvitationsService.revokeInvitation(
+        producerId,
+        String(req.params.id),
       );
       res.json(successResponse(data));
     } catch (err) {

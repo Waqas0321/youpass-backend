@@ -1,9 +1,10 @@
-import type { EventDrinkProductStatus } from '@prisma/client';
-import { prisma } from '../../config/database.js';
+import { getEventCurrencyMeta } from '../../common/services/country-config.service.js';
 import { assertUserHasTicketForEvent } from './event-drink-access.js';
+import { drinkPriceDecimals, drinkPriceToDisplay } from './drink-price.utils.js';
+import { prisma } from '../../config/database.js';
 
 function isProductAvailable(
-  status: EventDrinkProductStatus,
+  status: string,
   stockRemaining: number | null,
 ): boolean {
   if (status === 'hidden') {
@@ -22,6 +23,13 @@ export const eventDrinksService = {
   async getMenuForUser(userId: string, eventId: string) {
     await assertUserHasTicketForEvent(userId, eventId);
 
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { countryCode: true },
+    });
+    const currencyMeta = getEventCurrencyMeta(event?.countryCode ?? 'CL');
+    const currency = currencyMeta.currency;
+
     const [categories, products] = await Promise.all([
       prisma.eventDrinkCategory.findMany({
         where: { eventId },
@@ -39,6 +47,8 @@ export const eventDrinksService = {
 
     return {
       event_id: eventId,
+      currency,
+      currency_decimals: drinkPriceDecimals(currency),
       categories: categories.map((category) => ({
         category_id: category.id,
         slug: category.slug,
@@ -55,6 +65,8 @@ export const eventDrinksService = {
         description: product.description,
         volume_ml: product.volumeMl,
         price_clp: product.priceClp,
+        price: drinkPriceToDisplay(product.priceClp, currency),
+        currency,
         image_url: product.imageUrl,
         status: product.status === 'sold_out' ? 'sold_out' : 'available',
         is_available: isProductAvailable(product.status, product.stockRemaining),

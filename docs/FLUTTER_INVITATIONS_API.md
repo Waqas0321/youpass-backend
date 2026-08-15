@@ -1,6 +1,6 @@
 # Flutter — Invitations API
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`  
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`  
 **Auth:** `Authorization: Bearer <access_token>`
 
 Backend implements the Flutter Invitations API Specification v1.0. Set `useInvitationsMockData = false` in Flutter.

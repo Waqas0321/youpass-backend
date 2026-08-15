@@ -9,7 +9,7 @@ import { invitationDoorValidationService } from '../invitations/invitation-door-
 import { eventDrinkRedemptionService } from '../event-drinks/event-drink-redemption.service.js';
 
 const validateQrSchema = z.object({
-  qr_payload: z.string().min(8),
+  qr_payload: z.string().trim().min(4).max(512),
 });
 
 function assertDoorValidatorAuth(req: Request) {

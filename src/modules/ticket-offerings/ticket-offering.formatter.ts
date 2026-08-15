@@ -57,6 +57,7 @@ export function formatAdminTicketOffering(
   const formatted = formatPublicTicketOffering(offering, eventCurrency, now);
   const sold = soldQuantity(offering);
   return {
+    id: offering.id,
     offering_id: offering.id,
     event_id: offering.eventId,
     type: offering.type,

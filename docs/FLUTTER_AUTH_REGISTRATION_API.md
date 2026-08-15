@@ -1,6 +1,6 @@
 # Flutter — Auth & Registration Screens API Guide
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`  
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`  
 **Stack note:** Backend is **Express + Prisma + MongoDB** (not NestJS/PostgreSQL). All endpoints below are live on this API.
 
 This doc maps the **Welcome Back**, **OTP verification**, and **Create Account** screens to backend calls. UI layout, colors, and step order are Flutter-only; rules and copy come from the API.

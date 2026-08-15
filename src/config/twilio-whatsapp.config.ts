@@ -43,6 +43,7 @@ export function otpContentSidForPurpose(purpose: AuthCodePurpose): string {
     register: env.TWILIO_WHATSAPP_TEMPLATE_REGISTER_SID,
     change_phone: env.TWILIO_WHATSAPP_TEMPLATE_PHONE_CHANGE_SID,
     delete_account: env.TWILIO_WHATSAPP_TEMPLATE_DELETE_ACCOUNT_SID,
+    staff_login: env.TWILIO_WHATSAPP_TEMPLATE_LOGIN_SID,
   };
   return (byPurpose[purpose] || env.TWILIO_WHATSAPP_OTP_CONTENT_SID).trim();
 }

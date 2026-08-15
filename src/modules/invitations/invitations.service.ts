@@ -22,7 +22,6 @@ import { notifyInviterInvitationDeclined } from './invitation-decline-notificati
 import { invitationConfigService } from '../../common/services/invitation-config.service.js';
 import {
   detectCardBrand,
-  eventDayStart,
   generateEntryCode,
   generateQrPayload,
   maskCardLastFour,
@@ -502,8 +501,7 @@ export const invitationsService = {
         paymentMethodToken: paymentMethod.providerToken,
       });
 
-      const timezone = getTimezone(invitation.event.countryCode);
-      const unlockAt = eventDayStart(invitation.event.startsAt, timezone);
+      const unlockAt = new Date();
       const entryCode = generateEntryCode();
       const ticketId = crypto.randomBytes(12).toString('hex');
       const qrPayload = generateQrPayload(ticketId, invitation.eventId);
@@ -563,8 +561,7 @@ export const invitationsService = {
         paymentMethodToken: paymentMethod.providerToken,
       });
 
-      const timezone = getTimezone(invitation.event.countryCode);
-      const unlockAt = eventDayStart(invitation.event.startsAt, timezone);
+      const unlockAt = new Date();
       const entryCode = generateEntryCode();
       const ticketId = crypto.randomBytes(12).toString('hex');
       const qrPayload = generateQrPayload(ticketId, invitation.eventId);
@@ -606,8 +603,7 @@ export const invitationsService = {
 
       await getDefaultPaymentMethod(userId, input.payment_method_id);
 
-      const timezone = getTimezone(invitation.event.countryCode);
-      const unlockAt = eventDayStart(invitation.event.startsAt, timezone);
+      const unlockAt = new Date();
       const entryCode = generateEntryCode();
       const ticketId = crypto.randomBytes(12).toString('hex');
       const qrPayload = generateQrPayload(ticketId, invitation.eventId);
@@ -660,8 +656,7 @@ export const invitationsService = {
         paymentMethodToken: paymentMethod.providerToken,
       });
 
-      const timezone = getTimezone(invitation.event.countryCode);
-      const unlockAt = eventDayStart(invitation.event.startsAt, timezone);
+      const unlockAt = new Date();
       const entryCode = generateEntryCode();
       const ticketId = crypto.randomBytes(12).toString('hex');
       const qrPayload = generateQrPayload(ticketId, invitation.eventId);
@@ -698,8 +693,7 @@ export const invitationsService = {
     }
 
     // Type 1 — Free invitation (purchased guest assignment — no payment hold)
-    const timezone = getTimezone(invitation.event.countryCode);
-    const unlockAt = eventDayStart(invitation.event.startsAt, timezone);
+    const unlockAt = new Date();
     const entryCode = generateEntryCode();
     const ticketId = crypto.randomBytes(12).toString('hex');
     const qrPayload = generateQrPayload(ticketId, invitation.eventId);

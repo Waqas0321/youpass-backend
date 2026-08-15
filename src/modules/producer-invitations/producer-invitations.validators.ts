@@ -17,6 +17,7 @@ export const createProducerInvitationSchema = z
     type: z.enum(['free', 'guaranteed', 'discounted']),
     recipient_user_id: z.string().min(1).optional(),
     recipient_phone: z.string().min(8).max(20).optional(),
+    recipient_name: z.string().min(1).max(120).optional(),
     slot_label: z.string().min(1).max(120),
     cancellation_deadline_days: z.coerce.number().int().min(0).max(90).optional(),
     discount_percentage: z.coerce.number().int().min(1).max(99).optional(),
@@ -59,7 +60,18 @@ export const postEventReportQuerySchema = z.object({
   format: z.enum(['json', 'csv', 'pdf']).optional().default('json'),
 });
 
+export const updateProducerInvitationSchema = z
+  .object({
+    slot_label: z.string().min(1).max(120).optional(),
+    personalised_message: z.string().max(500).optional(),
+    recipient_name: z.string().min(1).max(120).optional(),
+  })
+  .refine((data) => Object.values(data).some((value) => value != null && value !== ''), {
+    message: 'At least one field is required',
+  });
+
 export type ListProducerInvitationsQuery = z.infer<typeof listProducerInvitationsQuerySchema>;
 export type CreateProducerInvitationInput = z.infer<typeof createProducerInvitationSchema>;
 export type ReinviteProducerInvitationInput = z.infer<typeof reinviteProducerInvitationSchema>;
 export type UpdateEventInvitationSettingsInput = z.infer<typeof updateEventInvitationSettingsSchema>;
+export type UpdateProducerInvitationInput = z.infer<typeof updateProducerInvitationSchema>;

@@ -5,6 +5,7 @@ import type {
   EventDrinkRedemption,
 } from '@prisma/client';
 import { resolveQrStatus } from '../invitations/invitations.utils.js';
+import { drinkPriceToDisplay } from './drink-price.utils.js';
 
 type LineWithRedemption = EventDrinkOrderLine & {
   redemption: EventDrinkRedemption | null;
@@ -86,7 +87,9 @@ function formatLineItem(line: LineWithRedemption, order: OrderWithRelations) {
     product_name: line.productName,
     quantity: line.quantity,
     unit_price_clp: line.unitPriceClp,
+    unit_price: drinkPriceToDisplay(line.unitPriceClp, order.currency),
     line_total_clp: line.lineTotalClp,
+    line_total: drinkPriceToDisplay(line.lineTotalClp, order.currency),
     volume_ml: line.volumeMl,
     image_url: line.imageUrl,
     entry_code: redemption.entry_code,
@@ -133,8 +136,11 @@ export function formatDrinkOrder(order: OrderWithRelations) {
     event_id: order.eventId,
     event_title: order.event.title,
     subtotal_clp: order.subtotalClp,
+    subtotal: drinkPriceToDisplay(order.subtotalClp, order.currency),
     service_fee_clp: order.serviceFeeClp,
+    service_fee: drinkPriceToDisplay(order.serviceFeeClp, order.currency),
     total_clp: order.totalClp,
+    total: drinkPriceToDisplay(order.totalClp, order.currency),
     currency: order.currency,
     item_count: order.itemCount,
     status: order.status,

@@ -6,28 +6,31 @@ import {
   resolveGuestContact,
 } from './guaranteed-pass-notification.service.js';
 import { releaseInvitationPreAuthHold } from './invitation-lifecycle.service.js';
+import { findInvitationTicketByScanInput } from './invitation-ticket-scan.utils.js';
+import { supervisorOperationalStateService } from '../staff-supervisor/supervisor-operational-state.service.js';
 
 export const invitationDoorValidationService = {
-  async validateQrPayload(qrPayload: string) {
-    const ticket = await prisma.invitationTicket.findFirst({
-      where: { qrPayload },
-      include: {
-        invitation: {
-          include: {
-            event: true,
-            producer: true,
-            recipient: true,
-            preAuth: true,
-          },
-        },
-      },
-    });
+  async validateQrPayload(scanInput: string) {
+    const ticket = await findInvitationTicketByScanInput(scanInput);
 
     if (!ticket) {
       throw new AppError(404, 'QR_NOT_FOUND', 'QR code not recognised');
     }
 
     const invitation = ticket.invitation;
+    const operationalFlags = await supervisorOperationalStateService.getFlags(invitation.eventId);
+
+    if (operationalFlags.validationsPaused) {
+      throw new AppError(
+        503,
+        'VALIDATIONS_PAUSED',
+        'Entry validations are temporarily paused by a supervisor',
+      );
+    }
+
+    if (operationalFlags.vipAccessBlocked && invitation.tier === 'vip') {
+      throw new AppError(403, 'VIP_ACCESS_BLOCKED', 'VIP access is temporarily blocked');
+    }
 
     if (invitation.status !== 'accepted' && invitation.status !== 'validated') {
       throw new AppError(409, 'QR_INVALID', 'Ticket is not active');
@@ -40,6 +43,8 @@ export const invitationDoorValidationService = {
         invitation_id: invitation.id,
         event_title: invitation.event.title,
         guest_name: invitation.recipient?.fullName ?? invitation.recipientName,
+        qr_payload: ticket.qrPayload,
+        entry_code: ticket.manualEntryId,
       };
     }
 
@@ -82,6 +87,9 @@ export const invitationDoorValidationService = {
       event_title: invitation.event.title,
       guest_name: invitation.recipient?.fullName ?? invitation.recipientName,
       preauth_released: preauthReleased,
+      qr_payload: ticket.qrPayload,
+      entry_code: ticket.manualEntryId,
+      validated_at: now.toISOString(),
     };
   },
 };

@@ -1,5 +1,6 @@
 import { AdminDrinkOrderDetail } from '../../api/client';
 import { useI18n } from '../../i18n/useI18n';
+import { formatDrinkPrice } from '../../utils/drinkPrice';
 import { EventOrderQrStatusPill } from './EventOrderQrStatusPill';
 
 type Props = {
@@ -10,8 +11,8 @@ type Props = {
 export function EventOrderDetailModal({ order, onClose }: Props) {
   const { t, dateLocale, numberLocale } = useI18n();
 
-  function formatMoney(clp: number) {
-    return `$${new Intl.NumberFormat(numberLocale).format(clp)} CLP`;
+  function formatMoney(amountMinor: number) {
+    return formatDrinkPrice(amountMinor, order.currency ?? 'CLP', numberLocale);
   }
 
   function formatDateTime(iso: string) {

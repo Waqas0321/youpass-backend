@@ -22,6 +22,7 @@ export const adminEventDrinkProductSchema = z.object({
   category_id: z.string().optional().nullable(),
   volume_ml: z.coerce.number().int().positive().optional().nullable(),
   price_clp: z.coerce.number().int().min(0),
+  cost_clp: z.coerce.number().int().min(0).optional().nullable(),
   image_url: z.string().max(500).optional().nullable(),
   stock_total: z.coerce.number().int().min(0).optional().nullable(),
   stock_remaining: z.coerce.number().int().min(0).optional().nullable(),

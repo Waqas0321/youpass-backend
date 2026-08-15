@@ -4,6 +4,13 @@ export type JwtPayload = {
   phone: string;
 };
 
+export type StaffJwtPayload = {
+  sub: string;
+  sessionId: string;
+  phone: string;
+  typ: 'staff';
+};
+
 export type AuthRequestContext = {
   ipAddress?: string;
   deviceInfo?: Record<string, unknown>;

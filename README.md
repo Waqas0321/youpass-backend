@@ -294,14 +294,14 @@ Use `Authorization: Bearer <access_token>` for protected routes.
 ### Update profile
 
 ```bash
-curl -X PATCH https://youpass-backend.vercel.app/api/v1/users/me/profile \
+curl -X PATCH https://youpass-backend-two.vercel.app/api/v1/users/me/profile \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"full_name":"Waqas Akhtar","instagram_username":"waqas.dev"}'
 ```
 
 ```bash
-curl -X POST https://youpass-backend.vercel.app/api/v1/users/me/profile-photo \
+curl -X POST https://youpass-backend-two.vercel.app/api/v1/users/me/profile-photo \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -F "photo=@/path/to/photo.jpg"
 ```

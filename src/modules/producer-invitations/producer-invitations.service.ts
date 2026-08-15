@@ -31,6 +31,7 @@ import {
   formatFreedSlotDuration,
   markFreedSlotReinvited,
 } from '../invitations/invitation-freed-slot.service.js';
+import { deleteInvitationRecord } from '../invitations/invitation-lifecycle.service.js';
 import {
   guaranteedPassNotificationService,
   resolveGuestContact,
@@ -43,6 +44,7 @@ import type {
   ListProducerInvitationsQuery,
   ReinviteProducerInvitationInput,
   UpdateEventInvitationSettingsInput,
+  UpdateProducerInvitationInput,
 } from './producer-invitations.validators.js';
 
 const invitationInclude = {
@@ -54,6 +56,15 @@ const invitationInclude = {
 } as const;
 
 type InvitationRow = Prisma.InvitationGetPayload<{ include: typeof invitationInclude }>;
+
+const ACTIVE_INVITATION_STATUSES = [
+  'sent',
+  'viewed',
+  'accepted',
+  'validated',
+  'charged',
+  'failed',
+] as const;
 
 function normalizePhone(phone: string): string {
   const trimmed = phone.trim();
@@ -77,6 +88,58 @@ async function resolveInvitationRecipient(input: CreateProducerInvitationInput) 
   const phone = normalizePhone(input.recipient_phone!);
   const user = await prisma.user.findFirst({ where: { phone } });
   return { phone, user };
+}
+
+async function loadActiveInviteeKeys(producerId: string, eventId: string) {
+  const rows = await prisma.invitation.findMany({
+    where: {
+      producerId,
+      eventId,
+      status: { in: [...ACTIVE_INVITATION_STATUSES] },
+    },
+    select: { recipientPhone: true, recipientUserId: true },
+  });
+
+  const phones = new Set<string>();
+  const userIds = new Set<string>();
+
+  for (const row of rows) {
+    phones.add(normalizePhone(row.recipientPhone));
+    if (row.recipientUserId) {
+      userIds.add(row.recipientUserId);
+    }
+  }
+
+  return { phones, userIds };
+}
+
+async function assertNoActiveInvitationDuplicate(
+  producerId: string,
+  eventId: string,
+  phone: string,
+  userId?: string | null,
+) {
+  const normalizedPhone = normalizePhone(phone);
+  const existing = await prisma.invitation.findFirst({
+    where: {
+      producerId,
+      eventId,
+      status: { in: [...ACTIVE_INVITATION_STATUSES] },
+      OR: [
+        { recipientPhone: normalizedPhone },
+        ...(userId ? [{ recipientUserId: userId }] : []),
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (existing) {
+    throw new AppError(
+      409,
+      'INVITATION_ALREADY_SENT',
+      'This guest already has an active invitation for this event',
+    );
+  }
 }
 
 async function assertProducerExists(producerId: string) {
@@ -185,11 +248,14 @@ function formatProducerInvitationRow(invitation: InvitationRow, expiryDays: numb
     ...formatInvitationListItem(invitation, expiryDays),
     recipient_phone: invitation.recipientPhone,
     recipient_name: invitation.recipientName ?? invitation.recipient?.fullName ?? null,
+    recipient_avatar_url: invitation.recipient?.profilePhotoUrl ?? null,
     invitation_type: mapDbTypeToApi(invitation.type),
     lifecycle_state: lifecycle,
     lifecycle_label: lifecycleStateLabel(lifecycle),
     slot_label: invitation.assignedSlot,
     sent_at: invitation.sentAt.toISOString(),
+    entry_at: invitation.ticket?.validatedAt?.toISOString() ?? null,
+    deep_link: buildInvitationDeepLink(invitation.id),
   };
 }
 
@@ -227,6 +293,19 @@ async function dispatchNewInvitationNotifications(invitation: InvitationRow) {
     subject: `Invitation to ${invitation.event.title}`,
     deepLink,
   });
+}
+
+async function loadProducerInvitation(producerId: string, invitationId: string) {
+  const invitation = await prisma.invitation.findFirst({
+    where: { id: invitationId, producerId, source: 'producer' },
+    include: invitationInclude,
+  });
+
+  if (!invitation) {
+    throw new AppError(404, 'INVITATION_NOT_FOUND', 'Invitation not found');
+  }
+
+  return invitation;
 }
 
 export const producerInvitationsService = {
@@ -299,6 +378,12 @@ export const producerInvitationsService = {
     await assertProducerExists(producerId);
     const event = await loadEventForProducer(input.event_id);
     const recipient = await resolveInvitationRecipient(input);
+    await assertNoActiveInvitationDuplicate(
+      producerId,
+      input.event_id,
+      recipient.phone,
+      recipient.user?.id,
+    );
     const payload = buildProducerInvitationPayload(producerId, event, {
       ...input,
       recipient_phone: recipient.phone,
@@ -308,7 +393,7 @@ export const producerInvitationsService = {
       data: {
         ...payload,
         recipientUserId: recipient.user?.id ?? null,
-        recipientName: recipient.user?.fullName ?? null,
+        recipientName: input.recipient_name?.trim() || recipient.user?.fullName || null,
         claimToken: crypto.randomBytes(16).toString('hex'),
       },
       include: invitationInclude,
@@ -586,7 +671,25 @@ export const producerInvitationsService = {
       }
     }
 
-    const ranked = [...deduped.values()]
+    const followerPhoneToUserId = new Map(
+      followers.map((follow) => [follow.user.phone, follow.user.id] as const),
+    );
+
+    let eligible = [...deduped.values()];
+
+    if (eventId) {
+      const excluded = await loadActiveInviteeKeys(producerId, eventId);
+      eligible = eligible.filter((candidate) => {
+        const phone = normalizePhone(candidate.guest_phone);
+        if (excluded.phones.has(phone)) {
+          return false;
+        }
+        const userId = followerPhoneToUserId.get(candidate.guest_phone);
+        return !(userId && excluded.userIds.has(userId));
+      });
+    }
+
+    const ranked = eligible
       .sort((a, b) => b.score - a.score || b.past_attendance_count - a.past_attendance_count)
       .slice(0, limit)
       .map((candidate, index) => ({
@@ -718,5 +821,73 @@ export const producerInvitationsService = {
     });
 
     return formatInvitationSettingsResponse(settings);
+  },
+
+  async updateInvitation(
+    producerId: string,
+    invitationId: string,
+    input: UpdateProducerInvitationInput,
+  ) {
+    const existing = await loadProducerInvitation(producerId, invitationId);
+    if (['validated', 'charged'].includes(existing.status)) {
+      throw new AppError(409, 'INVITATION_NOT_EDITABLE', 'This invitation can no longer be edited');
+    }
+
+    const invitation = await prisma.invitation.update({
+      where: { id: existing.id },
+      data: {
+        ...(input.slot_label != null ? { assignedSlot: input.slot_label } : {}),
+        ...(input.personalised_message != null ? { customMessage: input.personalised_message } : {}),
+        ...(input.recipient_name != null ? { recipientName: input.recipient_name } : {}),
+      },
+      include: invitationInclude,
+    });
+
+    const { expiryDays } = await invitationConfigService.getConfig();
+    return formatProducerInvitationRow(invitation, expiryDays);
+  },
+
+  async resendInvitation(producerId: string, invitationId: string) {
+    const invitation = await loadProducerInvitation(producerId, invitationId);
+    if (!['sent', 'viewed', 'accepted'].includes(invitation.status)) {
+      throw new AppError(
+        409,
+        'INVITATION_NOT_RESENDABLE',
+        'Only pending or accepted invitations can be resent',
+      );
+    }
+
+    await dispatchNewInvitationNotifications(invitation);
+    await invitationAuditService.log({
+      invitationId: invitation.id,
+      actorType: 'producer',
+      action: 'resend_invitation',
+      result: 'success',
+      metadata: { producer_id: producerId },
+    });
+
+    const { expiryDays } = await invitationConfigService.getConfig();
+    return formatProducerInvitationRow(invitation, expiryDays);
+  },
+
+  async revokeInvitation(producerId: string, invitationId: string) {
+    const invitation = await loadProducerInvitation(producerId, invitationId);
+    if (['validated', 'charged'].includes(invitation.status)) {
+      throw new AppError(409, 'INVITATION_NOT_REVOKABLE', 'This invitation can no longer be revoked');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await deleteInvitationRecord(tx, invitation);
+    });
+
+    await invitationAuditService.log({
+      invitationId: invitation.id,
+      actorType: 'producer',
+      action: 'revoke_invitation',
+      result: 'success',
+      metadata: { producer_id: producerId },
+    });
+
+    return { revoked: true, id: invitationId };
   },
 };

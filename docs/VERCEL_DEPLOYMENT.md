@@ -11,6 +11,7 @@ Use this guide whenever you redeploy the API to production.
 | **API base** | `https://youpass-backend-two.vercel.app/api/v1` |
 | **Health** | `https://youpass-backend-two.vercel.app/api/v1/health` |
 | **Admin panel** | `https://youpass-backend-two.vercel.app/admin` |
+| **Producer dashboard** | `https://youpass-backend-two.vercel.app/producer` |
 | **Vercel dashboard** | https://vercel.com/usama-mukhtiars-projects/youpass-backend |
 
 The Flutter app (`youpass`) uses this base URL in release builds via `AppConstants.apiBaseUrl`.
@@ -165,7 +166,7 @@ See also: [TWILIO_OTP_IMPLEMENTATION.md](./TWILIO_OTP_IMPLEMENTATION.md)
 `NODE_ENV=production` on Vercel makes `npm install` skip devDependencies. The project needs TypeScript types at build time, so `vercel.json` forces dev installs:
 
 ```json
-"installCommand": "NODE_ENV=development npm install && npm run admin:install",
+"installCommand": "NODE_ENV=development npm install && npm run admin:install && npm run producer:install",
 "buildCommand": "NODE_ENV=development npm run vercel-build"
 ```
 
@@ -205,6 +206,16 @@ Built during `vercel-build` and served at `/admin`.
 Open: https://youpass-backend-two.vercel.app/admin
 
 Uses `ADMIN_API_KEY` from Vercel env vars.
+
+---
+
+## Producer dashboard
+
+Built during `vercel-build` and served at `/producer`.
+
+Open: https://youpass-backend-two.vercel.app/producer
+
+Design-only auth for now (`producer@youpass.com` / `youpass123` in the UI). API wiring can follow the same pattern as admin when backend routes are ready.
 
 ---
 

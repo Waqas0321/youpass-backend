@@ -24,8 +24,48 @@ import { getCountrySync, getEventCurrencyMeta } from '../../common/services/coun
 import { resolveDateRange } from '../../common/utils/event-date-range.js';
 import { buildVenueKindWhere } from '../../common/utils/venue-kind-filter.js';
 import { venuesService } from '../venues/venues.service.js';
+import {
+  formatEventSocialLinks,
+  formatEventSponsors,
+  type EventSocialLink,
+  type EventSponsor,
+} from './event-profile.types.js';
 
 const eventInclude = { eventType: true, venue: true } as const;
+
+function normalizeOptionalUrl(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function mapEventProfileFields(input: Partial<CreateEventInput>) {
+  return {
+    ...(input.ends_at !== undefined ? { endsAt: input.ends_at ? new Date(input.ends_at) : null } : {}),
+    ...(input.address_line !== undefined ? { addressLine: input.address_line?.trim() || null } : {}),
+    ...(input.min_age !== undefined ? { minAge: input.min_age } : {}),
+    ...(input.dress_code !== undefined ? { dressCode: input.dress_code?.trim() || null } : {}),
+    ...(input.logo_url !== undefined ? { logoUrl: normalizeOptionalUrl(input.logo_url) } : {}),
+    ...(input.teaser_video_url !== undefined
+      ? { teaserVideoUrl: normalizeOptionalUrl(input.teaser_video_url) }
+      : {}),
+    ...(input.carousel_images !== undefined ? { carouselImages: input.carousel_images } : {}),
+    ...(input.floor_plan_image_url !== undefined
+      ? { floorPlanImageUrl: normalizeOptionalUrl(input.floor_plan_image_url) }
+      : {}),
+    ...(input.primary_color !== undefined
+      ? { primaryColor: input.primary_color?.trim() || null }
+      : {}),
+    ...(input.secondary_color !== undefined
+      ? { secondaryColor: input.secondary_color?.trim() || null }
+      : {}),
+    ...(input.sponsors !== undefined
+      ? { sponsors: formatEventSponsors(input.sponsors as EventSponsor[]) }
+      : {}),
+    ...(input.social_links !== undefined
+      ? { socialLinks: formatEventSocialLinks(input.social_links as EventSocialLink[]) }
+      : {}),
+  };
+}
 
 type EventWithType = Event & { eventType: EventType; venue?: import('@prisma/client').Venue | null };
 
@@ -276,6 +316,9 @@ export const eventsService = {
             userId,
           )
         : null;
+      const purchaseMeta = await vipVenueService.getListingPurchaseMetaBatch(
+        pageItems.map((event) => event.id),
+      );
 
       const items = pageItems.map((event) => {
         const country = getCountrySync(event.countryCode);
@@ -286,6 +329,7 @@ export const eventsService = {
           distance_km: proximity.distance_km,
           travel_time_minutes: proximity.travel_time_minutes,
           waitlist: waitlistMeta?.get(event.id) ?? null,
+          purchase: purchaseMeta.get(event.id),
         });
       });
 
@@ -451,7 +495,7 @@ export const eventsService = {
         venueName: venueFields.venueName,
         city: venueFields.city,
         countryCode: country.code,
-        imageUrl: input.image_url,
+        imageUrl: normalizeOptionalUrl(input.image_url),
         eventTypeId: eventType.id,
         isFeatured: input.is_featured ?? false,
         featuredOrder: input.featured_order ?? 0,
@@ -459,6 +503,7 @@ export const eventsService = {
         producerName: input.producer_name?.trim(),
         latitude: input.latitude,
         longitude: input.longitude,
+        ...mapEventProfileFields(input),
       },
       include: eventInclude,
     });
@@ -521,7 +566,7 @@ export const eventsService = {
         ...(venueName !== undefined ? { venueName } : {}),
         ...(city !== undefined ? { city } : {}),
         ...(countryCode !== undefined ? { countryCode } : {}),
-        ...(input.image_url !== undefined ? { imageUrl: input.image_url } : {}),
+        ...(input.image_url !== undefined ? { imageUrl: normalizeOptionalUrl(input.image_url) } : {}),
         ...(eventTypeId !== undefined ? { eventTypeId } : {}),
         ...(input.is_featured !== undefined ? { isFeatured: input.is_featured } : {}),
         ...(input.featured_order !== undefined ? { featuredOrder: input.featured_order } : {}),
@@ -531,6 +576,7 @@ export const eventsService = {
           : {}),
         ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
         ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
+        ...mapEventProfileFields(input),
       },
       include: eventInclude,
     });

@@ -15,14 +15,24 @@ const IMAGES = [
   'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=800',
   'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
   'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800',
-  'https://images.unsplash.com/photo-1415201364774-f6f0ff35aa28?w=800',
-  'https://images.unsplash.com/photo-1533170792547-88a0d66a3926?w=800',
+  'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800',
+  'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=800',
   'https://images.unsplash.com/photo-1506157786151-b8491531f063?w=800',
-  'https://images.unsplash.com/photo-1571266028243-e4733b2d325c?w=800',
+  'https://images.unsplash.com/photo-1483412033650-1015ddeb83d1?w=800',
   'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?w=800',
-  'https://images.unsplash.com/photo-1429962710811-db857818a988?w=800',
+  'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800',
   'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800',
 ];
+
+const PRODUCER_LOGOS: Record<string, string> = {
+  'Capital Sounds':
+    'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=400',
+  'PK Live': 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400',
+  'El Tebo': 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400',
+  'Sunset Productions':
+    'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=400',
+  YouPass: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400',
+};
 
 type EventSeed = {
   title: string;
@@ -202,10 +212,21 @@ const PK_BANNER_SEEDS = [
 ];
 
 async function ensureProducer(name: string) {
+  const logoUrl =
+    PRODUCER_LOGOS[name] ??
+    'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=400';
   const existing = await prisma.producer.findFirst({ where: { name } });
-  if (existing) return existing;
+  if (existing) {
+    if (!existing.logoUrl) {
+      return prisma.producer.update({
+        where: { id: existing.id },
+        data: { logoUrl },
+      });
+    }
+    return existing;
+  }
   return prisma.producer.create({
-    data: { name, logoUrl: null, description: `${name} — demo promoter` },
+    data: { name, logoUrl, description: `${name} — demo promoter` },
   });
 }
 

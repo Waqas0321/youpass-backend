@@ -1,6 +1,6 @@
 # YouPass — Multi-Country LATAM Backend API
 
-Base URL: `https://youpass-backend.vercel.app/api/v1`
+Base URL: `https://youpass-backend-two.vercel.app/api/v1`
 
 Gateway routing is **server-side only**:
 

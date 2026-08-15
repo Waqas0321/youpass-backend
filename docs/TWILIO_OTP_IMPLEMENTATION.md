@@ -1,6 +1,6 @@
 # Twilio OTP — Implementation Guide
 
-**Production base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Production base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 YOUPASS sends OTP codes via **Twilio** (SMS or WhatsApp). Meta WhatsApp Business API is **not** used.
 
@@ -119,7 +119,7 @@ If client calls send-code with `purpose: "login"` but no account exists:
 
 Summary of required Flutter changes:
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 ### No change required
 
@@ -285,7 +285,7 @@ No Meta Business Manager or WhatsApp templates required for SMS.
 ## Quick test
 
 ```bash
-curl -X POST https://youpass-backend.vercel.app/api/v1/auth/send-code \
+curl -X POST https://youpass-backend-two.vercel.app/api/v1/auth/send-code \
   -H "Content-Type: application/json" \
   -d '{"phone":"3216548001","country_code":"PK","purpose":"register"}'
 ```

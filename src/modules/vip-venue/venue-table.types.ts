@@ -60,3 +60,16 @@ export function isTableLockActive(
     table.lockedUntil > now
   );
 }
+
+/** Admin reserve/block without a timed user lock — must not be purchasable in the app. */
+export function isAdminHeldVenueTable(table: {
+  status: string;
+  lockedUntil: Date | null;
+  lockedByUserId?: string | null;
+}) {
+  if (table.lockedUntil != null || table.lockedByUserId != null) {
+    return false;
+  }
+
+  return table.status === 'reserved' || table.status === 'locked';
+}

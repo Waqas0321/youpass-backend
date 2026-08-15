@@ -1,6 +1,6 @@
 # Flutter — VIP Venue & Ticket Purchase API
 
-**Production base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Production base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 APIs for **VIP venue map**, **ticket offerings**, **table lock**, and **checkout** (general + VIP table). Replaces `VipVenueMockData` in Flutter.
 

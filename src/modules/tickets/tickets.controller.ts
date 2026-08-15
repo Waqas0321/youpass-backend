@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
+import { AppError } from '../../common/errors/app-error.js';
 import { successResponse } from '../../common/utils/crypto.js';
+import { vipVenueService } from '../vip-venue/vip-venue.service.js';
 import { ticketsService } from './tickets.service.js';
 import { ticketOrdersService } from '../ticket-orders/ticket-orders.service.js';
 import { assignTicketSlotSchema } from '../ticket-orders/ticket-orders.validators.js';
@@ -31,9 +33,19 @@ export const ticketsController = {
 
   getById: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await ticketsService.getTicketDetail(req.user!.id, String(req.params.id));
+      const refId = String(req.params.id);
+      const data = await ticketsService.getTicketDetail(req.user!.id, refId);
       res.json(successResponse(data));
     } catch (err) {
+      if (err instanceof AppError && err.code === 'TICKET_NOT_FOUND') {
+        try {
+          const catalog = await vipVenueService.listTicketTypes(String(req.params.id));
+          res.json(successResponse(catalog));
+          return;
+        } catch {
+          // Not a published event catalog — keep original 404.
+        }
+      }
       next(err);
     }
   },

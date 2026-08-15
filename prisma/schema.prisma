@@ -15,6 +15,7 @@ enum AuthCodePurpose {
   register
   change_phone
   delete_account
+  staff_login
 }
 
 enum SentVia {
@@ -252,6 +253,17 @@ model Event {
   startsAt      DateTime    @map("starts_at")
   endsAt        DateTime?   @map("ends_at")
   entryTimeLabel String?    @map("entry_time_label")
+  addressLine   String?     @map("address_line")
+  minAge        Int?        @map("min_age")
+  dressCode     String?     @map("dress_code")
+  logoUrl       String?     @map("logo_url")
+  teaserVideoUrl String?    @map("teaser_video_url")
+  carouselImages String[]   @default([]) @map("carousel_images")
+  floorPlanImageUrl String?  @map("floor_plan_image_url")
+  primaryColor  String?     @map("primary_color")
+  secondaryColor String?    @map("secondary_color")
+  sponsors      Json?
+  socialLinks   Json?       @map("social_links")
   venueName     String      @map("venue_name")
   city          String
   zone          String?
@@ -268,6 +280,7 @@ model Event {
   isFeatured    Boolean     @default(false) @map("is_featured")
   featuredOrder Int         @default(0) @map("featured_order")
   status        EventStatus @default(draft)
+  salesPaused   Boolean     @default(false) @map("sales_paused")
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
 
@@ -287,6 +300,7 @@ model Event {
   drinkCategories   EventDrinkCategory[]
   drinkProducts     EventDrinkProduct[]
   drinkOrders       EventDrinkOrder[]
+  supervisorOperationalState SupervisorOperationalState?
 
   @@index([countryCode, status, startsAt])
   @@index([isFeatured, featuredOrder])
@@ -295,6 +309,21 @@ model Event {
   @@index([venueId])
   @@index([venueKind])
   @@map("events")
+}
+
+model SupervisorOperationalState {
+  eventId                String    @id @map("_id") @db.ObjectId
+  offlineModeEnabled     Boolean   @default(false) @map("offline_mode_enabled")
+  validationsPaused      Boolean   @default(false) @map("validations_paused")
+  vipAccessBlocked       Boolean   @default(false) @map("vip_access_blocked")
+  lastStaffAlertAt       DateTime? @map("last_staff_alert_at")
+  lastStaffAlertMessage  String?   @map("last_staff_alert_message")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  updatedByStaffMemberId String?   @map("updated_by_staff_member_id") @db.ObjectId
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("supervisor_operational_states")
 }
 
 model HomeBannerSlide {
@@ -451,6 +480,7 @@ model EventDrinkProduct {
   description    String?
   volumeMl       Int?                    @map("volume_ml")
   priceClp       Int                     @map("price_clp")
+  costClp        Int?                    @map("cost_clp")
   imageUrl       String?                 @map("image_url")
   stockTotal     Int?                    @map("stock_total")
   stockRemaining Int?                    @map("stock_remaining")
@@ -536,6 +566,112 @@ model EventDrinkRedemption {
 
   @@index([orderId])
   @@map("event_drink_redemptions")
+}
+
+// ─── System staff (platform ops / QR scanner app) ────────────────────────────
+
+enum StaffStatus {
+  online
+  away
+  paused
+}
+
+model StaffRole {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  slug         String   @unique
+  label        String
+  color        String   @default("#ffb800")
+  isSystem     Boolean  @default(true) @map("is_system")
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  staff StaffMember[]
+
+  @@index([displayOrder])
+  @@map("staff_roles")
+}
+
+model StaffZone {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  slug         String   @unique
+  label        String
+  displayOrder Int      @default(0) @map("display_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  staff StaffMember[]
+
+  @@index([displayOrder])
+  @@map("staff_zones")
+}
+
+model StaffMember {
+  id             String      @id @default(auto()) @map("_id") @db.ObjectId
+  name           String
+  phone          String      @unique
+  countryCode    String?     @map("country_code")
+  roleId         String      @map("role_id") @db.ObjectId
+  zoneId         String      @map("zone_id") @db.ObjectId
+  status         StaffStatus @default(online)
+  permissionIds  String[]    @default([]) @map("permission_ids")
+  qrToken        String?     @unique @map("qr_token")
+  qrPayload      String?     @unique @map("qr_payload")
+  supervisorPinHash String?  @map("supervisor_pin_hash")
+  supervisorPinEncrypted String? @map("supervisor_pin_encrypted")
+  lastActivityAt DateTime?   @map("last_activity_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  role StaffRole @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  zone StaffZone @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  sessions StaffSession[]
+  scanLogs StaffScanLog[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("staff_members")
+}
+
+model StaffScanLog {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  staffMemberId String   @map("staff_member_id") @db.ObjectId
+  scanType      String   @map("scan_type")
+  outcome       String
+  guestName     String   @map("guest_name")
+  itemName      String   @map("item_name")
+  eventTitle    String?  @map("event_title")
+  entryId       String?  @map("entry_id")
+  transactionId String?  @map("transaction_id")
+  qrPayload     String   @map("qr_payload")
+  accessLevel   String?  @map("access_level")
+  barName       String?  @map("bar_name")
+  productQuantity Int?   @map("product_quantity")
+  lastUsedAt    DateTime? @map("last_used_at")
+  scannedAt     DateTime @default(now()) @map("scanned_at")
+
+  staffMember StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
+  @@index([staffMemberId, scannedAt])
+  @@index([staffMemberId, scanType, scannedAt])
+  @@map("staff_scan_logs")
+}
+
+model StaffSession {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  staffMemberId  String    @map("staff_member_id") @db.ObjectId
+  tokenHash      String    @unique @map("token_hash")
+  deviceInfo     Json?     @map("device_info")
+  ipAddress      String?   @map("ip_address")
+  lastActivityAt DateTime  @default(now()) @map("last_activity_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  expiresAt      DateTime? @map("expires_at")
+  revokedAt      DateTime? @map("revoked_at")
+
+  staffMember StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+
+  @@index([staffMemberId])
+  @@map("staff_sessions")
 }
 
 model Venue {

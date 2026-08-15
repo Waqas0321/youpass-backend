@@ -1,6 +1,12 @@
 import type { Event, EventType, Venue } from '@prisma/client';
 import { getTimezone, localeForLanguage } from '../../common/services/country-config.service.js';
 import { formatVenue } from '../venues/venues.formatter.js';
+import {
+  formatEventSocialLinks,
+  formatEventSponsors,
+  parseEventSocialLinks,
+  parseEventSponsors,
+} from './event-profile.types.js';
 
 type EventWithType = Event & { eventType: EventType; venue?: Venue | null };
 
@@ -99,20 +105,35 @@ export function formatEvent(
     title: event.title,
     description: event.description,
     starts_at: event.startsAt.toISOString(),
+    ends_at: event.endsAt?.toISOString() ?? null,
     timezone,
     starts_at_display: formatEventDate(event.startsAt, timezone, languageCode),
     starts_at_short: dateShort,
     starts_at_time: time,
+    ends_at_time: event.endsAt
+      ? formatEventTime(event.endsAt, timezone, languageCode)
+      : null,
     date_time_display: `${dateShort} · ${time}`,
     venue_name: event.venueName,
     venue_id: event.venueId ?? null,
     physical_venue: event.venue ? formatVenue(event.venue) : null,
     city: event.city,
+    address_line: event.addressLine ?? null,
     country_code: event.countryCode,
-    location_display: formatLocationDisplay(event.venueName, event.city),
+    location_display: event.addressLine?.trim() || formatLocationDisplay(event.venueName, event.city),
     latitude: event.latitude,
     longitude: event.longitude,
     image_url: event.imageUrl,
+    logo_url: event.logoUrl ?? null,
+    teaser_video_url: event.teaserVideoUrl ?? null,
+    carousel_images: event.carouselImages ?? [],
+    floor_plan_image_url: event.floorPlanImageUrl ?? null,
+    min_age: event.minAge ?? null,
+    dress_code: event.dressCode ?? null,
+    primary_color: event.primaryColor ?? null,
+    secondary_color: event.secondaryColor ?? null,
+    sponsors: formatEventSponsors(parseEventSponsors(event.sponsors)),
+    social_links: formatEventSocialLinks(parseEventSocialLinks(event.socialLinks)),
     event_type: formatEventType(event.eventType),
     is_featured: event.isFeatured,
     featured_order: event.featuredOrder,
@@ -157,6 +178,11 @@ export function formatEventListingCard(
     travel_time_minutes?: number | null;
     waitlist?: Record<string, unknown> | null;
     isFavorite?: boolean;
+    purchase?: {
+      has_ticket_offerings: boolean;
+      can_purchase: boolean;
+      is_sold_out: boolean;
+    };
   },
 ) {
   const timezone = options?.timezone ?? getTimezone(event.countryCode);
@@ -177,6 +203,14 @@ export function formatEventListingCard(
         }
       : {}),
     ...(options?.waitlist ? { waitlist: options.waitlist } : {}),
+    ...(options?.purchase
+      ? {
+          purchase: options.purchase,
+          has_ticket_offerings: options.purchase.has_ticket_offerings,
+          can_purchase: options.purchase.can_purchase,
+          is_sold_out: options.purchase.is_sold_out,
+        }
+      : {}),
   };
 }
 
@@ -190,6 +224,11 @@ export function formatUpcomingEventCard(
     distance_km?: number | null;
     travel_time_minutes?: number | null;
     waitlist?: Record<string, unknown> | null;
+    purchase?: {
+      has_ticket_offerings: boolean;
+      can_purchase: boolean;
+      is_sold_out: boolean;
+    };
   },
 ) {
   return formatEventListingCard(event, {

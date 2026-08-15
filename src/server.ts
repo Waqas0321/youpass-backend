@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { isMetaWhatsAppProvider, isWhatsAppDeliveryMock, logMetaWhatsAppStartupSummary } from './config/meta-whatsapp.config.js';
 import { logTwilioWhatsAppStartupSummary } from './config/twilio-whatsapp.config.js';
 import { prisma } from './config/database.js';
 import { startInvitationExpiryScheduler } from './modules/invitations/invitation-expiry.scheduler.js';
@@ -11,6 +12,7 @@ import { startTableLockExpiryScheduler } from './modules/vip-venue/table-lock-ex
 
 async function main() {
   logTwilioWhatsAppStartupSummary();
+  logMetaWhatsAppStartupSummary();
   const app = createApp();
   startInvitationExpiryScheduler();
   startGuaranteedPassReminderScheduler();
@@ -21,7 +23,9 @@ async function main() {
   app.listen(env.PORT, () => {
     console.log(`YOUPASS API running on http://localhost:${env.PORT}${env.API_PREFIX}`);
     console.log(`Environment: ${env.NODE_ENV}`);
-    console.log(`OTP delivery: ${env.TWILIO_MOCK ? 'MOCK (logged to console)' : 'LIVE'} via ${env.OTP_DELIVERY_CHANNEL.toUpperCase()}`);
+    const provider = isMetaWhatsAppProvider() ? 'Meta Cloud API' : 'Twilio';
+    const mode = isWhatsAppDeliveryMock() ? 'MOCK (logged to console)' : 'LIVE';
+    console.log(`OTP delivery: ${mode} via ${env.OTP_DELIVERY_CHANNEL.toUpperCase()} (${provider})`);
   });
 }
 

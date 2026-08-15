@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import type { EventDrinkProductStatus } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { getEventCurrencyMeta } from '../../common/services/country-config.service.js';
+import { resolveDrinkServiceFee } from '../admin/admin-event-drinks.constants.js';
 import { assertUserHasTicketForEvent } from './event-drink-access.js';
 import { formatDrinkOrder } from './event-drink-orders.formatter.js';
 import type { CreateDrinkOrderInput } from './event-drink-orders.validators.js';
@@ -76,6 +78,12 @@ export const eventDrinkOrdersService = {
   async createOrder(userId: string, eventId: string, input: CreateDrinkOrderInput) {
     await assertUserHasTicketForEvent(userId, eventId);
 
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      select: { countryCode: true },
+    });
+    const currency = getEventCurrencyMeta(event?.countryCode ?? 'CL').currency;
+
     const productIds = [...new Set(input.items.map((item) => item.product_id))];
     const products = await prisma.eventDrinkProduct.findMany({
       where: {
@@ -117,7 +125,7 @@ export const eventDrinkOrdersService = {
 
     const isComplimentary = subtotalClp === 0;
     const serviceFeeClp =
-      itemCount > 0 && !isComplimentary ? DRINK_ORDER_SERVICE_FEE_CLP : 0;
+      itemCount > 0 && !isComplimentary ? resolveDrinkServiceFee(currency) : 0;
     const totalClp = subtotalClp + serviceFeeClp;
 
     const orderId = crypto.randomBytes(12).toString('hex');
@@ -170,6 +178,7 @@ export const eventDrinkOrdersService = {
           serviceFeeClp,
           totalClp,
           itemCount,
+          currency,
           status: 'confirmed',
           isComplimentary,
           lines: {

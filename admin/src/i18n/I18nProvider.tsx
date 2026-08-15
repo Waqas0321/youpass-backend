@@ -23,8 +23,13 @@ function readStoredLocale(): Locale {
   if (typeof window === 'undefined') {
     return 'en';
   }
+
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  return stored === 'es' ? 'es' : 'en';
+  if (stored === 'en' || stored === 'es') {
+    return stored;
+  }
+
+  return 'en';
 }
 
 function lookup(messages: Messages, key: string): string | undefined {

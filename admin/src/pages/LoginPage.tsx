@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { adminApi, getSession, saveSession } from '../api/client';
 import { Alert } from '../components/ui/Alert';
 import { IconEye, IconLock, IconLogin, IconMail } from '../components/ui/Icons';
+import { LanguageToggle } from '../components/ui/LanguageToggle';
 import { useI18n } from '../i18n/useI18n';
 
 export function LoginPage() {
@@ -34,11 +35,14 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
+      <div className="login-page__locale">
+        <LanguageToggle />
+      </div>
       <div className="login-page__orb login-page__orb--top-left" aria-hidden="true" />
       <div className="login-page__orb login-page__orb--bottom-right" aria-hidden="true" />
 
       <form className="login-panel" onSubmit={onSubmit}>
-        <div className="login-panel__logo" aria-label="YouPass">
+        <div className="login-panel__logo" aria-label={t('common.brand')}>
           YouPass<sup>®</sup>
         </div>
 

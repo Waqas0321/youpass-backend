@@ -19,6 +19,9 @@ import { doorRouter } from './modules/door/door.routes.js';
 import { producerInvitationsRouter, producerEventsRouter } from './modules/producer-invitations/producer-invitations.routes.js';
 import { systemInvitationsRouter } from './modules/system-invitations/system-invitations.routes.js';
 import { adminRouter } from './modules/admin/admin.routes.js';
+import { staffAuthRouter } from './modules/staff-auth/staff-auth.routes.js';
+import { staffScanRouter } from './modules/staff-scan/staff-scan.routes.js';
+import { staffSupervisorRouter } from './modules/staff-supervisor/staff-supervisor.routes.js';
 import { venuesRouter } from './modules/venues/venues.routes.js';
 import { waitlistOffersRouter } from './modules/waitlist/waitlist.routes.js';
 import { renderKlapMockTokenizePage } from './modules/wallet/wallet-mock.controller.js';
@@ -56,6 +59,9 @@ export function createApp() {
   });
 
   api.use('/auth', authRouter);
+  api.use('/staff-auth', staffAuthRouter);
+  api.use('/staff/scan', staffScanRouter);
+  api.use('/staff/supervisor', staffSupervisorRouter);
   api.use('/config', configRouter);
   api.use('/users', usersRouter);
   api.use('/events', eventsRouter);

@@ -11,12 +11,14 @@ const STATUS_CLASS: Record<AdminDrinkOrderQrStatus, string> = {
 
 type Props = {
   status: AdminDrinkOrderQrStatus;
+  variant?: 'legend' | 'table';
 };
 
-export function EventOrderQrStatusPill({ status }: Props) {
+export function EventOrderQrStatusPill({ status, variant = 'legend' }: Props) {
   const { t } = useI18n();
+  const variantClass = variant === 'table' ? ' qr-status-pill--table' : '';
   return (
-    <span className={STATUS_CLASS[status]}>{t(`qrStatus.${status}.label`)}</span>
+    <span className={`${STATUS_CLASS[status]}${variantClass}`}>{t(`qrStatus.${status}.label`)}</span>
   );
 }
 

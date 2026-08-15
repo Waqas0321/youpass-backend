@@ -1,36 +1,87 @@
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 
-export const eventDrinkRedemptionService = {
-  async validateQrPayload(qrPayload: string) {
-    const redemption = await prisma.eventDrinkRedemption.findUnique({
-      where: { qrPayload },
-      include: {
-        line: true,
-        order: {
-          include: {
-            event: {
-              select: {
-                id: true,
-                title: true,
-                startsAt: true,
-              },
-            },
-            lines: {
-              include: {
-                redemption: true,
-              },
-            },
-            user: {
-              select: {
-                id: true,
-                fullName: true,
-              },
-            },
-          },
+const PARTY_DRINK_QR_PREFIX = 'youpass:party-drink:';
+
+const redemptionInclude = {
+  line: true,
+  order: {
+    include: {
+      event: {
+        select: {
+          id: true,
+          title: true,
+          startsAt: true,
         },
       },
+      lines: {
+        include: {
+          redemption: true,
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+        },
+      },
+    },
+  },
+} as const;
+
+function normalizeManualEntryCode(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+function manualEntryCandidates(scanInput: string): string[] {
+  const trimmed = scanInput.trim();
+  const candidates = new Set<string>();
+
+  if (trimmed.length >= 4 && trimmed.length <= 12) {
+    candidates.add(normalizeManualEntryCode(trimmed));
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith(PARTY_DRINK_QR_PREFIX)) {
+    const code = trimmed.slice(PARTY_DRINK_QR_PREFIX.length).trim();
+    if (code.length >= 4 && code.length <= 12) {
+      candidates.add(normalizeManualEntryCode(code));
+    }
+  }
+
+  return [...candidates];
+}
+
+export async function findDrinkRedemptionByScanInput(scanInput: string) {
+  const trimmed = scanInput.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const byPayload = await prisma.eventDrinkRedemption.findUnique({
+    where: { qrPayload: trimmed },
+    include: redemptionInclude,
+  });
+  if (byPayload) {
+    return byPayload;
+  }
+
+  for (const manualEntryId of manualEntryCandidates(trimmed)) {
+    const byManualEntry = await prisma.eventDrinkRedemption.findUnique({
+      where: { manualEntryId },
+      include: redemptionInclude,
     });
+    if (byManualEntry) {
+      return byManualEntry;
+    }
+  }
+
+  return null;
+}
+
+export const eventDrinkRedemptionService = {
+  async validateQrPayload(scanInput: string) {
+    const redemption = await findDrinkRedemptionByScanInput(scanInput);
 
     if (!redemption) {
       throw new AppError(404, 'DRINK_QR_NOT_FOUND', 'Drink order QR not found');
@@ -83,6 +134,7 @@ export const eventDrinkRedemptionService = {
       event_title: redemption.order.event.title,
       guest_name: redemption.order.user.fullName,
       entry_code: redemption.manualEntryId,
+      qr_payload: redemption.qrPayload,
       redeemed_at: now.toISOString(),
       line_items: [
         {

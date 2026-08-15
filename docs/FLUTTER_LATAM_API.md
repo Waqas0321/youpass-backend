@@ -1,6 +1,6 @@
 # Flutter — Multi-Country LATAM API Integration
 
-**Base URL:** `https://youpass-backend.vercel.app/api/v1`  
+**Base URL:** `https://youpass-backend-two.vercel.app/api/v1`  
 **Deployed:** production (June 2026)
 
 This doc lists **what to change in the Flutter app** after the LATAM backend update. Auth, VIP venue, and guest tickets use the **same endpoints** unless noted below.
@@ -437,16 +437,16 @@ Same as `docs/FLUTTER_VIP_VENUE_API.md`. Only update:
 
 ```bash
 # Countries
-curl -s https://youpass-backend.vercel.app/api/v1/config/countries | jq '.data[0]'
+curl -s https://youpass-backend-two.vercel.app/api/v1/config/countries | jq '.data[0]'
 
 # Categories
-curl -s https://youpass-backend.vercel.app/api/v1/config/categories | jq
+curl -s https://youpass-backend-two.vercel.app/api/v1/config/categories | jq
 
 # Home (Mexico)
-curl -s "https://youpass-backend.vercel.app/api/v1/home/initial-feed?country_code=MX" | jq '.data.country_code'
+curl -s "https://youpass-backend-two.vercel.app/api/v1/home/initial-feed?country_code=MX" | jq '.data.country_code'
 
 # Event detail purchase meta
-curl -s https://youpass-backend.vercel.app/api/v1/events/EVENT_ID | jq '.data.purchase'
+curl -s https://youpass-backend-two.vercel.app/api/v1/events/EVENT_ID | jq '.data.purchase'
 ```
 
 ---
@@ -462,4 +462,4 @@ curl -s https://youpass-backend.vercel.app/api/v1/events/EVENT_ID | jq '.data.pu
 
 ---
 
-*Last updated: June 2026 — production `youpass-backend.vercel.app`*
+*Last updated: June 2026 — production `youpass-backend-two.vercel.app`*

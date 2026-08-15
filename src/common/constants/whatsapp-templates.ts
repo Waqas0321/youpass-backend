@@ -31,18 +31,21 @@ export function buildWhatsAppOtpBody(
       register: `¡Bienvenido a YouPass! Tu código de verificación para crear tu cuenta es: ${code}. Este código es válido por 3 minutos. — YouPass`,
       change_phone: `Confirmación de cambio de teléfono. Tu código para validar tu nuevo número en YouPass es: ${code}. Válido por 3 minutos. Si no solicitaste este cambio, contacta a soporte de inmediato: ${SUPPORT_EMAIL} — YouPass`,
       delete_account: `Confirmación de eliminación. Tu código para confirmar la eliminación de tu cuenta YouPass es: ${code}. Válido por 3 minutos. Si no solicitaste eliminar tu cuenta, ignora este mensaje y contacta a soporte de inmediato: ${SUPPORT_EMAIL} — YouPass`,
+      staff_login: `Hola 👋 Tu código de verificación para iniciar sesión en YouPass Staff es: ${code}. Este código es válido por 3 minutos. Si no fuiste tú, puedes ignorar este mensaje. — YouPass Staff`,
     },
     pt: {
       login: `Olá 👋 Seu código de verificação para entrar no YouPass é: ${code}. Este código é válido por 3 minutos. Se não foi você, ignore esta mensagem. — YouPass`,
       register: `Bem-vindo ao YouPass! Seu código de verificação para criar sua conta é: ${code}. Este código é válido por 3 minutos. — YouPass`,
       change_phone: `Confirmação de troca de telefone. Seu código para validar seu novo número no YouPass é: ${code}. Válido por 3 minutos. Se você não solicitou esta alteração, entre em contato com o suporte imediatamente: ${SUPPORT_EMAIL} — YouPass`,
       delete_account: `Confirmação de exclusão. Seu código para confirmar a exclusão da sua conta YouPass é: ${code}. Válido por 3 minutos. Se você não solicitou excluir sua conta, ignore esta mensagem e entre em contato com o suporte imediatamente: ${SUPPORT_EMAIL} — YouPass`,
+      staff_login: `Olá 👋 Seu código de verificação para entrar no YouPass Staff é: ${code}. Este código é válido por 3 minutos. Se não foi você, ignore esta mensagem. — YouPass Staff`,
     },
     en: {
       login: `Hi 👋 Your verification code to sign in to YouPass is: ${code}. This code is valid for 3 minutes. If it wasn't you, you can ignore this message. — YouPass`,
       register: `Welcome to YouPass! Your verification code to create your account is: ${code}. This code is valid for 3 minutes. — YouPass`,
       change_phone: `Phone change confirmation. Your code to validate your new number on YouPass is: ${code}. Valid for 3 minutes. If you did not request this change, contact support immediately: ${SUPPORT_EMAIL} — YouPass`,
       delete_account: `Deletion confirmation. Your code to confirm deleting your YouPass account is: ${code}. Valid for 3 minutes. If you did not request to delete your account, ignore this message and contact support immediately: ${SUPPORT_EMAIL} — YouPass`,
+      staff_login: `Hi 👋 Your verification code to sign in to YouPass Staff is: ${code}. This code is valid for 3 minutes. If it wasn't you, you can ignore this message. — YouPass Staff`,
     },
   };
 

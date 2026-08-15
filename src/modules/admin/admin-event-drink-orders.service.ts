@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import crypto from 'node:crypto';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import {
@@ -103,9 +104,10 @@ async function generateUniqueEntryCode(): Promise<string> {
   throw new AppError(500, 'DRINK_ORDER_CODE_FAILED', 'Could not generate entry code');
 }
 
-async function generateUniqueQrPayload(lineId: string, eventId: string): Promise<string> {
+async function generateUniqueReissueQrPayload(lineId: string, eventId: string): Promise<string> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const payload = generateQrPayload(lineId, eventId);
+    const salt = crypto.randomBytes(4).toString('hex');
+    const payload = generateQrPayload(`${lineId}:${salt}`, eventId);
     const existing = await prisma.eventDrinkRedemption.findUnique({
       where: { qrPayload: payload },
       select: { id: true },
@@ -213,7 +215,7 @@ export const adminEventDrinkOrdersService = {
       linesToReissue.map(async (line) => ({
         lineId: line.id,
         manualEntryId: await generateUniqueEntryCode(),
-        qrPayload: await generateUniqueQrPayload(line.id, eventId),
+        qrPayload: await generateUniqueReissueQrPayload(line.id, eventId),
       })),
     );
 

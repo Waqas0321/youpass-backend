@@ -3,6 +3,13 @@ import { env } from '../../config/env.js';
 import { OTP_PURPOSE_LABELS } from '../../config/constants.js';
 import { SUPPORT_EMAIL } from '../../common/constants/auth-messages.js';
 import {
+  isMetaWhatsAppProvider,
+  isWhatsAppDeliveryMock,
+  metaOtpTemplateLanguage,
+  metaOtpTemplateName,
+} from '../../config/meta-whatsapp.config.js';
+import { sendMetaWhatsAppOtp } from '../messaging/meta-whatsapp.service.js';
+import {
   assertProductionOtpTemplateConfigured,
   resolveOtpContentSid,
 } from '../../config/twilio-whatsapp.config.js';
@@ -68,7 +75,7 @@ class MockOtpDeliveryService implements OtpDeliveryService {
     const label = OTP_PURPOSE_LABELS[params.purpose];
     const body = buildWhatsAppOtpBody(params.purpose, params.code, params.languageCode);
     console.log(
-      `[Twilio MOCK/whatsapp] → ${params.phone} | ${label} | code=${params.code} | body="${body}"`,
+      `[WhatsApp MOCK] → ${params.phone} | ${label} | code=${params.code} | body="${body}"`,
     );
   }
 
@@ -142,9 +149,48 @@ class TwilioWhatsAppOtpService implements OtpDeliveryService {
   }
 }
 
-export const otpDeliveryService: OtpDeliveryService = env.TWILIO_MOCK
-  ? new MockOtpDeliveryService()
-  : new TwilioWhatsAppOtpService();
+class MetaWhatsAppOtpService implements OtpDeliveryService {
+  getChannel(): OtpDeliveryChannel {
+    return 'whatsapp';
+  }
+
+  async sendOtp(params: OtpSendParams): Promise<void> {
+    const templateName = metaOtpTemplateName(params.purpose);
+    if (!templateName) {
+      throw new Error(
+        'WHATSAPP_OTP_TEMPLATE_NAME is not set. Create an approved Authentication template in Meta WhatsApp Manager.',
+      );
+    }
+
+    const languageCode = metaOtpTemplateLanguage(params.languageCode);
+    const result = await sendMetaWhatsAppOtp({
+      toE164: params.phone,
+      templateName,
+      languageCode,
+      code: params.code,
+    });
+
+    console.log(
+      `[Meta WhatsApp] OTP sent to ${params.phone} purpose=${params.purpose} messageId=${result.messageId}`,
+    );
+  }
+
+  async checkWhatsAppAvailable(_phone: string): Promise<boolean> {
+    return true;
+  }
+}
+
+function createOtpDeliveryService(): OtpDeliveryService {
+  if (isWhatsAppDeliveryMock()) {
+    return new MockOtpDeliveryService();
+  }
+  if (isMetaWhatsAppProvider()) {
+    return new MetaWhatsAppOtpService();
+  }
+  return new TwilioWhatsAppOtpService();
+}
+
+export const otpDeliveryService: OtpDeliveryService = createOtpDeliveryService();
 
 export function whatsAppUnavailableMessage(languageCode = 'es'): string {
   switch (languageCode) {

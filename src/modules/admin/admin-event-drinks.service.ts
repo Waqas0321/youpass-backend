@@ -1,6 +1,10 @@
 import type { EventDrinkProductStatus } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { getEventCurrencyMeta } from '../../common/services/country-config.service.js';
+import {
+  DEFAULT_DRINK_CATEGORIES,
+} from './admin-event-drinks.constants.js';
 import {
   formatAdminEventDrinkCategory,
   formatAdminEventDrinkProduct,
@@ -10,19 +14,7 @@ import type {
   AdminEventDrinkProductInput,
 } from './admin-event-drinks.validators.js';
 
-const DEFAULT_CATEGORIES: Array<{
-  slug: string;
-  name: string;
-  icon: string;
-  displayOrder: number;
-}> = [
-  { slug: 'piscolas', name: 'Mixed drinks', icon: '🥃', displayOrder: 1 },
-  { slug: 'gin', name: 'Gin', icon: '🍸', displayOrder: 2 },
-  { slug: 'cervezas', name: 'Beers', icon: '🍺', displayOrder: 3 },
-  { slug: 'energeticas', name: 'Energy drinks', icon: '⚡', displayOrder: 4 },
-  { slug: 'espumantes', name: 'Sparkling', icon: '🍾', displayOrder: 5 },
-  { slug: 'agua-bebidas', name: 'Water & soft drinks', icon: '💧', displayOrder: 6 },
-];
+const DEFAULT_CATEGORIES = DEFAULT_DRINK_CATEGORIES;
 
 function slugifyName(name: string) {
   return name
@@ -40,6 +32,10 @@ async function assertEventExists(eventId: string) {
     throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
   }
   return event;
+}
+
+function eventCurrencyFor(event: { countryCode: string }) {
+  return getEventCurrencyMeta(event.countryCode).currency;
 }
 
 async function dedupeCategories(eventId: string) {
@@ -104,7 +100,11 @@ async function ensureDefaultCategories(eventId: string) {
         icon: category.icon,
         displayOrder: category.displayOrder,
       },
-      update: {},
+      update: {
+        name: category.name,
+        icon: category.icon,
+        displayOrder: category.displayOrder,
+      },
     });
   }
 }
@@ -139,7 +139,7 @@ function resolveStatus(
 
 export const adminEventDrinksService = {
   async listCategories(eventId: string) {
-    await assertEventExists(eventId);
+    const event = await assertEventExists(eventId);
     await ensureDefaultCategories(eventId);
 
     const categories = await prisma.eventDrinkCategory.findMany({
@@ -147,7 +147,11 @@ export const adminEventDrinksService = {
       orderBy: { displayOrder: 'asc' },
     });
 
-    return categories.map(formatAdminEventDrinkCategory);
+    return {
+      event_id: eventId,
+      currency: eventCurrencyFor(event),
+      categories: categories.map(formatAdminEventDrinkCategory),
+    };
   },
 
   async createCategory(eventId: string, input: AdminEventDrinkCategoryInput) {
@@ -175,7 +179,8 @@ export const adminEventDrinksService = {
   },
 
   async listProducts(eventId: string, categorySlug?: string) {
-    await assertEventExists(eventId);
+    const event = await assertEventExists(eventId);
+    const currency = eventCurrencyFor(event);
 
     const category = categorySlug
       ? await prisma.eventDrinkCategory.findFirst({
@@ -192,11 +197,16 @@ export const adminEventDrinksService = {
       orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
     });
 
-    return products.map(formatAdminEventDrinkProduct);
+    return {
+      event_id: eventId,
+      currency,
+      products: products.map((product) => formatAdminEventDrinkProduct(product, currency)),
+    };
   },
 
   async createProduct(eventId: string, input: AdminEventDrinkProductInput) {
-    await assertEventExists(eventId);
+    const event = await assertEventExists(eventId);
+    const currency = eventCurrencyFor(event);
 
     let categoryId: string | null = input.category_id ?? null;
     if (categoryId) {
@@ -219,6 +229,7 @@ export const adminEventDrinksService = {
         description: input.description?.trim() || null,
         volumeMl: input.volume_ml ?? null,
         priceClp: input.price_clp,
+        costClp: input.cost_clp ?? null,
         imageUrl: input.image_url ?? null,
         stockTotal: stock.stockTotal,
         stockRemaining: stock.stockRemaining,
@@ -229,7 +240,7 @@ export const adminEventDrinksService = {
       include: { category: true },
     });
 
-    return formatAdminEventDrinkProduct(product);
+    return formatAdminEventDrinkProduct(product, currency);
   },
 
   async updateProduct(
@@ -237,6 +248,8 @@ export const adminEventDrinksService = {
     productId: string,
     input: Partial<AdminEventDrinkProductInput>,
   ) {
+    const event = await assertEventExists(eventId);
+    const currency = eventCurrencyFor(event);
     const existing = await prisma.eventDrinkProduct.findFirst({
       where: { id: productId, eventId },
       include: { category: true },
@@ -280,6 +293,7 @@ export const adminEventDrinksService = {
             : undefined,
         volumeMl: input.volume_ml !== undefined ? input.volume_ml : undefined,
         priceClp: input.price_clp !== undefined ? input.price_clp : undefined,
+        costClp: input.cost_clp !== undefined ? input.cost_clp : undefined,
         imageUrl: input.image_url !== undefined ? input.image_url : undefined,
         stockTotal: stock.stockTotal,
         stockRemaining: stock.stockRemaining,
@@ -291,10 +305,12 @@ export const adminEventDrinksService = {
       include: { category: true },
     });
 
-    return formatAdminEventDrinkProduct(product);
+    return formatAdminEventDrinkProduct(product, currency);
   },
 
   async duplicateProduct(eventId: string, productId: string) {
+    const event = await assertEventExists(eventId);
+    const currency = eventCurrencyFor(event);
     const existing = await prisma.eventDrinkProduct.findFirst({
       where: { id: productId, eventId },
     });
@@ -310,6 +326,7 @@ export const adminEventDrinksService = {
         description: existing.description,
         volumeMl: existing.volumeMl,
         priceClp: existing.priceClp,
+        costClp: existing.costClp,
         imageUrl: existing.imageUrl,
         stockTotal: existing.stockTotal,
         stockRemaining: existing.stockRemaining,
@@ -320,7 +337,7 @@ export const adminEventDrinksService = {
       include: { category: true },
     });
 
-    return formatAdminEventDrinkProduct(product);
+    return formatAdminEventDrinkProduct(product, currency);
   },
 
   async deleteProduct(eventId: string, productId: string) {
@@ -332,5 +349,66 @@ export const adminEventDrinksService = {
     }
 
     await prisma.eventDrinkProduct.delete({ where: { id: existing.id } });
+  },
+
+  async updateCategory(
+    eventId: string,
+    categoryId: string,
+    input: Partial<AdminEventDrinkCategoryInput>,
+  ) {
+    await assertEventExists(eventId);
+
+    const existing = await prisma.eventDrinkCategory.findFirst({
+      where: { id: categoryId, eventId },
+    });
+    if (!existing) {
+      throw new AppError(404, 'DRINK_CATEGORY_NOT_FOUND', 'Category not found');
+    }
+
+    const slug = input.slug ?? existing.slug;
+    if (input.slug && input.slug !== existing.slug) {
+      const conflict = await prisma.eventDrinkCategory.findFirst({
+        where: { eventId, slug, id: { not: categoryId } },
+      });
+      if (conflict) {
+        throw new AppError(409, 'DRINK_CATEGORY_EXISTS', 'Category slug already exists');
+      }
+    }
+
+    const category = await prisma.eventDrinkCategory.update({
+      where: { id: categoryId },
+      data: {
+        ...(input.name != null ? { name: input.name.trim() } : {}),
+        ...(input.slug != null ? { slug: input.slug } : {}),
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        ...(input.display_order != null ? { displayOrder: input.display_order } : {}),
+      },
+    });
+
+    return formatAdminEventDrinkCategory(category);
+  },
+
+  async deleteCategory(eventId: string, categoryId: string) {
+    await assertEventExists(eventId);
+
+    const existing = await prisma.eventDrinkCategory.findFirst({
+      where: { id: categoryId, eventId },
+    });
+    if (!existing) {
+      throw new AppError(404, 'DRINK_CATEGORY_NOT_FOUND', 'Category not found');
+    }
+
+    const productCount = await prisma.eventDrinkProduct.count({
+      where: { categoryId },
+    });
+    if (productCount > 0) {
+      throw new AppError(
+        409,
+        'DRINK_CATEGORY_IN_USE',
+        'Move or delete products in this category before deleting it',
+      );
+    }
+
+    await prisma.eventDrinkCategory.delete({ where: { id: categoryId } });
   },
 };

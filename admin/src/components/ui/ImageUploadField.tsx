@@ -1,5 +1,5 @@
 import { ChangeEvent, useRef, useState } from 'react';
-import { adminApi } from '../../api/client';
+import { adminApi, DRINK_PRODUCT_UPLOAD_FOLDER } from '../../api/client';
 
 type Props = {
   label?: string;
@@ -11,7 +11,7 @@ type Props = {
 export function ImageUploadField({
   label = 'Product image',
   value,
-  folder = 'youpass/drink-products',
+  folder = DRINK_PRODUCT_UPLOAD_FOLDER,
   onChange,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);

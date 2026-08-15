@@ -15,6 +15,9 @@ producerInvitationsRouter.get(
 );
 producerInvitationsRouter.get('/post-event-report', producerInvitationsController.postEventReport);
 producerInvitationsRouter.get('/waitlist', producerInvitationsController.waitlistDashboard);
+producerInvitationsRouter.patch('/:id', producerInvitationsController.update);
+producerInvitationsRouter.post('/:id/resend', producerInvitationsController.resend);
+producerInvitationsRouter.delete('/:id', producerInvitationsController.revoke);
 
 export const producerEventsRouter = Router();
 

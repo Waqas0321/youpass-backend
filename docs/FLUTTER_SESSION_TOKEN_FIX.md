@@ -1,6 +1,6 @@
 # Flutter — Fix `SESSION_INVALID` (Token / Auth Guide)
 
-**Production base URL:** `https://youpass-backend.vercel.app/api/v1`
+**Production base URL:** `https://youpass-backend-two.vercel.app/api/v1`
 
 > **Backend fix (June 2026):** A MongoDB/Prisma bug caused valid sessions to fail auth (`revokedAt: null` query). This is fixed in production. If you still see `SESSION_INVALID` after redeploy, follow the Flutter checks below.
 
@@ -46,7 +46,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 const secureStorage = FlutterSecureStorage();
-const apiBaseUrl = 'https://youpass-backend.vercel.app/api/v1';
+const apiBaseUrl = 'https://youpass-backend-two.vercel.app/api/v1';
 
 Future<String> saveSessionFromResponse(Map<String, dynamic> json) async {
   if (json['success'] != true) {

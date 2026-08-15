@@ -46,6 +46,7 @@ export function formatProducerCalendarEvent(
     venue_name: event.venueName,
     min_price: event.minPrice,
     currency_code: event.currencyCode,
+    country_code: event.countryCode,
     is_favorite: options.isFavorite ?? false,
     ticket_cta: 'buy',
     followers_presale_active: false,

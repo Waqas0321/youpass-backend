@@ -1,9 +1,9 @@
 import type { Locale } from '../../i18n/I18nProvider';
 import { useI18n } from '../../i18n/useI18n';
 
-const OPTIONS: { value: Locale; label: string }[] = [
-  { value: 'en', label: 'EN' },
-  { value: 'es', label: 'ES' },
+const OPTIONS: { value: Locale; labelKey: string }[] = [
+  { value: 'en', labelKey: 'common.languageEn' },
+  { value: 'es', labelKey: 'common.languageEs' },
 ];
 
 export function LanguageToggle() {
@@ -23,7 +23,7 @@ export function LanguageToggle() {
           onClick={() => setLocale(option.value)}
           aria-pressed={locale === option.value}
         >
-          {option.label}
+          {t(option.labelKey)}
         </button>
       ))}
     </div>
