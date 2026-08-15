@@ -24,17 +24,27 @@ async function main() {
   await assert('staff e164 detected', staffLookupE164.is_staff === true, staffLookupE164);
 
   const customerLookup = await staffAuthService.lookup({
-    phone: '912345678',
+    phone: '911111111',
     country_code: 'CL',
   });
   await assert(
-    'customer phone not staff',
+    'non-staff phone not staff',
     customerLookup.is_staff === false,
     customerLookup,
   );
 
+  const dualRoleLookup = await staffAuthService.lookup({
+    phone: '912345678',
+    country_code: 'CL',
+  });
+  await assert(
+    'dual-role phone is staff (staff path wins)',
+    dualRoleLookup.is_staff === true,
+    dualRoleLookup,
+  );
+
   const unknownLookup = await staffAuthService.lookup({
-    phone: '911111111',
+    phone: '900000000',
     country_code: 'CL',
   });
   await assert(
