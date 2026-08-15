@@ -294,6 +294,20 @@ async function verifyStaffOtpCode(e164: string, code: string, context?: OtpConte
 }
 
 export const staffAuthService = {
+  async lookup(input: StaffSendCodeInput) {
+    const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    await getActiveCountry(countryCode);
+    const staffMember = await prisma.staffMember.findUnique({
+      where: { phone: e164 },
+      select: { id: true, name: true },
+    });
+    return {
+      is_staff: staffMember != null,
+      phone: e164,
+      full_name: staffMember?.name ?? null,
+    };
+  },
+
   async sendCode(input: StaffSendCodeInput, _context?: OtpContext) {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
     const country = await getActiveCountry(countryCode);

@@ -8,6 +8,15 @@ function getContext(req: Request): AuthRequestContext {
 }
 
 export const staffAuthController = {
+  lookup: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await staffAuthService.lookup(req.body);
+      res.status(200).json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
+
   sendCode: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await staffAuthService.sendCode(req.body, getContext(req));

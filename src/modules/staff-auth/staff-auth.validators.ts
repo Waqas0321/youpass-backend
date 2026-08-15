@@ -13,3 +13,6 @@ export const staffLoginSchema = z.object({
 
 export type StaffSendCodeInput = z.infer<typeof staffSendCodeSchema>;
 export type StaffLoginInput = z.infer<typeof staffLoginSchema>;
+
+export const staffLookupSchema = staffSendCodeSchema;
+export type StaffLookupInput = StaffSendCodeInput;
