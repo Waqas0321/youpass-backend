@@ -40,7 +40,7 @@ const PHONE_HINTS: Record<string, string> = {
 };
 
 const LATAM_COUNTRIES: CountrySeed[] = [
-  { code: 'CL', name: 'Chile', dialCode: '+56', flagEmoji: '🇨🇱', currencyCode: 'CLP', currencySymbol: '$', currencyDecimals: 0, languageCode: 'es', paymentGateway: 'klap', timezone: 'America/Santiago', displayOrder: 1 },
+  { code: 'CL', name: 'Chile', dialCode: '+56', flagEmoji: '🇨🇱', currencyCode: 'CLP', currencySymbol: '$', currencyDecimals: 0, languageCode: 'es', paymentGateway: 'kushki', timezone: 'America/Santiago', displayOrder: 1 },
   { code: 'AR', name: 'Argentina', dialCode: '+54', flagEmoji: '🇦🇷', currencyCode: 'ARS', currencySymbol: '$', currencyDecimals: 2, languageCode: 'es', paymentGateway: 'stripe', timezone: 'America/Argentina/Buenos_Aires', displayOrder: 2 },
   { code: 'MX', name: 'México', dialCode: '+52', flagEmoji: '🇲🇽', currencyCode: 'MXN', currencySymbol: '$', currencyDecimals: 2, languageCode: 'es', paymentGateway: 'stripe', timezone: 'America/Mexico_City', displayOrder: 3 },
   { code: 'PE', name: 'Perú', dialCode: '+51', flagEmoji: '🇵🇪', currencyCode: 'PEN', currencySymbol: 'S/', currencyDecimals: 2, languageCode: 'es', paymentGateway: 'stripe', timezone: 'America/Lima', displayOrder: 4 },

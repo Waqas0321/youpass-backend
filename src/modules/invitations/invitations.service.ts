@@ -28,6 +28,11 @@ import {
   resolveQrStatus,
 } from './invitations.utils.js';
 import { getCurrencyForCountry } from '../../common/services/country-config.service.js';
+import { resolvePaymentGateway } from '../payments/payment-gateway.service.js';
+import {
+  createKushkiSubscription,
+  isKushkiConfigured,
+} from '../payments/kushki.client.js';
 import {
   chargeInvitationPayment,
   preauthorizeInvitationPayment,
@@ -901,6 +906,7 @@ function formatPaymentMethod(m: {
   return {
     id: m.id,
     klap_card_token: m.providerToken,
+    provider_token: m.providerToken,
     brand: m.brand,
     last_four: m.lastFour,
     expiration_month: m.expirationMonth,
@@ -908,6 +914,11 @@ function formatPaymentMethod(m: {
     holder_name: m.cardholderName,
     is_default: m.isDefault,
     gateway: m.gateway ?? 'klap',
+    chargeable:
+      (m.gateway ?? 'klap') !== 'kushki' ||
+      (typeof m.providerToken === 'string' &&
+        m.providerToken.length > 0 &&
+        !m.providerToken.startsWith('kushki_tok_')),
   };
 }
 
@@ -944,13 +955,19 @@ export const paymentMethodsService = {
   },
 
   async listWalletTransactions(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { countryCode: true },
+    });
+    const walletCurrency = resolveWalletCurrency(user?.countryCode);
+
     const orders = await prisma.ticketOrder.findMany({
       where: {
         buyerUserId: userId,
         status: { in: ['paid', 'refunded', 'pending_payment'] },
       },
       include: {
-        event: { select: { title: true } },
+        event: { select: { title: true, currencyCode: true, countryCode: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 50,
@@ -962,7 +979,11 @@ export const paymentMethodsService = {
         type: 'purchase',
         description: order.event.title,
         amount: order.totalAmount,
-        currency: order.currency,
+        currency:
+          walletCurrency ||
+          order.currency ||
+          order.event.currencyCode ||
+          resolveWalletCurrency(order.event.countryCode),
         status: order.status,
         created_at: order.createdAt.toISOString(),
       })),
@@ -970,14 +991,37 @@ export const paymentMethodsService = {
   },
 
   async createWalletTokenizeSession(userId: string, apiOrigin?: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { countryCode: true },
+    });
+    const gateway = resolvePaymentGateway(user?.countryCode ?? 'CL');
     const sessionId = `tok_${crypto.randomBytes(12).toString('hex')}`;
+    const currency = resolveWalletCurrency(user?.countryCode);
+
+    if (gateway === 'kushki') {
+      const configuredBase = env.KUSHKI_TOKENIZATION_BASE_URL.trim();
+      const tokenizationUrl = configuredBase
+        ? `${configuredBase}${configuredBase.includes('?') ? '&' : '?'}session=${sessionId}&currency=${currency}`
+        : `${apiOrigin ?? ''}${env.API_PREFIX}/payments/kushki/tokenize?session=${sessionId}&user=${userId}&currency=${currency}`;
+
+      return {
+        gateway: 'kushki' as const,
+        session_id: sessionId,
+        tokenization_url: tokenizationUrl,
+        success_redirect_scheme: 'youpass://wallet/tokenized',
+        public_merchant_id: env.KUSHKI_PUBLIC_MERCHANT_ID || null,
+        environment: env.KUSHKI_USE_UAT ? ('uat' as const) : ('live' as const),
+      };
+    }
+
     const apiBase = env.KLAP_TOKENIZATION_BASE_URL.trim();
     const tokenizationUrl = apiBase
       ? `${apiBase}${apiBase.includes('?') ? '&' : '?'}session=${sessionId}`
       : `${apiOrigin ?? ''}${env.API_PREFIX}/wallet/klap/mock-tokenize?session=${sessionId}&user=${userId}`;
 
     return {
-      gateway: 'klap' as const,
+      gateway: (gateway === 'stripe' ? 'stripe' : 'klap') as 'klap' | 'stripe',
       session_id: sessionId,
       tokenization_url: tokenizationUrl,
       success_redirect_scheme: 'youpass://wallet/tokenized',
@@ -1047,7 +1091,7 @@ export const paymentMethodsService = {
       throw new AppError(
         400,
         'CARD_TOKENIZATION_REQUIRED',
-        'Send a tokenized payment_method_id from Klap or Stripe. Raw card data is not accepted.',
+        'Send a tokenized payment_method_id from Kushki, Klap, or Stripe. Raw card data is not accepted.',
       );
     }
 
@@ -1080,6 +1124,38 @@ export const paymentMethodsService = {
 
   async saveTokenizedPaymentMethod(userId: string, input: TokenizedPaymentMethodInput) {
     const setAsDefault = input.set_as_default ?? true;
+    let providerToken = input.payment_method_id.trim();
+    let gateway = input.gateway;
+
+    if (
+      gateway === 'kushki' &&
+      isKushkiConfigured() &&
+      !providerToken.startsWith('kushki_tok_') &&
+      !providerToken.startsWith('kushki_sub_')
+    ) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, fullName: true, countryCode: true },
+      });
+      try {
+        const subscription = await createKushkiSubscription({
+          token: providerToken,
+          currency: resolveWalletCurrency(user?.countryCode),
+          email: user?.email ?? undefined,
+          fullName: user?.fullName ?? input.cardholder_name,
+        });
+        providerToken = subscription.subscriptionId;
+      } catch (err) {
+        if (err instanceof AppError) {
+          throw err;
+        }
+        throw new AppError(
+          502,
+          'KUSHKI_SUBSCRIPTION_FAILED',
+          'Could not save this card with Kushki. Try again.',
+        );
+      }
+    }
 
     if (setAsDefault) {
       await prisma.userPaymentMethod.updateMany({
@@ -1091,8 +1167,8 @@ export const paymentMethodsService = {
     const created = await prisma.userPaymentMethod.create({
       data: {
         userId,
-        providerToken: input.payment_method_id.trim(),
-        gateway: input.gateway,
+        providerToken,
+        gateway,
         brand: input.brand.trim(),
         lastFour: input.last_four,
         expirationMonth: input.expiration_month,

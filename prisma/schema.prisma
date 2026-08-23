@@ -45,6 +45,7 @@ enum AccountStatus {
 enum PaymentGateway {
   klap
   stripe
+  kushki
 }
 
 // ─── Users ───────────────────────────────────────────────────────────────────

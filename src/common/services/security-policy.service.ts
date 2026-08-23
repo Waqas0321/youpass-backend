@@ -97,6 +97,6 @@ export function getCommercePolicy() {
     multi_currency: true,
     multi_language: true,
     language_source: 'country_default',
-    gateways: { CL: 'klap', default: 'stripe' },
+    gateways: { CL: 'kushki', default: 'stripe' },
   };
 }

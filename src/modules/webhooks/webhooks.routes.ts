@@ -5,3 +5,4 @@ export const webhooksRouter = Router();
 
 webhooksRouter.post('/klap', webhooksController.klap);
 webhooksRouter.post('/stripe', webhooksController.stripe);
+webhooksRouter.post('/kushki', webhooksController.kushki);

@@ -52,7 +52,7 @@ export const rejectInvitationSchema = z
 
 const tokenizedPaymentMethodSchema = z.object({
   payment_method_id: z.string().min(1),
-  gateway: z.enum(['klap', 'stripe']),
+  gateway: z.enum(['klap', 'stripe', 'kushki']),
   brand: z.string().min(2).max(30),
   last_four: z.string().regex(/^\d{4}$/),
   cardholder_name: z.string().min(2).max(200),

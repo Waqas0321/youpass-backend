@@ -25,6 +25,11 @@ import { staffSupervisorRouter } from './modules/staff-supervisor/staff-supervis
 import { venuesRouter } from './modules/venues/venues.routes.js';
 import { waitlistOffersRouter } from './modules/waitlist/waitlist.routes.js';
 import { renderKlapMockTokenizePage } from './modules/wallet/wallet-mock.controller.js';
+import {
+  renderKushkiCheckoutPage,
+  renderKushkiTokenizePage,
+} from './modules/payments/kushki.pages.controller.js';
+import { kushkiPaymentsRouter } from './modules/payments/kushki.routes.js';
 import { optionalAuthenticate } from './common/middleware/authenticate.js';
 import { prisma } from './config/database.js';
 import { logTwilioWhatsAppStartupSummary } from './config/twilio-whatsapp.config.js';
@@ -80,6 +85,9 @@ export function createApp() {
   api.use('/admin', adminRouter);
   api.use('/venues', venuesRouter);
   api.get('/wallet/klap/mock-tokenize', renderKlapMockTokenizePage);
+  api.get('/payments/kushki/tokenize', renderKushkiTokenizePage);
+  api.get('/payments/kushki/checkout/:orderId', renderKushkiCheckoutPage);
+  api.use('/payments/kushki', kushkiPaymentsRouter);
   api.use('/webhooks', webhooksRouter);
 
   app.use(env.API_PREFIX, api);

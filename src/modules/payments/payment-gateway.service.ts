@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { PaymentGateway } from '@prisma/client';
 import { env } from '../../config/env.js';
 import { resolveGateway } from '../../common/services/country-config.service.js';
+import { isKushkiConfigured } from './kushki.client.js';
 
 export type PreparePaymentInput = {
   orderId: string;
@@ -9,11 +10,19 @@ export type PreparePaymentInput = {
   amount: number;
   currency: string;
   buyerUserId: string;
+  apiOrigin?: string;
 };
 
 export type KlapPaymentPayload = {
   payment_url: string;
   session_id: string;
+};
+
+export type KushkiPaymentPayload = {
+  payment_url: string;
+  session_id: string;
+  public_merchant_id: string | null;
+  environment: 'uat' | 'live';
 };
 
 export type StripePaymentPayload = {
@@ -24,10 +33,37 @@ export type StripePaymentPayload = {
 
 export type PreparedPayment =
   | { gateway: 'klap'; klap: KlapPaymentPayload }
+  | { gateway: 'kushki'; kushki: KushkiPaymentPayload }
   | { gateway: 'stripe'; stripe: StripePaymentPayload };
 
 export function resolvePaymentGateway(countryCode: string): PaymentGateway {
   return resolveGateway(countryCode);
+}
+
+function resolveApiOrigin(apiOrigin?: string): string {
+  if (apiOrigin?.trim()) {
+    return apiOrigin.trim().replace(/\/$/, '');
+  }
+  if (env.KUSHKI_CHECKOUT_BASE_URL.trim()) {
+    return '';
+  }
+  if (process.env.PUBLIC_API_ORIGIN?.trim()) {
+    return process.env.PUBLIC_API_ORIGIN.trim().replace(/\/$/, '');
+  }
+  if (process.env.VERCEL_URL?.trim()) {
+    return `https://${process.env.VERCEL_URL.trim().replace(/\/$/, '')}`;
+  }
+  return 'https://youpass-backend-two.vercel.app';
+}
+
+function buildKushkiCheckoutUrl(input: PreparePaymentInput, sessionId: string): string {
+  if (env.KUSHKI_CHECKOUT_BASE_URL.trim()) {
+    const base = env.KUSHKI_CHECKOUT_BASE_URL.trim().replace(/\/$/, '');
+    return `${base}/${input.orderId}?session=${sessionId}&amount=${input.amount}&currency=${input.currency}`;
+  }
+
+  const origin = resolveApiOrigin(input.apiOrigin);
+  return `${origin}${env.API_PREFIX}/payments/kushki/checkout/${input.orderId}?session=${sessionId}&amount=${input.amount}&currency=${encodeURIComponent(input.currency)}`;
 }
 
 export async function preparePayment(input: PreparePaymentInput): Promise<PreparedPayment> {
@@ -43,6 +79,21 @@ export async function preparePayment(input: PreparePaymentInput): Promise<Prepar
       klap: {
         session_id: sessionId,
         payment_url: `${baseUrl}/${input.orderId}?session=${sessionId}`,
+      },
+    };
+  }
+
+  if (gateway === 'kushki') {
+    const sessionId = isKushkiConfigured()
+      ? `kushki_${crypto.randomBytes(12).toString('hex')}`
+      : `kushki_sess_${input.orderId}`;
+    return {
+      gateway: 'kushki',
+      kushki: {
+        session_id: sessionId,
+        payment_url: buildKushkiCheckoutUrl(input, sessionId),
+        public_merchant_id: env.KUSHKI_PUBLIC_MERCHANT_ID || null,
+        environment: env.KUSHKI_USE_UAT ? 'uat' : 'live',
       },
     };
   }

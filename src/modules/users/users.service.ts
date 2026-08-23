@@ -159,6 +159,9 @@ export const usersService = {
     const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
     const tier = user.category;
     const benefits = CATEGORY_BENEFITS[tier];
+    const nextTier =
+      tier === 'bronze' ? 'silver' : tier === 'silver' ? 'gold' : null;
+    const nextBenefits = nextTier ? CATEGORY_BENEFITS[nextTier] : null;
 
     return {
       category: tier,
@@ -166,8 +169,23 @@ export const usersService = {
       title_en: benefits.title_en,
       benefits_es: benefits.benefits_es,
       benefits_en: benefits.benefits_en,
-      next_category:
-        tier === 'bronze' ? 'silver' : tier === 'silver' ? 'gold' : null,
+      next_category: nextTier,
+      next_title_es: nextBenefits?.title_es ?? null,
+      next_title_en: nextBenefits?.title_en ?? null,
+      next_benefits_es: nextBenefits?.benefits_es ?? [],
+      next_benefits_en: nextBenefits?.benefits_en ?? [],
+      upgrade_hint_es:
+        nextTier === 'silver'
+          ? 'Asiste a eventos, compra entradas y completa tu perfil para desbloquear Silver.'
+          : nextTier === 'gold'
+            ? 'Sigue activo en YouPass y en eventos partner para desbloquear Gold.'
+            : 'Ya tienes el nivel más alto.',
+      upgrade_hint_en:
+        nextTier === 'silver'
+          ? 'Attend events, buy tickets, and complete your profile to unlock Silver.'
+          : nextTier === 'gold'
+            ? 'Stay active on YouPass and at partner events to unlock Gold.'
+            : 'You already have the highest tier.',
     };
   },
 

@@ -48,7 +48,7 @@ export const guestLookupSchema = z.object({
 
 export const confirmCheckoutSchema = z.object({
   order_id: z.string().min(1),
-  gateway: z.enum(['klap', 'stripe']).optional(),
+  gateway: z.enum(['klap', 'stripe', 'kushki']).optional(),
   payment_intent_id: z.string().optional(),
 });
 

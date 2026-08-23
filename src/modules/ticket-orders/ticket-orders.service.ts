@@ -25,6 +25,11 @@ import {
   resolvePaymentGateway,
 } from '../payments/payment-gateway.service.js';
 import {
+  chargeKushkiSubscription,
+  isKushkiConfigured,
+  isKushkiSavedTokenChargeable,
+} from '../payments/kushki.client.js';
+import {
   mapsToCatalogType,
   mapsToTier,
   isQuantityAvailable,
@@ -418,13 +423,24 @@ async function createBuyerTicket(
 }
 
 export const ticketOrdersService = {
-  async checkout(buyerUserId: string, eventId: string, input: CheckoutInput) {
+  async checkout(
+    buyerUserId: string,
+    eventId: string,
+    input: CheckoutInput,
+    apiOrigin?: string,
+  ) {
     const [event, buyer, paymentMethod] = await Promise.all([
       prisma.event.findUnique({ where: { id: eventId } }),
       prisma.user.findUniqueOrThrow({ where: { id: buyerUserId } }),
       input.payment_method_id
         ? prisma.userPaymentMethod.findFirst({
-            where: { userId: buyerUserId, providerToken: input.payment_method_id },
+            where: {
+              userId: buyerUserId,
+              OR: [
+                { providerToken: input.payment_method_id },
+                { id: input.payment_method_id },
+              ],
+            },
           })
         : Promise.resolve(null),
     ]);
@@ -547,8 +563,15 @@ export const ticketOrdersService = {
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
     const currency = country.currencyCode;
     const gateway = resolvePaymentGateway(event.countryCode);
+    const savedKushkiChargeable = Boolean(
+      paymentMethod &&
+        isKushkiConfigured() &&
+        (paymentMethod.gateway === 'kushki' || gateway === 'kushki') &&
+        isKushkiSavedTokenChargeable(paymentMethod.providerToken),
+    );
+    // A selected saved card must never open the hosted card form.
     const useAsyncPayment =
-      totalAmount > 0 && !env.CHECKOUT_MOCK_PAYMENT && !input.payment_method_id;
+      totalAmount > 0 && !env.CHECKOUT_MOCK_PAYMENT && !paymentMethod;
 
     const resolvedPaymentMethod =
       paymentMethod ??
@@ -594,7 +617,15 @@ export const ticketOrdersService = {
         amount: totalAmount,
         currency,
         buyerUserId,
+        apiOrigin,
       });
+
+      const paymentUrl =
+        payment.gateway === 'klap'
+          ? payment.klap.payment_url
+          : payment.gateway === 'kushki'
+            ? payment.kushki.payment_url
+            : null;
 
       return {
         order_id: order.id,
@@ -615,14 +646,39 @@ export const ticketOrdersService = {
         table_id: venueTableId ?? null,
         zone_id: venueZoneId ?? null,
         offering_id: ticketOfferingId ?? null,
-        payment_url: payment.gateway === 'klap' ? payment.klap.payment_url : null,
-        ...(payment.gateway === 'klap' ? { klap: payment.klap } : { stripe: payment.stripe }),
+        payment_url: paymentUrl,
+        ...(payment.gateway === 'klap'
+          ? { klap: payment.klap }
+          : payment.gateway === 'kushki'
+            ? { kushki: payment.kushki }
+            : { stripe: payment.stripe }),
       };
     }
 
-    const paymentReference = env.CHECKOUT_MOCK_PAYMENT
+    let paymentReference = env.CHECKOUT_MOCK_PAYMENT
       ? `mock_${crypto.randomBytes(6).toString('hex')}`
       : `pay_${crypto.randomBytes(8).toString('hex')}`;
+
+    if (savedKushkiChargeable && paymentMethod) {
+      const charge = await chargeKushkiSubscription({
+        subscriptionId: paymentMethod.providerToken,
+        amount: totalAmount,
+        currency,
+        orderId: `pending_${buyerUserId}_${Date.now()}`,
+      });
+      paymentReference = charge.ticketNumber;
+    } else if (
+      paymentMethod &&
+      isKushkiConfigured() &&
+      (paymentMethod.gateway === 'kushki' || gateway === 'kushki') &&
+      !isKushkiSavedTokenChargeable(paymentMethod.providerToken)
+    ) {
+      throw new AppError(
+        422,
+        'CARD_NOT_CHARGEABLE',
+        'This saved card cannot be charged. Add a card with Kushki, then pay.',
+      );
+    }
 
     try {
       const checkoutResult = await prisma.$transaction(async (tx) => {

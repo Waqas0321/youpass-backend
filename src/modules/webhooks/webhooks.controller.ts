@@ -27,4 +27,31 @@ export const webhooksController = {
       next(err);
     }
   },
+
+  kushki: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const body = req.body ?? {};
+      const orderId = String(
+        body.order_id ??
+          body.metadata?.order_id ??
+          body.transaction?.metadata?.order_id ??
+          '',
+      );
+      const status = String(
+        body.status ?? body.transactionStatus ?? body.transaction_status ?? '',
+      ).toLowerCase();
+      const approved =
+        status === 'paid' ||
+        status === 'approved' ||
+        status === 'success' ||
+        body.approved === true;
+
+      if (orderId && approved) {
+        await ticketOrdersService.fulfillPendingOrder(orderId);
+      }
+      res.json({ received: true });
+    } catch (err) {
+      next(err);
+    }
+  },
 };

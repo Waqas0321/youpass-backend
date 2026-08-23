@@ -75,7 +75,15 @@ export const invitationNoShowChargeService = {
       }
 
       try {
-        await capturePreauthorizedPayment(preAuth.gatewayTransactionId, amount);
+        const card = preAuth.cardId
+          ? await prisma.userPaymentMethod.findUnique({ where: { id: preAuth.cardId } })
+          : null;
+        await capturePreauthorizedPayment(preAuth.gatewayTransactionId, amount, {
+          gateway: preAuth.gateway,
+          paymentMethodToken: card?.providerToken,
+          currency: event.currencyCode ?? 'CLP',
+          invitationId: invitation.id,
+        });
         await invitationPreAuthService.captureInvitationPreAuth(invitation.id);
 
         await prisma.invitation.update({

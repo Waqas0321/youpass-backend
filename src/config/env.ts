@@ -119,6 +119,22 @@ const envSchema = z.object({
   KLAP_TOKENIZATION_BASE_URL: z.string().optional().default('').transform((v) => v.trim()),
   STRIPE_SECRET_KEY: z.string().optional().default('').transform((v) => v.trim()),
   STRIPE_WEBHOOK_SECRET: z.string().optional().default('').transform((v) => v.trim()),
+  /** Kushki Public-Merchant-Id (client-side tokenization / Kushki.js). */
+  KUSHKI_PUBLIC_MERCHANT_ID: z.string().optional().default('').transform((v) => v.trim()),
+  /** Kushki Private-Merchant-Id (server-side charges / subscriptions). */
+  KUSHKI_PRIVATE_MERCHANT_ID: z.string().optional().default('').transform((v) => v.trim()),
+  KUSHKI_WEBHOOK_SECRET: z.string().optional().default('').transform((v) => v.trim()),
+  /** When true (default outside production), use Kushki UAT hosts. */
+  KUSHKI_USE_UAT: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === 'true' || v === '1') return true;
+      if (v === 'false' || v === '0') return false;
+      return (process.env.NODE_ENV ?? 'development') !== 'production';
+    }),
+  KUSHKI_CHECKOUT_BASE_URL: z.string().optional().default('').transform((v) => v.trim()),
+  KUSHKI_TOKENIZATION_BASE_URL: z.string().optional().default('').transform((v) => v.trim()),
   ADMIN_API_KEY: z.string().optional().default('').transform((v) => v.trim()),
   SUPPORT_WHATSAPP_NUMBER: z.string().optional().default('+56912345678').transform((v) => v.trim()),
   SUPPORT_EMAIL: z.string().optional().default('soporte@youpass.app').transform((v) => v.trim()),

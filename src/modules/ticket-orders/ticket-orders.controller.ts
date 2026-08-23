@@ -13,6 +13,7 @@ export const ticketOrdersController = {
         req.user!.id,
         String(req.params.eventId),
         body,
+        `${req.protocol}://${req.get('host')}`,
       );
       res.status(201).json(successResponse(data));
     } catch (err) {
