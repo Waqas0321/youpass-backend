@@ -26,6 +26,9 @@ export type PartyModeState = {
   banner_visible: boolean;
   event_id: string | null;
   event_title: string | null;
+  /** Most recent scanned ticket event, even when Party Mode is not yet enabled. */
+  scanned_event_id: string | null;
+  scanned_event_title: string | null;
   distance_km: number | null;
   /** Events the user can open a drink menu for right now. */
   eligible_events: PartyModeEligibleEvent[];
@@ -40,12 +43,15 @@ const DISABLED_STATE: PartyModeRequirements = {
 
 function buildDisabledState(
   requirements: PartyModeRequirements = DISABLED_STATE,
+  scannedEvent?: { id: string; title: string } | null,
 ): PartyModeState {
   return {
     enabled: false,
     banner_visible: false,
     event_id: null,
     event_title: null,
+    scanned_event_id: scannedEvent?.id ?? null,
+    scanned_event_title: scannedEvent?.title ?? null,
     distance_km: null,
     eligible_events: [],
     requirements,
@@ -124,6 +130,8 @@ function buildEnabledState(input: {
     banner_visible: true,
     event_id: input.eventId,
     event_title: input.eventTitle,
+    scanned_event_id: input.eventId,
+    scanned_event_title: input.eventTitle,
     distance_km: input.distanceKm,
     eligible_events: input.eligibleEvents,
     requirements: {
@@ -132,6 +140,17 @@ function buildEnabledState(input: {
       at_event_location: true,
     },
   };
+}
+
+function pickPrimaryScannedEvent(
+  scannedRows: ScannedInvitationRow[],
+  now: Date,
+): ScannedInvitationRow | null {
+  const liveRows = scannedRows.filter((row) =>
+    isEventLiveForPartyMode(row.event, now),
+  );
+  const pool = liveRows.length > 0 ? liveRows : scannedRows;
+  return pickScannedEventBySchedule(pool, now);
 }
 
 type ScannedInvitationRow = {
@@ -206,6 +225,14 @@ export const partyModeService = {
       });
     }
 
+    const primaryScannedEvent = pickPrimaryScannedEvent(scannedRows, now);
+    const scannedEventMeta = primaryScannedEvent
+      ? {
+          id: primaryScannedEvent.event.id,
+          title: primaryScannedEvent.event.title,
+        }
+      : null;
+
     if (isPartyModeLocationBypassUser(userId)) {
       const liveRows = scannedRows.filter((row) =>
         isEventLiveForPartyMode(row.event, now),
@@ -213,11 +240,14 @@ export const partyModeService = {
       const chooserPool = liveRows.length > 0 ? liveRows : scannedRows;
       const selectedRow = pickScannedEventBySchedule(chooserPool, now);
       if (!selectedRow) {
-        return buildDisabledState({
-          has_purchased_ticket: true,
-          ticket_scanned: true,
-          at_event_location: false,
-        });
+        return buildDisabledState(
+          {
+            has_purchased_ticket: true,
+            ticket_scanned: true,
+            at_event_location: false,
+          },
+          scannedEventMeta,
+        );
       }
 
       const eligibleEvents = uniqueEventsById(
@@ -235,11 +265,14 @@ export const partyModeService = {
     const lat = coords?.lat;
     const lng = coords?.lng;
     if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
-      return buildDisabledState({
-        has_purchased_ticket: true,
-        ticket_scanned: true,
-        at_event_location: false,
-      });
+      return buildDisabledState(
+        {
+          has_purchased_ticket: true,
+          ticket_scanned: true,
+          at_event_location: false,
+        },
+        scannedEventMeta,
+      );
     }
 
     const geofencedLive: Array<
@@ -270,11 +303,14 @@ export const partyModeService = {
     }
 
     if (geofencedLive.length === 0) {
-      return buildDisabledState({
-        has_purchased_ticket: true,
-        ticket_scanned: true,
-        at_event_location: false,
-      });
+      return buildDisabledState(
+        {
+          has_purchased_ticket: true,
+          ticket_scanned: true,
+          at_event_location: false,
+        },
+        scannedEventMeta,
+      );
     }
 
     const schedulePick = selectEventByDateTime(

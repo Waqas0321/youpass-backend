@@ -41,4 +41,13 @@ export const staffScanController = {
       next(err);
     }
   },
+
+  listActiveEvents: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await staffScanService.listActiveEvents(req.staffMember!);
+      res.status(200).json(successResponse(data));
+    } catch (err) {
+      next(err);
+    }
+  },
 };

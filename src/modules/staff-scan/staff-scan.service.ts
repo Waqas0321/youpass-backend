@@ -30,6 +30,17 @@ type StaffRecentScanType = 'entry' | 'product';
 const PRODUCT_SCAN_PERMISSIONS = ['scan_products', 'bar_supervisor', 'general_admin'] as const;
 const ENTRY_SCAN_PERMISSIONS = ['scan_tickets', 'tickets_supervisor', 'general_admin'] as const;
 
+function activeEventWindow() {
+  const now = Date.now();
+  return {
+    status: 'published' as const,
+    startsAt: {
+      gte: new Date(now - 24 * 60 * 60 * 1000),
+      lte: new Date(now + 30 * 24 * 60 * 60 * 1000),
+    },
+  };
+}
+
 function formatAccessLevel(tier: string): string {
   if (tier === 'vip') {
     return 'VIP 1';
@@ -241,6 +252,31 @@ export const staffScanService = {
         product_quantity: row.productQuantity,
         last_used_at: row.lastUsedAt?.toISOString(),
         scanned_at: row.scannedAt.toISOString(),
+      })),
+    };
+  },
+
+  async listActiveEvents(staffMember: StaffMember) {
+    assertScanTypePermission(staffMember, 'entry');
+
+    const events = await prisma.event.findMany({
+      where: activeEventWindow(),
+      select: {
+        id: true,
+        title: true,
+        startsAt: true,
+        city: true,
+      },
+      orderBy: { startsAt: 'asc' },
+      take: 30,
+    });
+
+    return {
+      events: events.map((event) => ({
+        id: event.id,
+        title: event.title,
+        starts_at: event.startsAt.toISOString(),
+        city: event.city,
       })),
     };
   },

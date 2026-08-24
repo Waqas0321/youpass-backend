@@ -14,6 +14,13 @@ staffScanRouter.get(
   staffScanController.listRecent,
 );
 
+staffScanRouter.get(
+  '/active-events',
+  authenticateStaff,
+  requireStaffPermission('scan_tickets', 'tickets_supervisor', 'general_admin'),
+  staffScanController.listActiveEvents,
+);
+
 staffScanRouter.post(
   '/entry',
   authenticateStaff,
