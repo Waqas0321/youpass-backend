@@ -1,19 +1,7 @@
-import type { InvitationAuditLog } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { formatTimeLabel } from './staff-supervisor-entry-search.service.js';
 import type { StaffSupervisorActionHistoryQuery } from './staff-supervisor.validators.js';
-
-const SUPERVISOR_ACTION_PREFIX = 'supervisor_';
-const ACTION_PREFIXES = [
-  ['supervisor_system_', 'system'],
-  ['supervisor_vip_', 'vip'],
-  ['supervisor_entry_manual_validation_', 'manual_validation'],
-  ['supervisor_duplicate_', 'duplicate'],
-  ['supervisor_entry_override_', 'entry_override'],
-] as const;
-
-type ActionCategory = (typeof ACTION_PREFIXES)[number][1];
 
 function activeEventWindow() {
   const now = Date.now();
@@ -47,23 +35,35 @@ async function resolveEvent(eventId?: string) {
   });
 
   if (events.length === 0) {
-    throw new AppError(404, 'ACTIVE_EVENT_NOT_FOUND', 'No active event found for action history');
+    throw new AppError(404, 'ACTIVE_EVENT_NOT_FOUND', 'No active event found for access history');
   }
 
-  const since = new Date(Date.now() - 60 * 60 * 1000);
-  const validationCounts = await Promise.all(
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const scanCounts = await Promise.all(
     events.map(async (event) => {
-      const count = await prisma.invitationTicket.count({
-        where: {
-          validatedAt: { gte: since },
-          invitation: { eventId: event.id },
-        },
-      });
+      const entryIds = (
+        await prisma.invitationTicket.findMany({
+          where: { invitation: { eventId: event.id } },
+          select: { manualEntryId: true },
+          take: 500,
+        })
+      ).map((row) => row.manualEntryId);
+
+      const count =
+        entryIds.length === 0
+          ? 0
+          : await prisma.staffScanLog.count({
+              where: {
+                scanType: 'entry',
+                entryId: { in: entryIds },
+                scannedAt: { gte: since },
+              },
+            });
       return { event, count };
     }),
   );
 
-  validationCounts.sort((left, right) => {
+  scanCounts.sort((left, right) => {
     if (right.count !== left.count) {
       return right.count - left.count;
     }
@@ -74,7 +74,7 @@ async function resolveEvent(eventId?: string) {
     return leftDistance - rightDistance;
   });
 
-  const selected = validationCounts[0]?.event ?? events[0];
+  const selected = scanCounts[0]?.event ?? events[0];
   return {
     id: selected.id,
     title: selected.title,
@@ -82,256 +82,135 @@ async function resolveEvent(eventId?: string) {
   };
 }
 
-function parseSupervisorAction(action: string): { category: ActionCategory; kind: string } {
-  for (const [prefix, category] of ACTION_PREFIXES) {
-    if (action.startsWith(prefix)) {
-      return { category, kind: action.slice(prefix.length) };
+function mapAccessResult(outcome: string, itemName: string): {
+  result: 'VALID' | 'RE_ENTRY' | 'REJECTED' | 'SUPERVISOR';
+  kind: string;
+  category: 'access' | 'entry_override' | 'manual_validation' | 'system';
+} {
+  const normalizedItem = itemName.toLowerCase();
+
+  if (outcome === 'supervisor_resolved') {
+    if (normalizedItem.includes('authorize_reentry') || normalizedItem.includes('re-entry') || normalizedItem.includes('reentry')) {
+      return { result: 'RE_ENTRY', kind: 'authorize_reentry', category: 'entry_override' };
     }
-  }
-
-  if (action.startsWith(SUPERVISOR_ACTION_PREFIX)) {
-    return { category: 'system', kind: action.slice(SUPERVISOR_ACTION_PREFIX.length) };
-  }
-
-  return { category: 'system', kind: action };
-}
-
-function readMetadataString(metadata: Record<string, unknown>, key: string) {
-  const value = metadata[key];
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
-}
-
-function resolveGuestName(
-  invitation: NonNullable<
-    Awaited<ReturnType<typeof loadAuditLogs>>[number]['invitation']
-  > | null,
-) {
-  if (!invitation) {
-    return null;
-  }
-
-  return invitation.recipient?.fullName?.trim() || invitation.recipientName?.trim() || null;
-}
-
-function resolveTargetLabel(
-  category: ActionCategory,
-  kind: string,
-  metadata: Record<string, unknown>,
-  invitation: Awaited<ReturnType<typeof loadAuditLogs>>[number]['invitation'],
-) {
-  if (category === 'system') {
-    if (kind === 'scanner_restarted') {
-      return readMetadataString(metadata, 'scanner_id');
+    if (normalizedItem.includes('manual') || normalizedItem.includes('authorize_entry')) {
+      return { result: 'SUPERVISOR', kind: 'authorize_entry', category: 'manual_validation' };
     }
-
-    if (kind === 'staff_alert') {
-      const message = readMetadataString(metadata, 'message');
-      return message ? message.slice(0, 80) : null;
-    }
-
-    return null;
+    return { result: 'SUPERVISOR', kind: 'supervisor_override', category: 'entry_override' };
   }
 
-  const guestName = readMetadataString(metadata, 'guest_name') ?? resolveGuestName(invitation);
-  if (guestName) {
-    return guestName;
+  if (outcome === 'already_used') {
+    return { result: 'REJECTED', kind: 'already_used', category: 'access' };
   }
 
-  if (category === 'vip') {
-    return readMetadataString(metadata, 'access_label') ?? invitation?.assignedSlot?.trim() ?? null;
+  if (
+    normalizedItem.includes('re-entry') ||
+    normalizedItem.includes('reentry') ||
+    normalizedItem === 're-entry'
+  ) {
+    return { result: 'RE_ENTRY', kind: 're_entry', category: 'access' };
   }
 
-  return invitation?.assignedSlot?.trim() ?? null;
+  return { result: 'VALID', kind: 'valid', category: 'access' };
 }
 
-async function loadAuditLogs(eventId: string, limit: number) {
-  const invitationRows = await prisma.invitation.findMany({
-    where: { eventId },
-    select: { id: true },
-  });
-  const invitationIds = invitationRows.map((row) => row.id);
+export const staffSupervisorActionHistoryService = {
+  /**
+   * Event-wide Access History: recent entry scans + supervisor overrides.
+   * Spec: time, code, customer, ticket type, result, access point, staff.
+   */
+  async getActionHistory(query: StaffSupervisorActionHistoryQuery) {
+    const event = await resolveEvent(query.event_id);
+    const limit = query.limit ?? 50;
 
-  if (invitationIds.length === 0) {
-    return prisma.invitationAuditLog.findMany({
-      where: {
-        action: { startsWith: 'supervisor_system_' },
-        result: 'success',
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: {
+    const tickets = await prisma.invitationTicket.findMany({
+      where: { invitation: { eventId: event.id } },
+      select: {
+        id: true,
+        manualEntryId: true,
         invitation: {
           select: {
-            eventId: true,
-            recipientName: true,
             assignedSlot: true,
+            tier: true,
+            recipientName: true,
             recipient: { select: { fullName: true } },
           },
         },
       },
     });
-  }
 
-  const rows = await prisma.invitationAuditLog.findMany({
-    where: {
-      OR: [
-        {
-          invitationId: { in: invitationIds },
-          action: { startsWith: SUPERVISOR_ACTION_PREFIX },
-          result: 'success',
-        },
-        {
-          action: { startsWith: 'supervisor_system_' },
-          result: 'success',
-        },
-      ],
-    },
-    orderBy: { createdAt: 'desc' },
-    take: Math.min(Math.max(limit * 3, limit), 150),
-    include: {
-      invitation: {
-        select: {
-          eventId: true,
-          recipientName: true,
-          assignedSlot: true,
-          recipient: { select: { fullName: true } },
+    const entryIds = tickets.map((ticket) => ticket.manualEntryId);
+    const ticketByEntryId = new Map(tickets.map((ticket) => [ticket.manualEntryId, ticket]));
+
+    if (entryIds.length === 0) {
+      return {
+        event_id: event.id,
+        event_title: event.title,
+        actions: [],
+        total: 0,
+      };
+    }
+
+    const logs = await prisma.staffScanLog.findMany({
+      where: {
+        scanType: 'entry',
+        entryId: { in: entryIds },
+      },
+      orderBy: { scannedAt: 'desc' },
+      take: limit,
+      include: {
+        staffMember: {
+          select: {
+            id: true,
+            name: true,
+            permissionIds: true,
+            zone: { select: { label: true } },
+          },
         },
       },
-    },
-  });
+    });
 
-  return rows
-    .filter((row) => {
-      if (row.action.startsWith('supervisor_system_')) {
-        const metadata = (row.metadata ?? {}) as Record<string, unknown>;
-        return metadata.event_id === eventId;
-      }
+    const actions = logs.map((log) => {
+      const ticket = log.entryId ? ticketByEntryId.get(log.entryId) : null;
+      const guestName =
+        log.guestName?.trim() ||
+        ticket?.invitation.recipient?.fullName?.trim() ||
+        ticket?.invitation.recipientName?.trim() ||
+        null;
+      const mapped = mapAccessResult(log.outcome, log.itemName);
+      const ticketType =
+        log.itemName &&
+        !log.itemName.toLowerCase().includes('supervisor') &&
+        log.itemName.toLowerCase() !== 're-entry' &&
+        log.itemName.toLowerCase() !== 'scan'
+          ? log.itemName
+          : ticket?.invitation.assignedSlot?.trim() ||
+            (ticket?.invitation.tier === 'vip' ? 'VIP' : 'General');
+      const accessPoint = log.staffMember.zone?.label ?? null;
+      const isSupervisorStaff = log.staffMember.permissionIds.some((permissionId) =>
+        ['tickets_supervisor', 'general_admin'].includes(permissionId),
+      );
 
-      return row.invitation?.eventId === eventId;
-    })
-    .slice(0, limit);
-}
-
-async function loadStaffNames(rows: InvitationAuditLog[]) {
-  const staffIds = rows
-    .map((row) => {
-      const metadata = (row.metadata ?? {}) as Record<string, unknown>;
-      return typeof metadata.staff_member_id === 'string' ? metadata.staff_member_id : null;
-    })
-    .filter((id): id is string => Boolean(id));
-
-  if (staffIds.length === 0) {
-    return new Map<string, string>();
-  }
-
-  const staffMembers = await prisma.staffMember.findMany({
-    where: { id: { in: [...new Set(staffIds)] } },
-    select: { id: true, name: true },
-  });
-
-  return new Map(staffMembers.map((member) => [member.id, member.name]));
-}
-
-async function loadTicketDetails(rows: InvitationAuditLog[]) {
-  const metadataTicketIds = rows
-    .map((row) => {
-      const metadata = (row.metadata ?? {}) as Record<string, unknown>;
-      return typeof metadata.ticket_id === 'string' ? metadata.ticket_id : null;
-    })
-    .filter((id): id is string => Boolean(id));
-
-  const invitationIds = rows
-    .filter((row) => {
-      const metadata = (row.metadata ?? {}) as Record<string, unknown>;
-      return !metadata.ticket_id && row.invitationId;
-    })
-    .map((row) => row.invitationId!)
-    .filter((id, index, list) => list.indexOf(id) === index);
-
-  const ticketFilters = [
-    ...(metadataTicketIds.length > 0
-      ? [{ id: { in: [...new Set(metadataTicketIds)] } }]
-      : []),
-    ...(invitationIds.length > 0 ? [{ invitationId: { in: invitationIds } }] : []),
-  ];
-
-  if (ticketFilters.length === 0) {
-    return {
-      ticketIdByInvitationId: new Map<string, string>(),
-      entryCodeByTicketId: new Map<string, string>(),
-    };
-  }
-
-  const tickets = await prisma.invitationTicket.findMany({
-    where: { OR: ticketFilters },
-    select: { id: true, invitationId: true, manualEntryId: true },
-  });
-
-  const ticketIdByInvitationId = new Map<string, string>();
-  const entryCodeByTicketId = new Map<string, string>();
-
-  for (const ticket of tickets) {
-    entryCodeByTicketId.set(ticket.id, ticket.manualEntryId);
-    if (ticket.invitationId && !ticketIdByInvitationId.has(ticket.invitationId)) {
-      ticketIdByInvitationId.set(ticket.invitationId, ticket.id);
-    }
-  }
-
-  return { ticketIdByInvitationId, entryCodeByTicketId };
-}
-
-function formatActionRow(
-  row: Awaited<ReturnType<typeof loadAuditLogs>>[number],
-  countryCode: string,
-  staffNameById: Map<string, string>,
-  ticketIdByInvitationId: Map<string, string>,
-  entryCodeByTicketId: Map<string, string>,
-) {
-  const metadata = (row.metadata ?? {}) as Record<string, unknown>;
-  const { category, kind } = parseSupervisorAction(row.action);
-  const staffMemberId = readMetadataString(metadata, 'staff_member_id');
-  const ticketId =
-    readMetadataString(metadata, 'ticket_id') ??
-    (row.invitationId ? ticketIdByInvitationId.get(row.invitationId) ?? null : null);
-  const supervisorName =
-    readMetadataString(metadata, 'staff_name') ??
-    readMetadataString(metadata, 'supervisor_name') ??
-    (staffMemberId ? staffNameById.get(staffMemberId) : null) ??
-    'Supervisor';
-
-  return {
-    id: row.id,
-    category,
-    kind,
-    supervisor_name: supervisorName,
-    time_label: formatTimeLabel(row.createdAt, countryCode),
-    occurred_at: row.createdAt.toISOString(),
-    target_label: resolveTargetLabel(category, kind, metadata, row.invitation),
-    notes: readMetadataString(metadata, 'notes'),
-    ticket_id: ticketId,
-    entry_code: ticketId ? entryCodeByTicketId.get(ticketId) ?? null : null,
-  };
-}
-
-export const staffSupervisorActionHistoryService = {
-  async getActionHistory(query: StaffSupervisorActionHistoryQuery) {
-    const event = await resolveEvent(query.event_id);
-    const limit = query.limit ?? 50;
-    const rows = await loadAuditLogs(event.id, limit);
-    const [staffNameById, ticketDetails] = await Promise.all([
-      loadStaffNames(rows),
-      loadTicketDetails(rows),
-    ]);
-
-    const actions = rows.map((row) =>
-      formatActionRow(
-        row,
-        event.countryCode,
-        staffNameById,
-        ticketDetails.ticketIdByInvitationId,
-        ticketDetails.entryCodeByTicketId,
-      ),
-    );
+      return {
+        id: log.id,
+        category: mapped.category,
+        kind: mapped.kind,
+        result: mapped.result,
+        supervisor_name: log.staffMember.name,
+        staff_name: log.staffMember.name,
+        time_label: formatTimeLabel(log.scannedAt, event.countryCode),
+        occurred_at: log.scannedAt.toISOString(),
+        target_label: guestName,
+        guest_name: guestName,
+        ticket_type: ticketType,
+        access_point: accessPoint,
+        device_label: null,
+        notes: mapped.result === 'SUPERVISOR' || mapped.result === 'RE_ENTRY' ? log.itemName : null,
+        ticket_id: ticket?.id ?? null,
+        entry_code: log.entryId,
+        is_supervisor: isSupervisorStaff || log.outcome === 'supervisor_resolved',
+      };
+    });
 
     return {
       event_id: event.id,

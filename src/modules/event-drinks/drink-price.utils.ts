@@ -19,11 +19,8 @@ export function drinkPriceToMinor(displayAmount: number, currency: string) {
 }
 
 export function resolveDrinkServiceFeeMinor(currency: string) {
-  if (currency === 'CLP') {
-    return 1000;
-  }
-  if (currency === 'USD') {
-    return 100;
-  }
+  // Drink / in-event product checkout has no service fee.
+  // Ticket sales keep their own service fee path.
+  void currency;
   return 0;
 }

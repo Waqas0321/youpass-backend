@@ -23,6 +23,7 @@ type StaffScanResponse = {
   validated_at?: string;
   last_used_at?: string;
   qr_payload: string;
+  is_reentry?: boolean;
 };
 
 type StaffRecentScanType = 'entry' | 'product';
@@ -76,7 +77,9 @@ async function logStaffScan(staffMemberId: string, response: StaffScanResponse) 
       scanType: response.scan_type,
       outcome: response.outcome,
       guestName: response.guest_name,
-      itemName: response.product_name ?? response.ticket_type ?? 'Scan',
+      itemName: response.is_reentry
+        ? 'RE-ENTRY'
+        : response.product_name ?? response.ticket_type ?? 'Scan',
       eventTitle: response.event_title,
       entryId: response.entry_id,
       transactionId: response.transaction_id,
@@ -101,6 +104,7 @@ async function buildEntryScanResponse(
   scanInput: string,
   alreadyValidated: boolean,
   validatedAt?: Date | null,
+  isReentry = false,
 ): Promise<StaffScanResponse> {
   const ticket = await findInvitationTicketByScanInput(scanInput);
 
@@ -118,7 +122,7 @@ async function buildEntryScanResponse(
     guest_name: guestName,
     event_id: invitation.eventId,
     event_title: invitation.event.title,
-    ticket_type: ticketType,
+    ticket_type: isReentry ? 'RE-ENTRY' : ticketType,
     entry_id: ticket.manualEntryId,
     ticket_id: ticket.id,
     transaction_id: ticket.manualEntryId,
@@ -126,6 +130,7 @@ async function buildEntryScanResponse(
     validated_at: alreadyValidated ? undefined : validatedAt?.toISOString(),
     last_used_at: alreadyValidated ? validatedAt?.toISOString() : undefined,
     qr_payload: ticket.qrPayload,
+    is_reentry: isReentry,
   };
 }
 
@@ -178,11 +183,17 @@ export const staffScanService = {
       );
     }
 
+    const isReentry = 'reentry' in data && Boolean(data.reentry);
     const ticket = await findInvitationTicketByScanInput(scanInput);
 
     return finalizeScan(
       staffMember,
-      await buildEntryScanResponse(scanInput, false, ticket?.validatedAt ?? new Date()),
+      await buildEntryScanResponse(
+        scanInput,
+        false,
+        ticket?.validatedAt ?? new Date(),
+        isReentry,
+      ),
     );
   },
 

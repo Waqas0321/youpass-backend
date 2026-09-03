@@ -12,6 +12,7 @@ type OrderContext = {
   id: string;
   paymentReference: string | null;
   quantity: number;
+  status: string;
   venueTableId: string | null;
   venueZoneId: string | null;
   slots: Array<{ invitationId: string | null }>;
@@ -170,10 +171,22 @@ async function resolveEntryEvents(
     );
 
     let kind: 'validated' | 'reentry' | 'supervisor' = 'validated';
-    if (log.outcome === 'already_used') {
+    const item = log.itemName.toLowerCase();
+    if (
+      item.includes('re-entry') ||
+      item.includes('reentry') ||
+      item.includes('authorize_reentry')
+    ) {
+      kind = 'reentry';
+    } else if (log.outcome === 'already_used') {
       kind = isSupervisor ? 'supervisor' : 'reentry';
-    } else if (isSupervisor) {
-      kind = 'supervisor';
+    } else if (log.outcome === 'supervisor_resolved' || isSupervisor) {
+      kind = log.outcome === 'supervisor_resolved' ? 'supervisor' : kind;
+      if (item.includes('authorize_reentry')) {
+        kind = 'reentry';
+      } else if (isSupervisor && log.outcome !== 'valid') {
+        kind = 'supervisor';
+      }
     }
 
     return {
@@ -236,6 +249,44 @@ function formatInvitationPurchaseId(
   return `INV-${invitationId.slice(-6).toUpperCase()}`;
 }
 
+function formatTicketTypeLabel(invitation: TicketWithInvitation['invitation'], vipTags: string[]) {
+  if (vipTags.length >= 2) {
+    return vipTags.join(' · ');
+  }
+
+  if (invitation.assignedSlot.trim()) {
+    return invitation.assignedSlot;
+  }
+
+  return invitation.tier === 'vip' ? 'VIP' : 'General';
+}
+
+function formatPurchaseStatus(order: OrderContext | null) {
+  if (!order) {
+    return 'invitation_only';
+  }
+
+  return order.status;
+}
+
+async function resolveAccessPoint(manualEntryId: string) {
+  const latestScan = await prisma.staffScanLog.findFirst({
+    where: {
+      entryId: manualEntryId,
+      scanType: 'entry',
+      outcome: { in: ['valid', 'supervisor_resolved'] },
+    },
+    orderBy: { scannedAt: 'desc' },
+    include: {
+      staffMember: {
+        include: { zone: true },
+      },
+    },
+  });
+
+  return latestScan?.staffMember.zone?.label ?? null;
+}
+
 async function formatEntrySearchDetail(ticket: TicketWithInvitation) {
   const invitation = ticket.invitation;
   const guestName = invitation.recipient?.fullName ?? invitation.recipientName ?? 'Guest';
@@ -250,6 +301,7 @@ async function formatEntrySearchDetail(ticket: TicketWithInvitation) {
   const validatorLabel = ticket.validatedAt
     ? await resolveValidatorLabel(ticket.manualEntryId)
     : null;
+  const accessPoint = await resolveAccessPoint(ticket.manualEntryId);
   const recentEvents = await resolveRecentEvents(
     invitation.id,
     ticket.manualEntryId,
@@ -267,6 +319,9 @@ async function formatEntrySearchDetail(ticket: TicketWithInvitation) {
     qr_id: ticket.manualEntryId,
     qr_payload: ticket.qrPayload,
     purchase_id: formatInvitationPurchaseId(invitation.id, order),
+    purchase_status: formatPurchaseStatus(order),
+    ticket_type_label: formatTicketTypeLabel(invitation, vipTags),
+    access_point: accessPoint,
     status: resolveEntryStatus(ticket),
     entry_time_label: ticket.validatedAt
       ? formatTimeLabel(ticket.validatedAt, invitation.event.countryCode)
@@ -298,6 +353,10 @@ export function formatEntrySearchSummary(ticket: TicketWithInvitation) {
     qr_id: ticket.manualEntryId,
     qr_payload: ticket.qrPayload,
     purchase_id: `INV-${invitation.id.slice(-6).toUpperCase()}`,
+    purchase_status: null,
+    ticket_type_label:
+      invitation.assignedSlot.trim() || (invitation.tier === 'vip' ? 'VIP' : 'General'),
+    access_point: null,
     status: resolveEntryStatus(ticket),
     entry_time_label: ticket.validatedAt
       ? formatTimeLabel(ticket.validatedAt, invitation.event.countryCode)

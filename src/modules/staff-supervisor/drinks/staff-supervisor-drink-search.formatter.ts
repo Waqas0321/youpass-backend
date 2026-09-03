@@ -136,6 +136,10 @@ function formatDrinkSearchSummary(redemption: DrinkRedemptionWithContext) {
     validated_at_label: redemption.validatedAt
       ? formatTimeLabel(redemption.validatedAt, redemption.order.event.countryCode)
       : null,
+    purchase_at_label: formatTimeLabel(
+      redemption.order.createdAt,
+      redemption.order.event.countryCode,
+    ),
     bar_name: null,
     scanner_id: null,
     is_validated: Boolean(redemption.validatedAt),

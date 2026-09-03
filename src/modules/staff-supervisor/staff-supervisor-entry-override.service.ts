@@ -304,9 +304,23 @@ async function applyEntryOverride(
   const now = new Date();
 
   switch (input.action) {
+    case 'authorize_reentry': {
+      // Non-destructive: keep original validatedAt; grant one re-entry via unlockAt.
+      if (!ticket.validatedAt) {
+        throw new AppError(
+          409,
+          'TICKET_NOT_USED',
+          'Re-entry can only be authorized for a ticket that has already been used',
+        );
+      }
+      await prisma.invitationTicket.update({
+        where: { id: ticket.id },
+        data: { unlockAt: now },
+      });
+      break;
+    }
     case 'release_qr':
     case 'revert_validation':
-    case 'authorize_reentry':
     case 'temporary_unlock':
       await prisma.$transaction(async (tx) => {
         await tx.invitationTicket.update({
@@ -347,6 +361,8 @@ async function applyEntryOverride(
       ticket_id: ticket.id,
       notes: input.notes.trim(),
       temporary: input.action === 'temporary_unlock',
+      previous_validated_at: ticket.validatedAt?.toISOString() ?? null,
+      preserves_original_entry: input.action === 'authorize_reentry',
     },
   });
 

@@ -13,3 +13,4 @@ coverage/
 admin/.env.development
 admin/.env.production
 admin/.env.local
+.env*

@@ -8,7 +8,7 @@ import type { StaffSupervisorSearchEntriesQuery } from './staff-supervisor.valid
 type TicketWithInvitation = InvitationTicket & {
   invitation: Invitation & {
     event: { id: string; title: string; countryCode: string; startsAt: Date };
-    recipient: { fullName: string; email: string | null } | null;
+    recipient: { fullName: string; email: string | null; rutOrPassport: string | null } | null;
   };
 };
 
@@ -24,7 +24,7 @@ const ticketSearchInclude = {
         },
       },
       recipient: {
-        select: { fullName: true, email: true },
+        select: { fullName: true, email: true, rutOrPassport: true },
       },
     },
   },
@@ -134,6 +134,7 @@ function buildGuestSearchOr(term: string): Prisma.InvitationWhereInput[] {
     { assignedSlot: { contains: term, mode: 'insensitive' } },
     { recipient: { is: { fullName: { contains: term, mode: 'insensitive' } } } },
     { recipient: { is: { email: { contains: term, mode: 'insensitive' } } } },
+    { recipient: { is: { rutOrPassport: { contains: term, mode: 'insensitive' } } } },
     { event: { is: { title: { contains: term, mode: 'insensitive' } } } },
     { event: { is: { venueName: { contains: term, mode: 'insensitive' } } } },
   ];
@@ -375,16 +376,16 @@ export async function searchSupervisorEntries(query: StaffSupervisorSearchEntrie
 }
 
 export function resolveEntryStatus(ticket: TicketWithInvitation) {
-  if (ticket.validatedAt || ticket.invitation.status === 'validated') {
-    return 'validated' as const;
-  }
-
   if (
     ERROR_INVITATION_STATUSES.includes(
       ticket.invitation.status as (typeof ERROR_INVITATION_STATUSES)[number],
     )
   ) {
     return 'error' as const;
+  }
+
+  if (ticket.validatedAt || ticket.invitation.status === 'validated') {
+    return 'used' as const;
   }
 
   return 'pending' as const;

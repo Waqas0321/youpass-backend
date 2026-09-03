@@ -30,6 +30,7 @@ import {
   renderKushkiTokenizePage,
 } from './modules/payments/kushki.pages.controller.js';
 import { kushkiPaymentsRouter } from './modules/payments/kushki.routes.js';
+import { locationsRouter } from './modules/locations/locations.routes.js';
 import { optionalAuthenticate } from './common/middleware/authenticate.js';
 import { prisma } from './config/database.js';
 import { logTwilioWhatsAppStartupSummary } from './config/twilio-whatsapp.config.js';
@@ -68,6 +69,7 @@ export function createApp() {
   api.use('/staff/scan', staffScanRouter);
   api.use('/staff/supervisor', staffSupervisorRouter);
   api.use('/config', configRouter);
+  api.use('/locations', locationsRouter);
   api.use('/users', usersRouter);
   api.use('/events', eventsRouter);
   api.use('/producers', producersRouter);

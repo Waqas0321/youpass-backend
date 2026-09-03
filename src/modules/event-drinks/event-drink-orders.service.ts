@@ -3,13 +3,12 @@ import type { EventDrinkProductStatus } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { getEventCurrencyMeta } from '../../common/services/country-config.service.js';
-import { resolveDrinkServiceFee } from '../admin/admin-event-drinks.constants.js';
 import { assertUserHasTicketForEvent } from './event-drink-access.js';
 import { formatDrinkOrder } from './event-drink-orders.formatter.js';
 import type { CreateDrinkOrderInput } from './event-drink-orders.validators.js';
 import { generateEntryCode, generateQrPayload } from '../invitations/invitations.utils.js';
 
-export const DRINK_ORDER_SERVICE_FEE_CLP = 1000;
+export const DRINK_ORDER_SERVICE_FEE_CLP = 0;
 
 function isProductAvailable(
   status: EventDrinkProductStatus,
@@ -124,8 +123,8 @@ export const eventDrinkOrdersService = {
     }
 
     const isComplimentary = subtotalClp === 0;
-    const serviceFeeClp =
-      itemCount > 0 && !isComplimentary ? resolveDrinkServiceFee(currency) : 0;
+    // Drink / product orders do not include a service fee (tickets only).
+    const serviceFeeClp = 0;
     const totalClp = subtotalClp + serviceFeeClp;
 
     const orderId = crypto.randomBytes(12).toString('hex');

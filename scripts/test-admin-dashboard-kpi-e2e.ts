@@ -97,7 +97,7 @@ async function main(): Promise<void> {
 
   const drinkQty = 3;
   const drinkLineTotal = drinkProduct!.priceClp * drinkQty;
-  const drinkServiceFee = 1000;
+  const drinkServiceFee = 0;
   const drinkTotal = drinkLineTotal + drinkServiceFee;
 
   const uniqueSuffix = Date.now();

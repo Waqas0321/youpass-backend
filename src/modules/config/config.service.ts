@@ -64,13 +64,34 @@ export const configService = {
     ]);
 
     const normalizedCode = selectedCountryCode?.toUpperCase();
+    const activeMatch = normalizedCode
+      ? countries.find((c) => c.code === normalizedCode)
+      : null;
+    const storedMatch =
+      !activeMatch && normalizedCode
+        ? await prisma.country.findUnique({ where: { code: normalizedCode } })
+        : null;
+
     const selected =
-      (normalizedCode ? countries.find((c) => c.code === normalizedCode) : null) ??
-      countries[0] ??
-      null;
+      activeMatch ??
+      storedMatch ??
+      (normalizedCode
+        ? {
+            code: normalizedCode,
+            name: normalizedCode,
+            flagEmoji: '🌍',
+          }
+        : null) ??
+      (countries[0]
+        ? {
+            code: countries[0].code,
+            name: countries[0].name,
+            flagEmoji: countries[0].flagEmoji,
+          }
+        : null);
 
     return {
-      selected_country_code: selected?.code ?? null,
+      selected_country_code: selected?.code ?? normalizedCode ?? null,
       country: selected
         ? {
             code: selected.code,

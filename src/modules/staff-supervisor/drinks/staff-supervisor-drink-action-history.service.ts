@@ -40,18 +40,30 @@ async function resolveEvent(eventId?: string) {
   });
 
   if (events.length === 0) {
-    throw new AppError(404, 'ACTIVE_EVENT_NOT_FOUND', 'No active event found for action history');
+    throw new AppError(404, 'ACTIVE_EVENT_NOT_FOUND', 'No active event found for redemption history');
   }
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const drinkCounts = await Promise.all(
     events.map(async (event) => {
-      const count = await prisma.eventDrinkRedemption.count({
-        where: {
-          order: { eventId: event.id },
-          createdAt: { gte: since },
-        },
-      });
+      const entryIds = (
+        await prisma.eventDrinkRedemption.findMany({
+          where: { order: { eventId: event.id } },
+          select: { manualEntryId: true },
+          take: 500,
+        })
+      ).map((row) => row.manualEntryId);
+
+      const count =
+        entryIds.length === 0
+          ? 0
+          : await prisma.staffScanLog.count({
+              where: {
+                scanType: 'product',
+                entryId: { in: entryIds },
+                scannedAt: { gte: since },
+              },
+            });
       return { event, count };
     }),
   );
@@ -76,50 +88,77 @@ async function resolveEvent(eventId?: string) {
   };
 }
 
-function parseDrinkAction(itemName: string) {
-  const withoutPrefix = itemName.slice(DRINK_SUPERVISOR_ACTION_PREFIX.length);
-  const separatorIndex = withoutPrefix.indexOf('_');
-  if (separatorIndex <= 0) {
-    return { scope: 'override', kind: withoutPrefix };
+function classifyRedemptionLog(outcome: string, itemName: string) {
+  const isSupervisor = itemName.startsWith(DRINK_SUPERVISOR_ACTION_PREFIX);
+  const normalized = itemName.toLowerCase();
+
+  if (
+    isSupervisor &&
+    (normalized.includes('revert_validation') ||
+      normalized.includes('authorize_reconsumption') ||
+      normalized.includes('restore'))
+  ) {
+    return {
+      result: 'RESTORED' as const,
+      kind: 'restore_consumption',
+      scope: 'cancellation',
+      dashboard_type: 'qr_released' as const,
+    };
+  }
+
+  if (isSupervisor) {
+    return {
+      result: 'SUPERVISOR' as const,
+      kind: normalized.includes('cancel') ? 'cancel_consumption' : 'supervisor_action',
+      scope: 'override',
+      dashboard_type: 'consumption_cancelled' as const,
+    };
+  }
+
+  if (outcome === 'already_used') {
+    return {
+      result: 'DUPLICATE_ATTEMPT' as const,
+      kind: 'duplicate_attempt',
+      scope: 'scan',
+      dashboard_type: 'manual_validation' as const,
+    };
   }
 
   return {
-    scope: withoutPrefix.slice(0, separatorIndex),
-    kind: withoutPrefix.slice(separatorIndex + 1),
+    result: 'REDEEMED' as const,
+    kind: 'redeemed',
+    scope: 'scan',
+    dashboard_type: 'manual_validation' as const,
   };
 }
 
-function mapDashboardType(kind: string) {
-  if (kind.includes('cancel') || kind === 'reject_consumption') {
-    return 'consumption_cancelled' as const;
-  }
-
-  if (
-    kind.includes('manual') ||
-    kind === 'authorize_consumption' ||
-    kind === 'generate_temporary_qr'
-  ) {
-    return 'manual_validation' as const;
-  }
-
-  if (kind.includes('release') || kind === 'temporary_unlock' || kind === 'authorize_reconsumption') {
-    return 'qr_released' as const;
-  }
-
-  return 'manual_validation' as const;
-}
-
 export const staffSupervisorDrinkActionHistoryService = {
+  /**
+   * Event-wide Redemption History: product scans + restores.
+   * Spec: REDEEMED / RESTORED / DUPLICATE ATTEMPT with product, customer, bar, staff.
+   */
   async getActionHistory(query: BarActionHistoryQuery) {
     const event = await resolveEvent(query.event_id);
     const limit = query.limit ?? 50;
 
-    const entryIds = (
-      await prisma.eventDrinkRedemption.findMany({
-        where: { order: { eventId: event.id } },
-        select: { manualEntryId: true },
-      })
-    ).map((row) => row.manualEntryId);
+    const redemptions = await prisma.eventDrinkRedemption.findMany({
+      where: { order: { eventId: event.id } },
+      select: {
+        id: true,
+        manualEntryId: true,
+        orderId: true,
+        validatedAt: true,
+        order: {
+          select: {
+            user: { select: { fullName: true, phone: true } },
+            lines: { select: { productName: true, quantity: true }, take: 1 },
+          },
+        },
+      },
+    });
+
+    const entryIds = redemptions.map((row) => row.manualEntryId);
+    const redemptionByEntryId = new Map(redemptions.map((row) => [row.manualEntryId, row]));
 
     if (entryIds.length === 0) {
       return {
@@ -132,9 +171,8 @@ export const staffSupervisorDrinkActionHistoryService = {
 
     const logs = await prisma.staffScanLog.findMany({
       where: {
+        scanType: 'product',
         entryId: { in: entryIds },
-        itemName: { startsWith: DRINK_SUPERVISOR_ACTION_PREFIX },
-        outcome: 'supervisor_resolved',
       },
       orderBy: { scannedAt: 'desc' },
       take: limit,
@@ -143,32 +181,35 @@ export const staffSupervisorDrinkActionHistoryService = {
       },
     });
 
-    const redemptionByEntryId = new Map(
-      (
-        await prisma.eventDrinkRedemption.findMany({
-          where: { manualEntryId: { in: logs.map((log) => log.entryId!).filter(Boolean) } },
-          select: { id: true, manualEntryId: true, orderId: true },
-        })
-      ).map((row) => [row.manualEntryId, row]),
-    );
-
     const actions = logs.map((log) => {
-      const parsed = parseDrinkAction(log.itemName);
       const redemption = log.entryId ? redemptionByEntryId.get(log.entryId) : null;
+      const classified = classifyRedemptionLog(log.outcome, log.itemName);
+      const productName =
+        !log.itemName.startsWith(DRINK_SUPERVISOR_ACTION_PREFIX)
+          ? log.itemName
+          : redemption?.order.lines[0]?.productName ?? null;
+      const guestName =
+        log.guestName?.trim() || redemption?.order.user.fullName?.trim() || null;
 
       return {
         id: log.id,
-        scope: parsed.scope,
-        kind: parsed.kind,
-        dashboard_type: mapDashboardType(parsed.kind),
+        scope: classified.scope,
+        kind: classified.kind,
+        result: classified.result,
+        dashboard_type: classified.dashboard_type,
         supervisor_name: log.staffMember.name,
-        guest_name: log.guestName,
+        staff_name: log.staffMember.name,
+        guest_name: guestName,
+        product_name: productName,
+        product_quantity: log.productQuantity ?? redemption?.order.lines[0]?.quantity ?? null,
+        bar_name: log.barName,
         time_label: formatTimeLabel(log.scannedAt, event.countryCode),
         occurred_at: log.scannedAt.toISOString(),
         redemption_id: redemption?.id ?? null,
         order_id: redemption?.orderId ?? log.transactionId,
         entry_id: log.entryId,
-        product_name: log.itemName.includes('consumption') ? null : log.itemName,
+        manual_code: log.entryId,
+        current_status: redemption?.validatedAt ? 'redeemed' : 'restored_or_pending',
       };
     });
 
