@@ -36,7 +36,6 @@ const PHONE_HINTS: Record<string, string> = {
   HN: '9123 4567',
   NI: '8123 4567',
   DO: '809 123 4567',
-  PK: '321 6548001',
 };
 
 const LATAM_COUNTRIES: CountrySeed[] = [
@@ -58,7 +57,6 @@ const LATAM_COUNTRIES: CountrySeed[] = [
   { code: 'HN', name: 'Honduras', dialCode: '+504', flagEmoji: '🇭🇳', currencyCode: 'HNL', currencySymbol: 'L', currencyDecimals: 2, languageCode: 'es', paymentGateway: 'stripe', timezone: 'America/Tegucigalpa', displayOrder: 16 },
   { code: 'NI', name: 'Nicaragua', dialCode: '+505', flagEmoji: '🇳🇮', currencyCode: 'NIO', currencySymbol: 'C$', currencyDecimals: 2, languageCode: 'es', paymentGateway: 'stripe', timezone: 'America/Managua', displayOrder: 17 },
   { code: 'DO', name: 'República Dominicana', dialCode: '+1-809', flagEmoji: '🇩🇴', currencyCode: 'DOP', currencySymbol: '$', currencyDecimals: 2, languageCode: 'es', paymentGateway: 'stripe', timezone: 'America/Santo_Domingo', displayOrder: 18 },
-  { code: 'PK', name: 'Pakistan', dialCode: '+92', flagEmoji: '🇵🇰', currencyCode: 'PKR', currencySymbol: '₨', currencyDecimals: 0, languageCode: 'en', paymentGateway: 'stripe', timezone: 'Asia/Karachi', displayOrder: 19 },
 ];
 
 const EVENT_TYPES = [

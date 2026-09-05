@@ -151,6 +151,12 @@ const envSchema = z.object({
         .map((id) => id.trim())
         .filter(Boolean),
     ),
+  /** When true, all users skip the venue geofence (QA / demo). Ticket + scan still required. */
+  PARTY_MODE_BYPASS_LOCATION: z
+    .string()
+    .optional()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export type Env = z.infer<typeof envSchema>;

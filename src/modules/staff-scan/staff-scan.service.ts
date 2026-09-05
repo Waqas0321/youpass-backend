@@ -199,7 +199,10 @@ export const staffScanService = {
 
   async scanProduct(scanInput: string, staffMember: StaffMember): Promise<StaffScanResponse> {
     try {
-      const data = await eventDrinkRedemptionService.validateQrPayload(scanInput);
+      const [data, staffContext] = await Promise.all([
+        eventDrinkRedemptionService.validateQrPayload(scanInput),
+        loadStaffContext(staffMember),
+      ]);
       return finalizeScan(staffMember, {
         outcome: 'valid',
         scan_type: 'product',
@@ -210,7 +213,7 @@ export const staffScanService = {
         product_quantity: data.line_items[0]?.quantity ?? 1,
         entry_id: data.entry_code,
         transaction_id: data.entry_code,
-        bar_name: (await loadStaffContext(staffMember)).zone.label,
+        bar_name: staffContext.zone.label,
         validated_at: data.redeemed_at,
         qr_payload: data.qr_payload ?? scanInput,
       });

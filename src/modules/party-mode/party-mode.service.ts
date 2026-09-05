@@ -82,6 +82,9 @@ async function loadPurchasedInvitationIds(userId: string): Promise<Set<string>> 
 }
 
 function isPartyModeLocationBypassUser(userId: string): boolean {
+  if (env.PARTY_MODE_BYPASS_LOCATION) {
+    return true;
+  }
   return env.PARTY_MODE_BYPASS_USER_IDS.includes(userId);
 }
 
