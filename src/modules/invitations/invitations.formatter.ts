@@ -204,7 +204,9 @@ function computeFlags(
     can_cancel:
       isAccepted &&
       now <= invitation.cancellationDeadline,
-    can_view_qr: isAccepted && qr.qr_status === 'available',
+    can_view_qr:
+      (isAccepted || invitation.status === 'validated') &&
+      qr.qr_status === 'available',
   };
 }
 

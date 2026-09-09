@@ -24,6 +24,7 @@ import {
   detectCardBrand,
   generateEntryCode,
   generateQrPayload,
+  hasPendingReentry,
   maskCardLastFour,
   resolveQrStatus,
 } from './invitations.utils.js';
@@ -842,7 +843,19 @@ export const invitationsService = {
   async getTicket(userId: string, userPhone: string, id: string) {
     const invitation = await getInvitationForUser(id, userId, userPhone);
 
-    if (invitation.status !== 'accepted' || !invitation.ticket) {
+    if (!invitation.ticket) {
+      throw new AppError(404, 'INVITATION_NOT_FOUND', 'Ticket not found');
+    }
+
+    const pendingReentry = hasPendingReentry(
+      invitation.ticket.unlockAt,
+      invitation.ticket.validatedAt,
+    );
+    const canShowTicket =
+      invitation.status === 'accepted' ||
+      (invitation.status === 'validated' && pendingReentry);
+
+    if (!canShowTicket) {
       throw new AppError(404, 'INVITATION_NOT_FOUND', 'Ticket not found');
     }
 
@@ -879,6 +892,13 @@ function parseCardExpiry(expiry: string): { month: number; year: number } | null
   const month = Number(match[1]);
   const year = 2000 + Number(match[2]);
   if (month < 1 || month > 12) {
+    return null;
+  }
+
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth() + 1;
+  if (year < currentYear || (year === currentYear && month < currentMonth)) {
     return null;
   }
 
@@ -1099,6 +1119,13 @@ export const paymentMethodsService = {
     const brand = detectCardBrand(input.card_number);
     const providerToken = `pm_${crypto.randomBytes(8).toString('hex')}`;
     const expiry = parseCardExpiry(input.expiry);
+    if (!expiry) {
+      throw new AppError(
+        400,
+        'INVALID_CARD_EXPIRY',
+        'Card expiry must be a current or future month in MM/YY format.',
+      );
+    }
 
     await prisma.userPaymentMethod.updateMany({
       where: { userId, isDefault: true },
@@ -1112,8 +1139,8 @@ export const paymentMethodsService = {
         gateway: 'klap',
         brand,
         lastFour,
-        expirationMonth: expiry?.month,
-        expirationYear: expiry?.year,
+        expirationMonth: expiry.month,
+        expirationYear: expiry.year,
         cardholderName: input.cardholder_name.trim(),
         isDefault: true,
       },

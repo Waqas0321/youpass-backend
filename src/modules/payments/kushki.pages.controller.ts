@@ -59,6 +59,87 @@ const sharedStyles = `
 const inputAttrs =
   'autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"';
 
+/** Live formatters: card number in groups of 4, expiry as MM/YY. */
+const cardInputFormatScript = `
+    function formatCardNumber(value) {
+      const digits = String(value || '').replace(/\\D/g, '').slice(0, 16);
+      return digits.replace(/(\\d{4})(?=\\d)/g, '$1 ').trim();
+    }
+
+    function formatExpiry(value) {
+      let digits = String(value || '').replace(/\\D/g, '').slice(0, 4);
+      if (digits.length >= 1) {
+        const first = Number(digits[0]);
+        if (first > 1) {
+          digits = '0' + digits.slice(0, 3);
+        }
+      }
+      if (digits.length >= 2) {
+        let month = Number(digits.slice(0, 2));
+        if (month === 0) month = 1;
+        if (month > 12) month = 12;
+        digits = String(month).padStart(2, '0') + digits.slice(2);
+      }
+      if (digits.length <= 2) return digits;
+      return digits.slice(0, 2) + '/' + digits.slice(2);
+    }
+
+    function isExpiryCurrentOrFuture(mmYy) {
+      const match = String(mmYy || '').match(/^(\\d{2})\\/(\\d{2})$/);
+      if (!match) return false;
+      const month = Number(match[1]);
+      const year = 2000 + Number(match[2]);
+      if (month < 1 || month > 12) return false;
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      if (year > currentYear) return true;
+      if (year < currentYear) return false;
+      return month >= currentMonth;
+    }
+
+    function validateCardFields() {
+      const digits = document.getElementById('card').value.replace(/\\D/g, '');
+      if (digits.length < 13 || digits.length > 16) {
+        return 'Ingresa un número de tarjeta válido.';
+      }
+      const expiry = document.getElementById('expiry').value.trim();
+      if (!/^\\d{2}\\/\\d{2}$/.test(expiry)) {
+        return 'Usa el formato MM/AA para el vencimiento.';
+      }
+      if (!isExpiryCurrentOrFuture(expiry)) {
+        return 'La fecha de vencimiento debe ser actual o futura.';
+      }
+      const cvv = document.getElementById('cvv').value.replace(/\\D/g, '');
+      if (cvv.length < 3 || cvv.length > 4) {
+        return 'Ingresa un CVV válido.';
+      }
+      const name = document.getElementById('name').value.trim();
+      if (name.length < 2) {
+        return 'Ingresa el nombre que aparece en la tarjeta.';
+      }
+      return null;
+    }
+
+    function bindCardFormatters() {
+      const cardEl = document.getElementById('card');
+      const expiryEl = document.getElementById('expiry');
+      if (cardEl) {
+        cardEl.addEventListener('input', function () {
+          const formatted = formatCardNumber(cardEl.value);
+          cardEl.value = formatted;
+        });
+      }
+      if (expiryEl) {
+        expiryEl.addEventListener('input', function () {
+          const formatted = formatExpiry(expiryEl.value);
+          expiryEl.value = formatted;
+        });
+      }
+    }
+    bindCardFormatters();
+`;
+
 /** Wallet tokenization page — Kushki.js when configured, otherwise local mock. */
 export function renderKushkiTokenizePage(req: Request, res: Response): void {
   applyKushkiPageHeaders(res);
@@ -112,6 +193,7 @@ export function renderKushkiTokenizePage(req: Request, res: Response): void {
     const inTest = ${inTest ? 'true' : 'false'};
     const errEl = document.getElementById('err');
     const btn = document.getElementById('submit');
+    ${cardInputFormatScript}
 
     function showError(msg) {
       errEl.style.display = 'block';
@@ -152,6 +234,13 @@ export function renderKushkiTokenizePage(req: Request, res: Response): void {
       btn.disabled = true;
       btn.textContent = 'Procesando...';
       errEl.style.display = 'none';
+
+      const validationError = validateCardFields();
+      if (validationError) {
+        showError(validationError);
+        return;
+      }
+
       const parsed = parseCard();
 
       if (!useLive) {
@@ -279,6 +368,7 @@ export async function renderKushkiCheckoutPage(req: Request, res: Response): Pro
     const inTest = ${inTest ? 'true' : 'false'};
     const errEl = document.getElementById('err');
     const btn = document.getElementById('submit');
+    ${cardInputFormatScript}
 
     function showError(msg) {
       errEl.style.display = 'block';
@@ -322,6 +412,13 @@ export async function renderKushkiCheckoutPage(req: Request, res: Response): Pro
       btn.disabled = true;
       btn.textContent = 'Procesando...';
       errEl.style.display = 'none';
+
+      const validationError = validateCardFields();
+      if (validationError) {
+        showError(validationError);
+        return;
+      }
+
       const parsed = parseCard();
 
       if (!useLive) {

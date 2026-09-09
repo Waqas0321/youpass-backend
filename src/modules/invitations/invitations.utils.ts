@@ -77,12 +77,25 @@ export function formatDeadlineLabel(date: Date, timezone: string): string {
 
 export type QrStatus = 'locked' | 'available' | 'redeemed' | 'expired';
 
+/** Supervisor authorize_reentry sets unlockAt > validatedAt without clearing validatedAt. */
+export function hasPendingReentry(
+  unlockAt: Date | null | undefined,
+  validatedAt: Date | null | undefined,
+): boolean {
+  if (!unlockAt || !validatedAt) {
+    return false;
+  }
+  return unlockAt.getTime() > validatedAt.getTime();
+}
+
 export function resolveQrStatus(
-  _unlockAt: Date,
+  unlockAt: Date,
   validatedAt: Date | null,
   eventStartsAt: Date,
 ): QrStatus {
-  if (validatedAt) return 'redeemed';
+  if (validatedAt && !hasPendingReentry(unlockAt, validatedAt)) {
+    return 'redeemed';
+  }
   const eventEnd = new Date(eventStartsAt.getTime() + 24 * 60 * 60 * 1000);
   if (new Date() > eventEnd) return 'expired';
   return 'available';

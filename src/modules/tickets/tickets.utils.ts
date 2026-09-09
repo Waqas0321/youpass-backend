@@ -1,5 +1,5 @@
 import type { Event, Invitation, InvitationTicket } from '@prisma/client';
-import { resolveQrStatus } from '../invitations/invitations.utils.js';
+import { hasPendingReentry, resolveQrStatus } from '../invitations/invitations.utils.js';
 import { getTimezone } from '../invitations/invitations.formatter.js';
 
 export type TicketDisplayStatus = 'active' | 'validated' | 'expired' | 'cancelled' | 'refunded';
@@ -30,6 +30,11 @@ export function resolveTicketStatus(
   }
   if (event.status === 'cancelled') return 'cancelled';
   if (!ticket) return 'cancelled';
+  // Supervisor re-entry: keep validatedAt for door history, but treat as active for My Tickets/QR.
+  if (hasPendingReentry(ticket.unlockAt, ticket.validatedAt)) {
+    if (isEventPast(event.startsAt, now)) return 'expired';
+    return 'active';
+  }
   if (ticket.validatedAt || invitation.status === 'validated') return 'validated';
   if (isEventPast(event.startsAt, now)) return 'expired';
   return 'active';
