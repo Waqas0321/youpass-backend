@@ -11,6 +11,7 @@ import {
 import {
   generateEntryCode,
   generateQrPayload,
+  hasPendingReentry,
 } from '../invitations/invitations.utils.js';
 import { getEventCurrencyMeta } from '../../common/services/country-config.service.js';
 import { invitationConfigService } from '../../common/services/invitation-config.service.js';
@@ -220,15 +221,16 @@ function formatAssignmentSlot(slot: SlotWithInvitation) {
   };
 }
 
-async function buyerOwnsEventTicket(
+async function buyerOwnsActiveEventTicket(
   tx: DbClient,
   buyerUserId: string,
   eventId: string,
   excludeOrderId?: string,
 ): Promise<boolean> {
-  const existing = await tx.ticketSlot.findFirst({
+  const ownerSlots = await tx.ticketSlot.findMany({
     where: {
       status: 'owner',
+      invitationId: { not: null },
       order: {
         buyerUserId,
         eventId,
@@ -236,12 +238,38 @@ async function buyerOwnsEventTicket(
         ...(excludeOrderId ? { id: { not: excludeOrderId } } : {}),
       },
     },
-    select: { id: true },
+    select: { invitationId: true },
   });
 
-  // Buyer gets at most one auto-assigned owner ticket per event (first purchase only).
-  // Repeat purchases — even after the ticket was scanned — are all assignable to guests.
-  return existing != null;
+  const invitationIds = ownerSlots
+    .map((slot) => slot.invitationId)
+    .filter((id): id is string => id != null);
+  if (invitationIds.length === 0) {
+    return false;
+  }
+
+  const tickets = await tx.invitationTicket.findMany({
+    where: { invitationId: { in: invitationIds } },
+    select: {
+      invitationId: true,
+      unlockAt: true,
+      validatedAt: true,
+      invitation: { select: { status: true } },
+    },
+  });
+
+  // Only treat as "already owns" when there is still an unscanned / re-entry
+  // personal ticket. A redeemed owner ticket must not block a new My Tickets QR
+  // after a repurchase (success UI promises View QR / My Tickets).
+  return tickets.some((ticket) => {
+    if (ticket.invitation.status === 'canceled') {
+      return false;
+    }
+    if (!ticket.validatedAt) {
+      return ticket.invitation.status === 'accepted';
+    }
+    return hasPendingReentry(ticket.unlockAt, ticket.validatedAt);
+  });
 }
 
 async function getExistingBuyerTicket(
@@ -249,29 +277,52 @@ async function getExistingBuyerTicket(
   buyerUserId: string,
   eventId: string,
 ): Promise<{ ticketId: string; unlockAt: Date | null } | null> {
-  const ownerSlot = await tx.ticketSlot.findFirst({
+  const ownerSlots = await tx.ticketSlot.findMany({
     where: {
       status: 'owner',
       invitationId: { not: null },
       order: { buyerUserId, eventId, status: 'paid' },
     },
     select: { invitationId: true },
-    orderBy: { order: { createdAt: 'asc' } },
+    orderBy: { order: { createdAt: 'desc' } },
   });
 
-  if (!ownerSlot?.invitationId) {
+  const invitationIds = ownerSlots
+    .map((slot) => slot.invitationId)
+    .filter((id): id is string => id != null);
+  if (invitationIds.length === 0) {
     return null;
   }
 
-  const ticket = await tx.invitationTicket.findFirst({
-    where: { invitationId: ownerSlot.invitationId },
-    select: { unlockAt: true },
+  const tickets = await tx.invitationTicket.findMany({
+    where: { invitationId: { in: invitationIds } },
+    select: {
+      invitationId: true,
+      unlockAt: true,
+      validatedAt: true,
+      invitation: { select: { status: true } },
+    },
   });
 
-  return {
-    ticketId: ownerSlot.invitationId,
-    unlockAt: ticket?.unlockAt ?? null,
-  };
+  const byInvitationId = new Map(tickets.map((ticket) => [ticket.invitationId, ticket]));
+  for (const invitationId of invitationIds) {
+    const ticket = byInvitationId.get(invitationId);
+    if (!ticket || ticket.invitation.status === 'canceled') {
+      continue;
+    }
+    const isActive =
+      (!ticket.validatedAt && ticket.invitation.status === 'accepted') ||
+      hasPendingReentry(ticket.unlockAt, ticket.validatedAt);
+    if (isActive) {
+      return { ticketId: invitationId, unlockAt: ticket.unlockAt };
+    }
+  }
+
+  // Fallback for response payloads that still need a ticket id after checkout.
+  const fallback = tickets[0];
+  return fallback
+    ? { ticketId: fallback.invitationId, unlockAt: fallback.unlockAt }
+    : null;
 }
 
 function countAssignableSlots(slots: TicketSlot[]) {
@@ -703,7 +754,7 @@ export const ticketOrdersService = {
           },
         });
 
-        const buyerAlreadyOwns = await buyerOwnsEventTicket(
+        const buyerAlreadyOwns = await buyerOwnsActiveEventTicket(
           tx,
           buyerUserId,
           eventId,
@@ -869,7 +920,7 @@ export const ticketOrdersService = {
         data: { status: 'paid', paymentReference },
       });
 
-      const buyerAlreadyOwns = await buyerOwnsEventTicket(
+      const buyerAlreadyOwns = await buyerOwnsActiveEventTicket(
         tx,
         order.buyerUserId,
         order.eventId,

@@ -8,13 +8,104 @@ type BarActionHistoryQuery = {
   limit?: number;
 };
 
-function activeEventWindow() {
+function candidateEventWindow() {
   const now = Date.now();
   return {
     startsAt: {
-      gte: new Date(now - 24 * 60 * 60 * 1000),
-      lte: new Date(now + 30 * 24 * 60 * 60 * 1000),
+      // Keep QA / multi-month calendars in range (was -1d / +30d and missed real scans).
+      gte: new Date(now - 90 * 24 * 60 * 60 * 1000),
+      lte: new Date(now + 180 * 24 * 60 * 60 * 1000),
     },
+  };
+}
+
+async function resolveEventFromRecentProductScans(since: Date) {
+  const recentLogs = await prisma.staffScanLog.findMany({
+    where: {
+      scanType: 'product',
+      scannedAt: { gte: since },
+      entryId: { not: null },
+    },
+    select: { entryId: true, scannedAt: true },
+    orderBy: { scannedAt: 'desc' },
+    take: 400,
+  });
+
+  if (recentLogs.length === 0) {
+    return null;
+  }
+
+  const entryIds = [
+    ...new Set(
+      recentLogs
+        .map((log) => log.entryId)
+        .filter((entryId): entryId is string => Boolean(entryId)),
+    ),
+  ];
+
+  const redemptions = await prisma.eventDrinkRedemption.findMany({
+    where: { manualEntryId: { in: entryIds } },
+    select: {
+      manualEntryId: true,
+      order: {
+        select: {
+          event: {
+            select: { id: true, title: true, countryCode: true, startsAt: true },
+          },
+        },
+      },
+    },
+  });
+
+  const eventByEntryId = new Map(
+    redemptions.map((row) => [row.manualEntryId, row.order.event]),
+  );
+  const score = new Map<
+    string,
+    {
+      event: { id: string; title: string; countryCode: string; startsAt: Date };
+      count: number;
+      latest: number;
+    }
+  >();
+
+  for (const log of recentLogs) {
+    if (!log.entryId) {
+      continue;
+    }
+    const event = eventByEntryId.get(log.entryId);
+    if (!event) {
+      continue;
+    }
+    const current = score.get(event.id);
+    if (current) {
+      current.count += 1;
+      current.latest = Math.max(current.latest, log.scannedAt.getTime());
+    } else {
+      score.set(event.id, {
+        event,
+        count: 1,
+        latest: log.scannedAt.getTime(),
+      });
+    }
+  }
+
+  const ranked = [...score.values()].sort((left, right) => {
+    if (right.count !== left.count) {
+      return right.count - left.count;
+    }
+    return right.latest - left.latest;
+  });
+
+  const selected = ranked[0]?.event;
+  if (!selected) {
+    return null;
+  }
+
+  return {
+    id: selected.id,
+    title: selected.title,
+    countryCode: selected.countryCode,
   };
 }
 
@@ -32,18 +123,23 @@ async function resolveEvent(eventId?: string) {
     return event;
   }
 
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const fromRecentScans = await resolveEventFromRecentProductScans(since);
+  if (fromRecentScans) {
+    return fromRecentScans;
+  }
+
   const events = await prisma.event.findMany({
-    where: activeEventWindow(),
+    where: candidateEventWindow(),
     select: { id: true, title: true, countryCode: true, startsAt: true },
     orderBy: { startsAt: 'asc' },
-    take: 20,
+    take: 40,
   });
 
   if (events.length === 0) {
     throw new AppError(404, 'ACTIVE_EVENT_NOT_FOUND', 'No active event found for redemption history');
   }
 
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const drinkCounts = await Promise.all(
     events.map(async (event) => {
       const entryIds = (
