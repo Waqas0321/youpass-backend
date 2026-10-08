@@ -123,9 +123,11 @@ export function EventSummaryPage() {
 
   const ticketsSold = allTimeKpis.tickets_sold.value;
   const capacityTotal = event?.capacity_total ?? null;
+  // Prefer sold-based remaining so KPI cards stay consistent (API stockRemaining can lag).
   const capacityAvailable =
-    event?.capacity_available ??
-    (capacityTotal !== null ? Math.max(capacityTotal - ticketsSold, 0) : null);
+    capacityTotal !== null
+      ? Math.max(capacityTotal - ticketsSold, 0)
+      : (event?.capacity_available ?? null);
   const ticketsPct =
     capacityTotal && capacityTotal > 0 ? Math.round((ticketsSold / capacityTotal) * 100) : null;
   const remainingPct =

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { EventDrinkCategory, EventDrinkProduct, EventDrinkProductInput } from '../../api/client';
 import { useI18n } from '../../i18n/useI18n';
 import { Modal } from '../ui/Modal';
@@ -32,9 +32,19 @@ export function EventDrinkProductFormModal({
   const { t } = useI18n();
   const [form, setForm] = useState<DrinkProductFormState>(EMPTY_DRINK_PRODUCT_FORM);
   const [error, setError] = useState('');
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    // Only hydrate when the modal opens (or switches product) — not when
+    // categories/currency identity refresh mid-edit (wipes in-progress fills).
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    if (!justOpened) {
       return;
     }
 

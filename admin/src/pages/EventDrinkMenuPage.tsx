@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   adminApi,
@@ -33,6 +33,14 @@ export function EventDrinkMenuPage() {
   const [editingCategory, setEditingCategory] = useState<EventDrinkCategory | null>(null);
   const [gridKey, setGridKey] = useState(0);
 
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
   const filteredProducts = useMemo(() => {
     if (selectedCategory === 'all') {
       return products;
@@ -51,16 +59,23 @@ export function EventDrinkMenuPage() {
   }
 
   function openCreateProduct() {
+    setError('');
+    if (categories.length === 0) {
+      setError(t('drinkMenu.categoryRequiredFirst'));
+      return;
+    }
     setEditingProduct(null);
     setProductModalOpen(true);
   }
 
   function openEditProduct(product: EventDrinkProduct) {
+    setError('');
     setEditingProduct(product);
     setProductModalOpen(true);
   }
 
   function openCreateCategory() {
+    setError('');
     setEditingCategory(null);
     setCategoryModalOpen(true);
   }
@@ -69,6 +84,7 @@ export function EventDrinkMenuPage() {
     if (!activeCategory) {
       return;
     }
+    setError('');
     setEditingCategory(activeCategory);
     setCategoryModalOpen(true);
   }
@@ -172,7 +188,13 @@ export function EventDrinkMenuPage() {
         <IconPlus />
         {t('drinkMenu.createCategory')}
       </button>
-      <button type="button" className="event-workspace__btn event-workspace__btn--primary" onClick={openCreateProduct}>
+      <button
+        type="button"
+        className="event-workspace__btn event-workspace__btn--primary"
+        onClick={openCreateProduct}
+        disabled={categories.length === 0}
+        title={categories.length === 0 ? t('drinkMenu.categoryRequiredFirst') : undefined}
+      >
         <IconPlus />
         {t('drinkMenu.addProduct')}
       </button>

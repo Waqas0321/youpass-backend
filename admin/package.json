@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:events": "playwright test e2e/events-list.spec.ts e2e/events-crud.spec.ts e2e/events-modules.spec.ts e2e/events-summary.spec.ts e2e/events-info.spec.ts e2e/events-tickets.spec.ts e2e/events-floor-plan.spec.ts e2e/events-invitations.spec.ts e2e/events-vip-tables.spec.ts e2e/events-orders.spec.ts e2e/events-staff-qr.spec.ts e2e/events-drinks.spec.ts e2e/events-analytics.spec.ts e2e/events-comps.spec.ts e2e/events-payments.spec.ts",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -15,6 +18,7 @@
     "react-router-dom": "^6.30.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/react": "^18.3.20",
     "@types/react-dom": "^18.3.6",
     "@vitejs/plugin-react": "^4.4.1",

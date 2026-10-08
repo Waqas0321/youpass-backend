@@ -12,8 +12,6 @@ import { EventInfoField } from '../components/event-info/EventInfoField';
 import {
   buildEventInfoPayload,
   createEventInfoId,
-  DEFAULT_EVENT_SOCIAL_LINKS,
-  DEFAULT_EVENT_SPONSORS,
   DESCRIPTION_MAX,
   EMPTY_EVENT_FORM,
   eventToFormState,
@@ -124,14 +122,13 @@ export function EventInfoPage() {
     void (async () => {
       const typesResult = await adminApi.eventTypes();
       if (cancelled) return;
-      setCategories(typesResult.ok ? (typesResult.data ?? []) : []);
+      const baseTypes = typesResult.ok ? (typesResult.data ?? []) : [];
 
       if (isNew) {
-        setForm({ ...EMPTY_EVENT_FORM });
-        setAddressLine('');
-        setEndTime('05:00');
-        setSponsors(DEFAULT_EVENT_SPONSORS);
-        setSocialLinks(DEFAULT_EVENT_SOCIAL_LINKS);
+        // Only load categories — do not reset form/sponsors here.
+        // Resetting after eventTypes resolves races with user input (and E2E fills)
+        // and wipes title/description that were already typed.
+        setCategories(baseTypes);
         setLoading(false);
         return;
       }
@@ -140,6 +137,7 @@ export function EventInfoPage() {
       if (cancelled) return;
 
       if (!eventsResult.ok) {
+        setCategories(baseTypes);
         setLoading(false);
         setError(eventsResult.error ?? t('eventInfo.loadError'));
         return;
@@ -147,10 +145,27 @@ export function EventInfoPage() {
 
       const matched = eventsResult.data?.events.find((item) => item.id === eventId) ?? null;
       if (!matched) {
+        setCategories(baseTypes);
         setLoading(false);
         setError(t('eventInfo.notFound'));
         return;
       }
+
+      // Keep legacy/orphan event types selectable (e.g. seeded "bar").
+      const currentType = matched.event_type;
+      const mergedTypes =
+        currentType && !baseTypes.some((item) => item.slug === currentType.slug)
+          ? [
+              {
+                id: currentType.id,
+                slug: currentType.slug,
+                name: currentType.name,
+                icon: currentType.icon,
+              },
+              ...baseTypes,
+            ]
+          : baseTypes;
+      setCategories(mergedTypes);
 
       const state = eventToFormState(matched);
       setEvent(matched);
@@ -341,6 +356,8 @@ export function EventInfoPage() {
   }
 
   const isPublished = form.status === 'published';
+  // Avoid flashing Publish on published events while the event payload loads.
+  const statusReady = isNew || (!loading && Boolean(event));
   const headerActions = (
     <div className="event-info__toolbar-actions">
       <button type="button" className="event-info__action event-info__action--ghost" onClick={onCancel}>
@@ -349,33 +366,35 @@ export function EventInfoPage() {
       <button
         type="button"
         className="event-info__action event-info__action--outline"
-        disabled={saving || Boolean(uploading)}
+        disabled={saving || Boolean(uploading) || (!isNew && loading)}
         onClick={() => void onSave()}
       >
         <IconEdit />
         {saving ? t('eventInfo.saving') : t('eventInfo.saveChanges')}
       </button>
-      {isPublished ? (
-        <button
-          type="button"
-          className="event-info__action event-info__action--outline"
-          disabled={saving || Boolean(uploading)}
-          onClick={() => void persistEvent('draft')}
-        >
-          <IconPause />
-          {t('eventInfo.unpublishEvent')}
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="event-info__action event-info__action--primary"
-          disabled={saving || Boolean(uploading)}
-          onClick={() => void persistEvent('published')}
-        >
-          <IconZap />
-          {t('eventInfo.publishEvent')}
-        </button>
-      )}
+      {statusReady ? (
+        isPublished ? (
+          <button
+            type="button"
+            className="event-info__action event-info__action--outline"
+            disabled={saving || Boolean(uploading)}
+            onClick={() => void persistEvent('draft')}
+          >
+            <IconPause />
+            {t('eventInfo.unpublishEvent')}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="event-info__action event-info__action--primary"
+            disabled={saving || Boolean(uploading)}
+            onClick={() => void persistEvent('published')}
+          >
+            <IconZap />
+            {t('eventInfo.publishEvent')}
+          </button>
+        )
+      ) : null}
     </div>
   );
 

@@ -9,6 +9,8 @@ export type MetaWhatsAppTemplateSendParams = {
   templateName: string;
   languageCode: string;
   bodyParameters?: string[];
+  /** Dynamic suffix for a template URL button (index 0), e.g. claim token. */
+  urlButtonParameter?: string;
   /** Authentication OTP templates require body + copy_code button components. */
   authenticationOtpCode?: string;
 };
@@ -53,6 +55,8 @@ export async function sendMetaWhatsAppTemplate(
   let components: Array<Record<string, unknown>> | undefined;
   if (params.authenticationOtpCode) {
     const code = params.authenticationOtpCode;
+    // AUTHENTICATION templates created via Graph API often expose a URL
+    // "Copy code" button (otp{{1}}), not legacy copy_code/coupon_code.
     components = [
       {
         type: 'body',
@@ -60,21 +64,33 @@ export async function sendMetaWhatsAppTemplate(
       },
       {
         type: 'button',
-        sub_type: 'copy_code',
+        sub_type: 'url',
         index: '0',
-        parameters: [{ type: 'coupon_code', coupon_code: code }],
+        parameters: [{ type: 'text', text: code }],
       },
     ];
-  } else if (params.bodyParameters && params.bodyParameters.length > 0) {
-    components = [
-      {
+  } else if (
+    (params.bodyParameters && params.bodyParameters.length > 0) ||
+    params.urlButtonParameter
+  ) {
+    components = [];
+    if (params.bodyParameters && params.bodyParameters.length > 0) {
+      components.push({
         type: 'body',
         parameters: params.bodyParameters.map((text) => ({
           type: 'text',
           text,
         })),
-      },
-    ];
+      });
+    }
+    if (params.urlButtonParameter) {
+      components.push({
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [{ type: 'text', text: params.urlButtonParameter }],
+      });
+    }
   }
 
   const body = {

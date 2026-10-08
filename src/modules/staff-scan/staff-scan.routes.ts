@@ -3,7 +3,11 @@ import { validate } from '../../common/middleware/validate.js';
 import { authenticateStaff } from '../../common/middleware/authenticate-staff.js';
 import { requireStaffPermission } from '../../common/middleware/require-staff-permission.js';
 import { staffScanController } from './staff-scan.controller.js';
-import { staffScanQrSchema, staffScanRecentQuerySchema } from './staff-scan.validators.js';
+import {
+  staffScanQrSchema,
+  staffScanRecentQuerySchema,
+  staffScanSyncSchema,
+} from './staff-scan.validators.js';
 
 export const staffScanRouter = Router();
 
@@ -35,4 +39,19 @@ staffScanRouter.post(
   requireStaffPermission('scan_products', 'bar_supervisor', 'general_admin'),
   validate(staffScanQrSchema),
   staffScanController.scanProduct,
+);
+
+/** M10 — batch sync of HMAC-signed offline scans. */
+staffScanRouter.post(
+  '/sync',
+  authenticateStaff,
+  requireStaffPermission(
+    'scan_tickets',
+    'scan_products',
+    'tickets_supervisor',
+    'bar_supervisor',
+    'general_admin',
+  ),
+  validate(staffScanSyncSchema),
+  staffScanController.syncOffline,
 );

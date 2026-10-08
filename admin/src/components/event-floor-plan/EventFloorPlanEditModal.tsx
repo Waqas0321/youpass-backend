@@ -136,11 +136,13 @@ export function EventFloorPlanEditModal({ open, eventId, onClose, onSaved }: Pro
     >
       <p className="event-floor-plan-modal__description">{t('eventFloorPlan.editModal.description')}</p>
 
-      <label
+      <button
+        type="button"
         className={`event-floor-plan-modal__dropzone${dragActive ? ' event-floor-plan-modal__dropzone--active' : ''}${selectedFile ? ' event-floor-plan-modal__dropzone--selected' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onClick={() => inputRef.current?.click()}
       >
         <span className="event-floor-plan-modal__dropzone-icon" aria-hidden>
           <IconUpload />
@@ -151,14 +153,14 @@ export function EventFloorPlanEditModal({ open, eventId, onClose, onSaved }: Pro
         ) : (
           <span>{t('eventFloorPlan.editModal.dropHint')}</span>
         )}
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPTED_TYPES.join(',')}
-          hidden
-          onChange={handleInputChange}
-        />
-      </label>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={ACCEPTED_TYPES.join(',')}
+        hidden
+        onChange={handleInputChange}
+      />
 
       <p className="event-floor-plan-modal__formats">{t('eventFloorPlan.editModal.formats')}</p>
     </Modal>

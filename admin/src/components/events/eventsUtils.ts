@@ -5,12 +5,15 @@ export type EventLifecycleFilter = 'all' | 'active' | 'upcoming' | 'finished' | 
 const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const UPCOMING_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
-export function eventDisplayBadge(
-  event: AdminEvent,
-  now = new Date(),
-): 'active' | 'upcoming' | 'draft' | null {
+export type EventDisplayBadge = 'active' | 'upcoming' | 'draft' | 'finished';
+
+export function eventDisplayBadge(event: AdminEvent, now = new Date()): EventDisplayBadge {
   if (event.status === 'draft') {
     return 'draft';
+  }
+
+  if (event.status === 'cancelled' || matchesLifecycleFilter(event, 'finished', now)) {
+    return 'finished';
   }
 
   if (matchesLifecycleFilter(event, 'active', now)) {
@@ -21,7 +24,7 @@ export function eventDisplayBadge(
     return 'upcoming';
   }
 
-  return null;
+  return 'finished';
 }
 
 const EVENT_FINISHED_WINDOW_MS = 24 * 60 * 60 * 1000;

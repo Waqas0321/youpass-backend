@@ -9,6 +9,12 @@ coverage/
 .prisma/
 .vercel
 
+# Playwright
+admin/playwright-report/
+admin/test-results/
+admin/e2e/.auth/
+admin/blob-report/
+
 # Local admin env (do not commit)
 admin/.env.development
 admin/.env.production

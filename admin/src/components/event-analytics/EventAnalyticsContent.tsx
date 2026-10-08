@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { adminApi, type AdminEvent, type AdminEventDashboard, type DashboardSalesPeriod } from '../../api/client';
+import { eventDisplayBadge } from '../events/eventsUtils';
 import { buildEventAnalyticsView, type EventAnalyticsView } from './buildEventAnalyticsView';
 import { EventAnalyticsBehaviorGrid } from './EventAnalyticsBehaviorGrid';
 import { EventAnalyticsDonutPanel } from './EventAnalyticsDonutPanel';
@@ -70,6 +71,17 @@ export function EventAnalyticsContent({ eventId, event: eventProp = null, onAnal
   useEffect(() => {
     setEvent(eventProp);
   }, [eventProp]);
+
+  // Finished events have no "today" activity — default the filter to all-time.
+  useEffect(() => {
+    setPeriod('today');
+  }, [eventId]);
+
+  useEffect(() => {
+    if (event && eventDisplayBadge(event) === 'finished') {
+      setPeriod('all_time');
+    }
+  }, [event]);
 
   useEffect(() => {
     let cancelled = false;

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import type { DashboardSalesPeriod } from '../api/client';
 import { EventAnalyticsContent } from '../components/event-analytics/EventAnalyticsContent';
@@ -20,6 +20,7 @@ export function EventAnalyticsPage() {
   const analyticsRef = useRef<EventAnalyticsView | null>(null);
   const periodRef = useRef<DashboardSalesPeriod>('today');
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState<'success' | 'error' | 'info'>('success');
   const [exportModal, setExportModal] = useState<{
     open: boolean;
     format: AnalyticsExportFormat;
@@ -27,6 +28,14 @@ export function EventAnalyticsPage() {
     open: false,
     format: 'excel',
   });
+
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
 
   const handleAnalyticsChange = useCallback(
     (view: EventAnalyticsView | null, period: DashboardSalesPeriod) => {
@@ -47,6 +56,7 @@ export function EventAnalyticsPage() {
   function handleExportReport(reportId: AnalyticsExportReportId, format: AnalyticsExportFormat) {
     const view = analyticsRef.current;
     if (!view) {
+      setMessageTone('error');
       setMessage(t('eventAnalytics.exportUnavailable'));
       closeExportModal();
       return;
@@ -54,6 +64,7 @@ export function EventAnalyticsPage() {
 
     downloadAnalyticsReport(view, reportId, format, periodRef.current);
     closeExportModal();
+    setMessageTone('success');
     setMessage(t('eventAnalytics.exportSuccess'));
   }
 
@@ -73,7 +84,7 @@ export function EventAnalyticsPage() {
         loadingLabel={t('eventAnalytics.loading')}
         notFoundLabel={t('eventAnalytics.noEventData')}
       >
-        {message ? <Alert tone="info">{message}</Alert> : null}
+        {message ? <Alert tone={messageTone}>{message}</Alert> : null}
         <EventAnalyticsContent eventId={eventId} onAnalyticsChange={handleAnalyticsChange} />
       </EventWorkspacePage>
 

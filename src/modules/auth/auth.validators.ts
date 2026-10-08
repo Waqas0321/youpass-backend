@@ -32,6 +32,21 @@ export const loginSchema = recaptchaTokenSchema.extend({
   code: z.string().length(6).regex(/^\d{6}$/),
 });
 
+function normalizeRegisterBirthdate(raw: string): string {
+  const value = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  if (!match) {
+    throw new Error('INVALID_BIRTHDATE_FORMAT');
+  }
+
+  const [, dd, mm, yyyy] = match;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export const registerSchema = recaptchaTokenSchema.extend({
   phone: z.string().min(6).max(20),
   country_code: z.string().min(2).max(5),
@@ -39,8 +54,25 @@ export const registerSchema = recaptchaTokenSchema.extend({
   full_name: z.string().min(2).max(200),
   rut_or_passport: z.string().min(3).max(50),
   email: z.string().email().max(255),
-  birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
-  gender: z.enum(['male', 'female', 'other', 'prefer_not_to_say']),
+  // Accept DD/MM/YYYY (UI) or YYYY-MM-DD (API); normalize to YYYY-MM-DD.
+  birthdate: z
+    .string()
+    .transform((value, ctx) => {
+      try {
+        return normalizeRegisterBirthdate(value);
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Use DD/MM/YYYY or YYYY-MM-DD format',
+        });
+        return z.NEVER;
+      }
+    })
+    .refine((value) => /^\d{4}-\d{2}-\d{2}$/.test(value), {
+      message: 'Use DD/MM/YYYY or YYYY-MM-DD format',
+    }),
+  gender: z.enum(['male', 'female', 'other']),
+  // Kept optional for backward compatibility; registration UI no longer collects it.
   instagram_username: z.string().max(100).optional(),
   preferred_language: z.enum(['es', 'pt', 'en']).optional(),
   accept_terms: z.literal(true, {

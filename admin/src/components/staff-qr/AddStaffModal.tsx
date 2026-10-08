@@ -164,6 +164,7 @@ export function AddStaffModal({
                 value={form.phone}
                 onChange={(phone) => setForm((current) => ({ ...current, phone }))}
                 placeholder={t('staffQr.phonePlaceholder')}
+                inputProps={{ 'aria-label': t('staffQr.staffPhone') }}
                 className="staff-qr-phone-field__input"
                 inputClassName="staff-qr-phone-field__number"
                 countrySelectorStyleProps={{
@@ -188,6 +189,7 @@ export function AddStaffModal({
               className="staff-qr-add-form__select-full"
               value={form.role_id}
               required
+              aria-label={t('staffQr.staffRole')}
               onChange={(event) =>
                 setForm((current) => ({ ...current, role_id: event.target.value }))
               }
@@ -214,6 +216,7 @@ export function AddStaffModal({
               <select
                 value={form.zone}
                 required
+                aria-label={t('staffQr.staffZone')}
                 onChange={(event) => setForm((current) => ({ ...current, zone: event.target.value }))}
               >
                 <option value="" disabled>

@@ -16,10 +16,10 @@ export async function parseAndValidatePhone(
   countryCode: string,
 ): Promise<ParsedPhone> {
   const country = await prisma.country.findFirst({
-    where: { code: countryCode.toUpperCase(), isActive: true },
+    where: { code: countryCode.toUpperCase() },
   });
 
-  if (!country) {
+  if (!country?.isActive) {
     throw new AppError(
       400,
       AUTH_ERROR_CODES.UNSUPPORTED_COUNTRY,

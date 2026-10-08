@@ -93,19 +93,49 @@ export function EventCompsTable({
                 </td>
                 <td>
                   <div className="event-comps-actions">
-                    <button type="button" className="event-comps-actions__btn event-comps-actions__btn--send" onClick={() => onSend(comp)}>
+                    <button
+                      type="button"
+                      className="event-comps-actions__btn event-comps-actions__btn--send"
+                      aria-label={t('eventComps.actions.send')}
+                      title={t('eventComps.actions.send')}
+                      onClick={() => onSend(comp)}
+                    >
                       <IconSend />
                     </button>
-                    <button type="button" className="event-comps-actions__btn event-comps-actions__btn--view" onClick={() => onView(comp)}>
+                    <button
+                      type="button"
+                      className="event-comps-actions__btn event-comps-actions__btn--view"
+                      aria-label={t('eventComps.actions.view')}
+                      title={t('eventComps.actions.view')}
+                      onClick={() => onView(comp)}
+                    >
                       <IconEye />
                     </button>
-                    <button type="button" className="event-comps-actions__btn event-comps-actions__btn--cancel" onClick={() => onCancel(comp)}>
+                    <button
+                      type="button"
+                      className="event-comps-actions__btn event-comps-actions__btn--cancel"
+                      aria-label={t('eventComps.actions.invalidate')}
+                      title={t('eventComps.actions.invalidate')}
+                      onClick={() => onCancel(comp)}
+                    >
                       <IconX />
                     </button>
-                    <button type="button" className="event-comps-actions__btn event-comps-actions__btn--edit" onClick={() => onEdit(comp)}>
+                    <button
+                      type="button"
+                      className="event-comps-actions__btn event-comps-actions__btn--edit"
+                      aria-label={t('eventComps.actions.edit')}
+                      title={t('eventComps.actions.edit')}
+                      onClick={() => onEdit(comp)}
+                    >
                       <IconEdit />
                     </button>
-                    <button type="button" className="event-comps-actions__btn event-comps-actions__btn--delete" onClick={() => onDelete(comp)}>
+                    <button
+                      type="button"
+                      className="event-comps-actions__btn event-comps-actions__btn--delete"
+                      aria-label={t('eventComps.actions.delete')}
+                      title={t('eventComps.actions.delete')}
+                      onClick={() => onDelete(comp)}
+                    >
                       <IconTrash />
                     </button>
                   </div>

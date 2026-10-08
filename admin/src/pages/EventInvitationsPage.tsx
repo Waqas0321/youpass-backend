@@ -120,6 +120,14 @@ export function EventInvitationsPage() {
   }, [search]);
 
   useEffect(() => {
+    if (!message) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
     setPage(1);
   }, [debouncedSearch, activeList, statusFilters, sortDirection]);
 
@@ -137,21 +145,41 @@ export function EventInvitationsPage() {
         return;
       }
 
-      if (producersResult.ok) {
-        const producers = producersResult.data?.producers ?? [];
-        const resolvedProducerId =
-          producerId || session?.producerId || (producers[0] as Producer | undefined)?.id || '';
-        if (resolvedProducerId && resolvedProducerId !== producerId) {
-          setProducerId(resolvedProducerId);
-        }
-      }
+      const producers = producersResult.ok
+        ? (producersResult.data?.producers ?? [])
+        : [];
+      const loadedEvents = eventsResult.ok
+        ? (eventsResult.data?.events ?? [])
+        : [];
 
       if (usersResult.ok) {
         setUsers(usersResult.data?.users ?? []);
       }
 
       if (eventsResult.ok) {
-        setEvents(eventsResult.data?.events ?? []);
+        setEvents(loadedEvents);
+      }
+
+      // Bind invitations API to this event's producer (by name), not the first
+      // producer in the admin list — otherwise the table stays empty.
+      const eventProducerName = loadedEvents
+        .find((event) => event.id === eventId)
+        ?.producer_name?.trim();
+      const matchedProducer = eventProducerName
+        ? producers.find(
+            (producer) =>
+              producer.name.trim().toLowerCase() ===
+              eventProducerName.toLowerCase(),
+          )
+        : undefined;
+      const resolvedProducerId =
+        matchedProducer?.id ||
+        session?.producerId ||
+        (producers[0] as Producer | undefined)?.id ||
+        '';
+
+      if (resolvedProducerId && resolvedProducerId !== producerId) {
+        setProducerId(resolvedProducerId);
       }
     }
 
@@ -160,7 +188,7 @@ export function EventInvitationsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [eventId]);
 
   async function loadInvitations() {
     if (!eventId) {
@@ -243,6 +271,10 @@ export function EventInvitationsPage() {
   const from = filteredInvitations.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const to = Math.min(page * PAGE_SIZE, filteredInvitations.length);
   const pageNumbers = visiblePages(page, totalPages);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
 
   function toggleAll(checked: boolean) {
     if (!checked) {
@@ -531,42 +563,50 @@ export function EventInvitationsPage() {
                 })}
               </p>
               <div className="event-invitations-pagination__controls">
-                <button
-                  type="button"
-                  className="outline-btn outline-btn--sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                >
-                  <IconChevronLeft />
-                </button>
-                {pageNumbers.map((number, index) => {
-                  const prev = pageNumbers[index - 1];
-                  const gap = prev !== undefined && number - prev > 1;
-                  return (
-                    <span key={number} className="event-invitations-pagination__group">
-                      {gap ? <span className="event-invitations-pagination__ellipsis">…</span> : null}
-                      <button
-                        type="button"
-                        className={
-                          number === page
-                            ? 'event-invitations-pagination__page event-invitations-pagination__page--active'
-                            : 'event-invitations-pagination__page'
-                        }
-                        onClick={() => setPage(number)}
-                      >
-                        {number}
-                      </button>
-                    </span>
-                  );
-                })}
-                <button
-                  type="button"
-                  className="outline-btn outline-btn--sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                >
-                  <IconChevronRight />
-                </button>
+                {totalPages > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      className="outline-btn outline-btn--sm"
+                      disabled={page <= 1}
+                      aria-label={t('eventInvitations.previousPage')}
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    >
+                      <IconChevronLeft />
+                    </button>
+                    {pageNumbers.map((number, index) => {
+                      const prev = pageNumbers[index - 1];
+                      const gap = prev !== undefined && number - prev > 1;
+                      return (
+                        <span key={number} className="event-invitations-pagination__group">
+                          {gap ? (
+                            <span className="event-invitations-pagination__ellipsis">…</span>
+                          ) : null}
+                          <button
+                            type="button"
+                            className={
+                              number === page
+                                ? 'event-invitations-pagination__page event-invitations-pagination__page--active'
+                                : 'event-invitations-pagination__page'
+                            }
+                            onClick={() => setPage(number)}
+                          >
+                            {number}
+                          </button>
+                        </span>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="outline-btn outline-btn--sm"
+                      disabled={page >= totalPages}
+                      aria-label={t('eventInvitations.nextPage')}
+                      onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                    >
+                      <IconChevronRight />
+                    </button>
+                  </>
+                ) : null}
                 <label className="event-invitations-pagination__size">
                   <span>{t('eventInvitations.show')}</span>
                   <select value={PAGE_SIZE} disabled aria-label={t('eventInvitations.show')}>

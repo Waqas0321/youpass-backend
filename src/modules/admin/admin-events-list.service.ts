@@ -162,13 +162,19 @@ export async function loadAdminEventListStats(eventIds: string[]) {
 
     const stockTotal = capacity?._sum.stockTotal;
     const stockRemaining = capacity?._sum.stockRemaining;
+    const ticketsSold = tickets?._sum.quantity ?? 0;
+    // Keep remaining capacity aligned with tickets sold when offering stock lags.
+    const capacityAvailable =
+      stockTotal != null
+        ? Math.max(stockTotal - ticketsSold, 0)
+        : (stockRemaining ?? null);
 
     statsByEventId.set(eventId, {
-      tickets_sold: tickets?._sum.quantity ?? 0,
+      tickets_sold: ticketsSold,
       total_revenue_clp: totalRevenue,
       revenue_delta_pct: percentDelta(todayRevenue, yesterdayRevenue),
       capacity_total: stockTotal ?? null,
-      capacity_available: stockRemaining ?? null,
+      capacity_available: capacityAvailable,
       ticket_order_count: ticketCountByEvent.get(eventId) ?? 0,
       drink_order_count: drinkCountByEvent.get(eventId) ?? 0,
     });

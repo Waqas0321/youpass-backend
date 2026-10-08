@@ -19,6 +19,8 @@ export type EventTicketRow = {
   saleEnd: string | null;
 };
 
+export const TICKETS_PAGE_SIZE = 10;
+
 const TICKET_COLORS = ['#F2B705', '#7B5FF2', '#3B82F6', '#22C55E', '#F97316', '#EC4899', '#6B7280'];
 
 const TYPE_SUBTITLE_KEYS: Record<AdminTicketOffering['type'], string> = {

@@ -1,8 +1,14 @@
 import { env } from '../../config/env.js';
 import {
+  hasMetaWhatsAppCredentials,
+  isMetaWhatsAppProvider,
+  metaOtpTemplateLanguage,
+} from '../../config/meta-whatsapp.config.js';
+import {
   assertProductionInvitationTemplateConfigured,
   invitationContentSid as resolveInvitationContentSid,
 } from '../../config/twilio-whatsapp.config.js';
+import { sendMetaWhatsAppTemplate } from './meta-whatsapp.service.js';
 import {
   isWhatsAppSandboxSender,
   pollTwilioMessageDelivery,
@@ -118,19 +124,76 @@ class TwilioInvitationDeliveryService implements InvitationDeliveryService {
   }
 }
 
+/** Suffix after `…/claim/` for Meta URL-button templates. */
+export function claimTokenFromUrl(claimUrl: string): string {
+  const trimmed = claimUrl.trim().replace(/\/+$/, '');
+  const marker = '/claim/';
+  const idx = trimmed.toLowerCase().lastIndexOf(marker);
+  if (idx >= 0) {
+    return trimmed.slice(idx + marker.length);
+  }
+  const slash = trimmed.lastIndexOf('/');
+  return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
+}
+
+class MetaInvitationDeliveryService implements InvitationDeliveryService {
+  async sendGuestInvitation(params: GuestInvitationMessageParams): Promise<GuestInvitationSendResult> {
+    const templateName = env.WHATSAPP_INVITATION_TEMPLATE_NAME.trim();
+    if (!templateName) {
+      throw new Error('WHATSAPP_INVITATION_TEMPLATE_NAME is required for Meta invitation WhatsApp.');
+    }
+
+    const languageCode =
+      env.WHATSAPP_INVITATION_TEMPLATE_LANGUAGE.trim() || metaOtpTemplateLanguage('en');
+
+    const result = await sendMetaWhatsAppTemplate({
+      toE164: params.guestPhone,
+      templateName,
+      languageCode,
+      bodyParameters: [params.guestName, params.inviterName, params.eventTitle],
+      urlButtonParameter: claimTokenFromUrl(params.claimUrl),
+    });
+
+    return {
+      delivery_mode: 'live',
+      whatsapp_sent: true,
+      twilio_message_sid: result.messageId,
+      twilio_status: result.status ?? 'accepted',
+      delivery_via: 'production',
+      delivery_note: 'Delivered via Meta Cloud API',
+    };
+  }
+}
+
+function useLiveInvitationWhatsApp(): boolean {
+  if (isMetaWhatsAppProvider()) {
+    return !env.WHATSAPP_MOCK && hasMetaWhatsAppCredentials();
+  }
+  return useLiveTwilioWhatsApp();
+}
+
+function createInvitationDeliveryService(): InvitationDeliveryService {
+  if (!useLiveInvitationWhatsApp()) {
+    return new MockInvitationDeliveryService();
+  }
+  if (isMetaWhatsAppProvider()) {
+    return new MetaInvitationDeliveryService();
+  }
+  return new TwilioInvitationDeliveryService();
+}
+
 export function invitationDeliveryMeta(
   sendResult?: GuestInvitationSendResult,
 ): GuestInvitationSendResult {
   if (sendResult) return sendResult;
   return {
-    delivery_mode: useLiveTwilioWhatsApp() ? 'live' : 'mock',
-    whatsapp_sent: useLiveTwilioWhatsApp(),
+    delivery_mode: useLiveInvitationWhatsApp() ? 'live' : 'mock',
+    whatsapp_sent: useLiveInvitationWhatsApp(),
   };
 }
 
-export const invitationDeliveryService: InvitationDeliveryService = useLiveTwilioWhatsApp()
-  ? new TwilioInvitationDeliveryService()
-  : new MockInvitationDeliveryService();
+export const invitationDeliveryService: InvitationDeliveryService =
+  createInvitationDeliveryService();
 
 export function buildClaimUrl(claimToken: string): string {
   const base = env.APP_CLAIM_BASE_URL.replace(/\/$/, '');

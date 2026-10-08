@@ -17,7 +17,6 @@ function stepState(index: number, activeStep: number, completed: boolean) {
   const stepNumber = index + 1;
   if (completed) return 'done';
   if (stepNumber === activeStep) return 'current';
-  if (stepNumber < activeStep) return 'done';
   return 'upcoming';
 }
 

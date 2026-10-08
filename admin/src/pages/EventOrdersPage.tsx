@@ -53,6 +53,14 @@ export function EventOrdersPage() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
+    if (!message) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
@@ -181,7 +189,15 @@ export function EventOrdersPage() {
   }
 
   async function runAction(orderId: string, action: 'reissue' | 'refund' | 'invalidate') {
+    if (action === 'refund' && !window.confirm(t('orders.refundConfirm'))) {
+      return;
+    }
+    if (action === 'invalidate' && !window.confirm(t('orders.invalidateConfirm'))) {
+      return;
+    }
+
     setActionLoading(`${action}:${orderId}`);
+    setError('');
     const result =
       action === 'reissue'
         ? await adminApi.reissueEventDrinkOrderQr(eventId, orderId)
@@ -255,46 +271,50 @@ export function EventOrdersPage() {
             )}
 
             <footer className="event-orders-pagination">
-            <p>
-              {t('orders.pagination', {
-                from: pagination.from,
-                to: pagination.to,
-                total: pagination.total,
-              })}
-            </p>
-            <div className="event-orders-pagination__controls">
-              <button
-                type="button"
-                className="outline-btn outline-btn--sm"
-                disabled={page <= 1}
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-              >
-                <IconChevronLeft />
-              </button>
-              {pageNumbers.map((number) => (
-                <button
-                  key={number}
-                  type="button"
-                  className={
-                    number === page
-                      ? 'event-orders-pagination__page event-orders-pagination__page--active'
-                      : 'event-orders-pagination__page'
-                  }
-                  onClick={() => setPage(number)}
-                >
-                  {number}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="outline-btn outline-btn--sm"
-                disabled={page >= pagination.total_pages}
-                onClick={() => setPage((current) => Math.min(pagination.total_pages, current + 1))}
-              >
-                <IconChevronRight />
-              </button>
-            </div>
-          </footer>
+              <p>
+                {t('orders.pagination', {
+                  from: String(pagination.from),
+                  to: String(pagination.to),
+                  total: String(pagination.total),
+                })}
+              </p>
+              {pagination.total_pages > 1 ? (
+                <div className="event-orders-pagination__controls">
+                  <button
+                    type="button"
+                    className="outline-btn outline-btn--sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    aria-label={t('orders.previousPage')}
+                  >
+                    <IconChevronLeft />
+                  </button>
+                  {pageNumbers.map((number) => (
+                    <button
+                      key={number}
+                      type="button"
+                      className={
+                        number === page
+                          ? 'event-orders-pagination__page event-orders-pagination__page--active'
+                          : 'event-orders-pagination__page'
+                      }
+                      onClick={() => setPage(number)}
+                    >
+                      {number}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="outline-btn outline-btn--sm"
+                    disabled={page >= pagination.total_pages}
+                    onClick={() => setPage((current) => Math.min(pagination.total_pages, current + 1))}
+                    aria-label={t('orders.nextPage')}
+                  >
+                    <IconChevronRight />
+                  </button>
+                </div>
+              ) : null}
+            </footer>
           </div>
         </div>
       </EventWorkspacePage>

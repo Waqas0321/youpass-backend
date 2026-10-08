@@ -51,13 +51,15 @@ export function getRegistrationPolicy() {
       'email',
       'accept_terms',
     ],
-    optional_fields: ['instagram_username', 'preferred_language', 'profile_photo'],
+    optional_fields: ['preferred_language', 'profile_photo'],
     profile_photo_after_register: true,
     min_age_years: env.MIN_AGE_YEARS,
+    birthdate_format: 'DD/MM/YYYY',
+    birthdate_api_format: 'YYYY-MM-DD',
     gender_options: GENDER_OPTIONS,
     social_login_enabled: false,
-    terms_url: 'https://youpass.app/terms',
-    privacy_url: 'https://youpass.app/privacy',
+    terms_url: 'https://youpass-backend-two.vercel.app/terms',
+    privacy_url: 'https://youpass-backend-two.vercel.app/privacy',
   };
 }
 

@@ -29,6 +29,12 @@ import {
 } from '../../common/constants/auth-messages.js';
 import { otpDeliveryService, whatsAppReadyMessage, whatsAppUnavailableMessage } from './otp-delivery.service.js';
 import { linkPendingInvitationsByPhone } from '../invitations/invitation-link.service.js';
+import {
+  assertPhoneAllowedForLogin,
+  getPlayReviewOtp,
+  isPlayReviewCustomerAuthEnabled,
+  isPlayReviewCustomerPhone,
+} from '../../common/services/play-review-auth.js';
 
 function isSessionEligibleAccountStatus(status: User['accountStatus']): boolean {
   return status === 'active' || status === 'pending_deletion';
@@ -99,7 +105,8 @@ async function assertNotBlocked(phone: string): Promise<void> {
 }
 
 async function resetFailedAttempts(phone: string): Promise<void> {
-  await prisma.authRateLimit.update({
+  // Play-review / first-time paths may never have created an AuthRateLimit row.
+  await prisma.authRateLimit.updateMany({
     where: { phone },
     data: { failedAttempts: 0, blockedUntil: null },
   });
@@ -181,14 +188,40 @@ async function verifyOtpCode(
   options?: { consume?: boolean },
 ): Promise<{ verified: true; authCodeId: string }> {
   const consume = options?.consume !== false;
-  await assertNotBlocked(e164);
+  const reviewOtp = getPlayReviewOtp();
+  const isReviewLogin =
+    isPlayReviewCustomerAuthEnabled() &&
+    isPlayReviewCustomerPhone(e164) &&
+    reviewOtp != null &&
+    code === reviewOtp;
+
+  if (!isReviewLogin) {
+    await assertNotBlocked(e164);
+  }
 
   // Only the latest OTP for this phone/purpose matters. Older unused expired
   // rows must not surface as CODE_EXPIRED after a newer code was verified.
-  const latest = await prisma.authCode.findFirst({
+  let latest = await prisma.authCode.findFirst({
     where: { phone: e164, purpose },
     orderBy: { createdAt: 'desc' },
   });
+
+  // Google Play review accounts: accept the fixed OTP even if "Send code"
+  // was skipped or the previous code was already consumed.
+  if (isReviewLogin && (!latest || latest.usedAt != null || latest.expiresAt <= new Date())) {
+    const codeHash = await hashOtp(reviewOtp);
+    latest = await prisma.authCode.create({
+      data: {
+        phone: e164,
+        codeHash,
+        purpose,
+        countryCode: _countryCode,
+        expiresAt: addMinutes(new Date(), 60 * 24 * 365),
+        sentVia: 'whatsapp',
+        whatsappTemplate: OTP_PURPOSE_LABELS[purpose],
+      },
+    });
+  }
 
   if (!latest) {
     const limit = await getOrCreateRateLimit(e164);
@@ -201,7 +234,7 @@ async function verifyOtpCode(
     });
   }
 
-  const isValid = await verifyOtp(code, latest.codeHash);
+  const isValid = isReviewLogin || (await verifyOtp(code, latest.codeHash));
 
   await prisma.authAttempt.create({
     data: {
@@ -228,7 +261,7 @@ async function verifyOtpCode(
   const isUsed = latest.usedAt != null;
   const isExpired = latest.expiresAt <= now;
 
-  if (isUsed) {
+  if (isUsed && !isReviewLogin) {
     // Create-account after OTP screen already verified this code.
     if (
       purpose === 'register' &&
@@ -242,7 +275,7 @@ async function verifyOtpCode(
     throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, codeExpiredMessage());
   }
 
-  if (isExpired) {
+  if (isExpired && !isReviewLogin) {
     throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, codeExpiredMessage());
   }
 
@@ -408,10 +441,14 @@ async function createAndSendOtp(
   expires_in_seconds: number;
   resend_available_in_seconds: number;
   phone_display: string;
-  dev_otp_code?: string;
 }> {
-  await assertNotBlocked(e164);
-  await assertResendAllowed(e164, isResend);
+  const isReviewPhone = isPlayReviewCustomerAuthEnabled() && isPlayReviewCustomerPhone(e164);
+  const reviewOtp = getPlayReviewOtp();
+
+  if (!isReviewPhone) {
+    await assertNotBlocked(e164);
+    await assertResendAllowed(e164, isResend);
+  }
 
   const existingUser = await prisma.user.findUnique({ where: { phone: e164 } });
 
@@ -420,9 +457,11 @@ async function createAndSendOtp(
   }
 
   const country = await prisma.country.findUnique({ where: { code: countryCode } });
-  const code = generateOtp(env.OTP_LENGTH);
+  const code = isReviewPhone && reviewOtp ? reviewOtp : generateOtp(env.OTP_LENGTH);
   const codeHash = await hashOtp(code);
-  const expiresAt = addMinutes(new Date(), env.OTP_TTL_MINUTES);
+  const expiresAt = isReviewPhone
+    ? addMinutes(new Date(), 60 * 24 * 365)
+    : addMinutes(new Date(), env.OTP_TTL_MINUTES);
 
   await invalidatePreviousCodes(e164, purpose);
 
@@ -441,37 +480,42 @@ async function createAndSendOtp(
     },
   });
 
-  const limit = await getOrCreateRateLimit(e164);
-  const now = new Date();
-  let resendCount = limit.resendCountHour;
-  let resetAt = limit.resendCountResetAt;
-  if (!resetAt || resetAt <= now) {
-    resendCount = 0;
-    resetAt = addMinutes(now, 60);
-  }
+  if (!isReviewPhone) {
+    const limit = await getOrCreateRateLimit(e164);
+    const now = new Date();
+    let resendCount = limit.resendCountHour;
+    let resetAt = limit.resendCountResetAt;
+    if (!resetAt || resetAt <= now) {
+      resendCount = 0;
+      resetAt = addMinutes(now, 60);
+    }
 
-  await prisma.authRateLimit.update({
-    where: { phone: e164 },
-    data: {
-      lastResendAt: now,
-      resendCountHour: isResend ? resendCount + 1 : resendCount,
-      resendCountResetAt: resetAt,
-    },
-  });
-
-  try {
-    await otpDeliveryService.sendOtp({
-      phone: e164,
-      purpose,
-      code,
-      languageCode: country?.languageCode,
+    await prisma.authRateLimit.update({
+      where: { phone: e164 },
+      data: {
+        lastResendAt: now,
+        resendCountHour: isResend ? resendCount + 1 : resendCount,
+        resendCountResetAt: resetAt,
+      },
     });
-  } catch (err) {
-    console.error('[OTP delivery failed]', err);
-    throw mapTwilioDeliveryError(err);
+
+    try {
+      await otpDeliveryService.sendOtp({
+        phone: e164,
+        purpose,
+        code,
+        languageCode: country?.languageCode,
+      });
+    } catch (err) {
+      console.error('[OTP delivery failed]', err);
+      throw mapTwilioDeliveryError(err);
+    }
+  } else {
+    console.log(`[Play Review OTP] phone=${e164} purpose=${purpose} (WhatsApp skipped)`);
   }
 
-  if (isWhatsAppDeliveryMock() || env.NODE_ENV === 'development') {
+  // Only log plaintext OTP in mock mode — never when live WhatsApp is delivering.
+  if (isWhatsAppDeliveryMock()) {
     console.log('');
     console.log('════════════════════════════════════════');
     console.log(`[DEV OTP] phone=${e164} purpose=${purpose} code=${code}`);
@@ -479,10 +523,10 @@ async function createAndSendOtp(
     console.log('');
   }
 
+  // Never return OTP codes in the API body. Codes are private (WhatsApp / console only).
   return {
     phone_display: formatPhoneDisplay(e164, countryCode),
     ...otpPolicyMeta(),
-    ...(isWhatsAppDeliveryMock() ? { dev_otp_code: code } : {}),
   };
 }
 
@@ -499,8 +543,12 @@ export const authService = {
     await verifyRecaptchaToken(input.recaptcha_token, 'send_code');
 
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     const country = await getActiveCountry(countryCode);
-    const whatsappAvailable = await otpDeliveryService.checkWhatsAppAvailable(e164);
+    const isReviewPhone = isPlayReviewCustomerAuthEnabled() && isPlayReviewCustomerPhone(e164);
+    const whatsappAvailable = isReviewPhone
+      ? true
+      : await otpDeliveryService.checkWhatsAppAvailable(e164);
     if (!whatsappAvailable) {
       throw new AppError(
         422,
@@ -514,7 +562,9 @@ export const authService = {
     const result = await createAndSendOtp(e164, countryCode, purpose, context, false);
     const channel = otpDeliveryService.getChannel();
     return {
-      message: `Code sent via ${otpChannelLabel(channel)}. ${whatsAppReadyMessage(country.languageCode)}`,
+      message: isReviewPhone
+        ? 'Private access ready. Enter the authorized access code.'
+        : `Code sent via ${otpChannelLabel(channel)}. ${whatsAppReadyMessage(country.languageCode)}`,
       phone: e164,
       purpose,
       ...(accountExists !== undefined ? { account_exists: accountExists } : {}),
@@ -536,8 +586,12 @@ export const authService = {
     await verifyRecaptchaToken(input.recaptcha_token, 'resend_code');
 
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     const country = await getActiveCountry(countryCode);
-    const whatsappAvailable = await otpDeliveryService.checkWhatsAppAvailable(e164);
+    const isReviewPhone = isPlayReviewCustomerAuthEnabled() && isPlayReviewCustomerPhone(e164);
+    const whatsappAvailable = isReviewPhone
+      ? true
+      : await otpDeliveryService.checkWhatsAppAvailable(e164);
     if (!whatsappAvailable) {
       throw new AppError(
         422,
@@ -551,7 +605,9 @@ export const authService = {
     const result = await createAndSendOtp(e164, countryCode, purpose, context, true);
     const channel = otpDeliveryService.getChannel();
     return {
-      message: `Code resent via ${otpChannelLabel(channel)}`,
+      message: isReviewPhone
+        ? 'Private access ready. Enter the authorized access code.'
+        : `Code resent via ${otpChannelLabel(channel)}`,
       phone: e164,
       purpose,
       ...(accountExists !== undefined ? { account_exists: accountExists } : {}),
@@ -563,6 +619,7 @@ export const authService = {
 
   async verifyCode(input: VerifyCodeInput, context?: OtpContext) {
     const { e164 } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     // Register consumes the OTP on /register after the details form.
     // Peek-verify here so the code stays valid while the user fills the form.
     await verifyOtpCode(
@@ -583,8 +640,12 @@ export const authService = {
 
   async checkWhatsApp(input: { phone: string; country_code: string }) {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     const country = await getActiveCountry(countryCode);
-    const available = await otpDeliveryService.checkWhatsAppAvailable(e164);
+    const isReviewPhone = isPlayReviewCustomerAuthEnabled() && isPlayReviewCustomerPhone(e164);
+    const available = isReviewPhone
+      ? true
+      : await otpDeliveryService.checkWhatsAppAvailable(e164);
     return {
       phone: e164,
       whatsapp_available: available,
@@ -592,9 +653,11 @@ export const authService = {
       delivery_channel: 'whatsapp',
       auth_channel: 'whatsapp_only',
       sms_enabled: false,
-      message: available
-        ? whatsAppReadyMessage(country.languageCode)
-        : whatsAppUnavailableMessage(country.languageCode),
+      message: isReviewPhone
+        ? 'Private access ready. Use the authorized access code.'
+        : available
+          ? whatsAppReadyMessage(country.languageCode)
+          : whatsAppUnavailableMessage(country.languageCode),
       message_key: available ? 'WHATSAPP_READY' : 'WHATSAPP_REQUIRED',
     };
   },
@@ -603,6 +666,7 @@ export const authService = {
     await verifyRecaptchaToken(input.recaptcha_token, 'login');
 
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     await verifyOtpCode(e164, countryCode, input.code, 'login', context);
 
     const user = await prisma.user.findUnique({ where: { phone: e164 } });
@@ -628,6 +692,7 @@ export const authService = {
     await verifyRecaptchaToken(input.recaptcha_token, 'register');
 
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     await verifyOtpCode(e164, countryCode, input.code, 'register', context);
 
     const existing = await prisma.user.findUnique({ where: { phone: e164 } });
@@ -656,8 +721,8 @@ export const authService = {
       data: {
         phone: e164,
         countryCode,
-        // Language follows the client/device preference — not phone country.
-        preferredLanguage: input.preferred_language ?? 'en',
+        // Default Spanish for Chile/LatAm; client may override.
+        preferredLanguage: input.preferred_language ?? 'es',
         fullName: input.full_name.trim(),
         rutOrPassport: input.rut_or_passport.trim(),
         email: input.email.toLowerCase().trim(),
@@ -712,7 +777,6 @@ export const authService = {
       channel,
       expires_in_seconds: result.expires_in_seconds,
       resend_available_in_seconds: result.resend_available_in_seconds,
-      ...(result.dev_otp_code ? { dev_otp_code: result.dev_otp_code } : {}),
     };
   },
 

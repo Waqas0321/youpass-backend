@@ -12,14 +12,19 @@ import {
 function resolveSaveStatus(
   editingTicket: EventTicketRow | null,
   asDraft: boolean,
+  showInApp: boolean,
 ): AdminTicketOfferingInput['status'] {
+  if (asDraft) {
+    return 'paused';
+  }
+  if (!showInApp) {
+    return 'closed';
+  }
   if (editingTicket) {
     if (editingTicket.backendStatus === 'paused') return 'paused';
-    if (editingTicket.backendStatus === 'closed') return 'closed';
     if (editingTicket.backendStatus === 'sold_out') return 'sold_out';
-    return 'active';
   }
-  return asDraft ? 'paused' : 'active';
+  return 'active';
 }
 
 export function useTicketForm(
@@ -75,7 +80,10 @@ export function useTicketForm(
       setSaving(true);
       setError('');
 
-      const payload = mapTicketFormToOfferingInput(form, resolveSaveStatus(editingTicket, asDraft));
+      const payload = mapTicketFormToOfferingInput(
+        form,
+        resolveSaveStatus(editingTicket, asDraft, form.showInApp),
+      );
 
       if (isEdit && editingTicket && payload.stock_total != null) {
         payload.stock_remaining = Math.max(payload.stock_total - editingTicket.sold, 0);

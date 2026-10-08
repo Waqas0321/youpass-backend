@@ -1,6 +1,7 @@
+import { useEffect, useMemo, useState } from 'react';
 import { IconEdit, IconEyeOff, IconPause, IconPlayCircle, IconTicket, IconTrash } from '../ui/Icons';
 import { useI18n } from '../../i18n/useI18n';
-import type { EventTicketRow, EventTicketStatus } from './eventTicketsData';
+import { TICKETS_PAGE_SIZE, type EventTicketRow, type EventTicketStatus } from './eventTicketsData';
 
 type Props = {
   tickets: EventTicketRow[];
@@ -47,6 +48,29 @@ function StatusBadge({ status }: { status: EventTicketStatus }) {
 
 export function EventTicketsTable({ tickets, onEdit, onPause, onHide, onDelete }: Props) {
   const { t, numberLocale, dateLocale } = useI18n();
+  const [page, setPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(tickets.length / TICKETS_PAGE_SIZE));
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * TICKETS_PAGE_SIZE;
+    return tickets.slice(start, start + TICKETS_PAGE_SIZE);
+  }, [page, tickets]);
+
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    for (let index = 1; index <= totalPages; index += 1) {
+      pages.push(index);
+    }
+    return pages;
+  }, [totalPages]);
+
+  const from = tickets.length === 0 ? 0 : (page - 1) * TICKETS_PAGE_SIZE + 1;
+  const to = Math.min(page * TICKETS_PAGE_SIZE, tickets.length);
 
   return (
     <div className="event-tickets__table-card">
@@ -72,7 +96,7 @@ export function EventTicketsTable({ tickets, onEdit, onPause, onHide, onDelete }
                 </td>
               </tr>
             ) : (
-              tickets.map((ticket) => {
+              pageRows.map((ticket) => {
                 const isPaused = ticket.backendStatus === 'paused';
                 const isHidden = ticket.backendStatus === 'closed';
                 const stockLabel =
@@ -177,22 +201,41 @@ export function EventTicketsTable({ tickets, onEdit, onPause, onHide, onDelete }
       <footer className="event-tickets__footer">
         <p>
           {t('eventTickets.pagination.showing', {
-            from: String(tickets.length ? 1 : 0),
-            to: String(tickets.length),
+            from: String(from),
+            to: String(to),
             total: String(tickets.length),
           })}
         </p>
-        <div className="event-tickets__pager" aria-hidden>
-          <button type="button" disabled>
-            ‹
-          </button>
-          <button type="button" className="is-active" disabled>
-            1
-          </button>
-          <button type="button" disabled>
-            ›
-          </button>
-        </div>
+        {totalPages > 1 ? (
+          <div className="event-tickets__pager">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              aria-label={t('eventTickets.pagination.prev')}
+            >
+              ‹
+            </button>
+            {pageNumbers.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                className={pageNumber === page ? 'is-active' : undefined}
+                onClick={() => setPage(pageNumber)}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              aria-label={t('eventTickets.pagination.next')}
+            >
+              ›
+            </button>
+          </div>
+        ) : null}
       </footer>
     </div>
   );

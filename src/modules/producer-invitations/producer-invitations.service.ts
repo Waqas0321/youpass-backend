@@ -401,7 +401,16 @@ export const producerInvitationsService = {
 
     await invitationReminderService.scheduleInvitationReminders(invitation, event);
 
-    await dispatchNewInvitationNotifications(invitation);
+    // Persist succeeds even if WhatsApp/email delivery fails (e.g. expired Meta token).
+    try {
+      await dispatchNewInvitationNotifications(invitation);
+    } catch (error) {
+      console.error('[producer-invite] notification failed after create', {
+        invitationId: invitation.id,
+        error: error instanceof Error ? error.message : error,
+      });
+    }
+
     await invitationAuditService.log({
       invitationId: invitation.id,
       actorType: 'producer',
@@ -857,7 +866,20 @@ export const producerInvitationsService = {
       );
     }
 
-    await dispatchNewInvitationNotifications(invitation);
+    try {
+      await dispatchNewInvitationNotifications(invitation);
+    } catch (error) {
+      console.error('[producer-invite] notification failed on resend', {
+        invitationId: invitation.id,
+        error: error instanceof Error ? error.message : error,
+      });
+      throw new AppError(
+        502,
+        'INVITATION_DELIVERY_FAILED',
+        'Invitation could not be delivered. Check WhatsApp configuration and try again.',
+      );
+    }
+
     await invitationAuditService.log({
       invitationId: invitation.id,
       actorType: 'producer',

@@ -30,7 +30,12 @@ type PhoneFieldProps = {
   onChange: (value: string) => void;
 };
 
-export function CompsPhoneField({ value, placeholder, onChange }: PhoneFieldProps) {
+export function CompsPhoneField({
+  value,
+  placeholder,
+  onChange,
+  ariaLabel,
+}: PhoneFieldProps & { ariaLabel?: string }) {
   return (
     <span className="event-comps-form-field__phone">
       <span className="event-comps-form-field__phone-prefix" aria-hidden="true">
@@ -43,6 +48,7 @@ export function CompsPhoneField({ value, placeholder, onChange }: PhoneFieldProp
         inputMode="tel"
         value={value}
         placeholder={placeholder}
+        aria-label={ariaLabel}
         onChange={(event) => onChange(event.target.value)}
       />
     </span>
@@ -63,13 +69,18 @@ export function CompsTypeSelect({
   onCreateType,
   placeholder,
   createLabel,
-}: TypeSelectProps) {
+  ariaLabel,
+}: TypeSelectProps & { ariaLabel?: string }) {
   const { t } = useI18n();
 
   return (
     <div className="event-comps-form-field__row">
       <label className="event-comps-form-field__select">
-        <select value={value} onChange={(event) => onChange(event.target.value as CompTypeId | '')}>
+        <select
+          value={value}
+          aria-label={ariaLabel}
+          onChange={(event) => onChange(event.target.value as CompTypeId | '')}
+        >
           <option value="">{placeholder}</option>
           {COMP_TYPES.map((option) => (
             <option key={option.id} value={option.id}>
@@ -93,13 +104,19 @@ type BenefitTextareaProps = {
   onChange: (value: string) => void;
 };
 
-export function CompsBenefitTextarea({ value, placeholder, onChange }: BenefitTextareaProps) {
+export function CompsBenefitTextarea({
+  value,
+  placeholder,
+  onChange,
+  ariaLabel,
+}: BenefitTextareaProps & { ariaLabel?: string }) {
   return (
     <div className="event-comps-form-field__textarea-wrap">
       <textarea
         value={value}
         maxLength={COMP_BENEFIT_MAX_LENGTH}
         placeholder={placeholder}
+        aria-label={ariaLabel}
         rows={4}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -195,10 +212,12 @@ export function CompsTextInput({
   value,
   placeholder,
   onChange,
+  ariaLabel,
 }: {
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
+  ariaLabel?: string;
 }) {
   return (
     <input
@@ -206,6 +225,7 @@ export function CompsTextInput({
       className="event-comps-form-field__input"
       value={value}
       placeholder={placeholder}
+      aria-label={ariaLabel}
       onChange={(event) => onChange(event.target.value)}
     />
   );
@@ -214,9 +234,11 @@ export function CompsTextInput({
 export function CompsDateInput({
   value,
   onChange,
+  ariaLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
+  ariaLabel?: string;
 }) {
   const { t } = useI18n();
 
@@ -227,6 +249,7 @@ export function CompsDateInput({
         type="date"
         className={`event-comps-form-field__date-input${value ? '' : ' is-empty'}`}
         value={value}
+        aria-label={ariaLabel}
         onChange={(event) => onChange(event.target.value)}
       />
       {!value ? (

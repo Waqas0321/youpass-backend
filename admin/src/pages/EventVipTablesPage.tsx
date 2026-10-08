@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { EventVipSetupFlow } from '../components/event-vip-setup/EventVipSetupFlow';
 import { EventVipTableCreateModal } from '../components/event-vip-tables/EventVipTableCreateModal';
@@ -9,16 +9,19 @@ import { EventWorkspacePage } from '../components/event-workspace/EventWorkspace
 import { useEventWorkspaceEvent } from '../components/event-workspace/useEventWorkspaceEvent';
 import { useEventVipSetupStatus } from '../hooks/useEventVipSetupStatus';
 import { useEventVipTables } from '../hooks/useEventVipTables';
+import { Alert } from '../components/ui/Alert';
 import { IconLayoutGrid, IconPlus } from '../components/ui/Icons';
 import { LoadingBlock } from '../components/ui/LoadingBlock';
 import { useI18n } from '../i18n/useI18n';
 
-function resolveActiveStep(hasMapImage: boolean, zoneCount: number, page: 'floorPlan' | 'vipTables'): 1 | 2 | 3 {
-  if (zoneCount === 0) {
-    return hasMapImage ? 2 : 1;
+function resolveActiveStep(hasMapImage: boolean, zoneCount: number): 1 | 2 | 3 {
+  if (!hasMapImage) {
+    return 1;
   }
-
-  return page === 'vipTables' ? 3 : 3;
+  if (zoneCount === 0) {
+    return 2;
+  }
+  return 3;
 }
 
 export function EventVipTablesPage() {
@@ -26,6 +29,7 @@ export function EventVipTablesPage() {
   const { event } = useEventWorkspaceEvent();
   const { t } = useI18n();
   const [createOpen, setCreateOpen] = useState(false);
+  const [message, setMessage] = useState('');
   const setup = useEventVipSetupStatus(eventId, event?.floor_plan_image_url);
   const {
     tables,
@@ -39,7 +43,15 @@ export function EventVipTablesPage() {
     ensureLayout,
   } = useEventVipTables(eventId);
 
-  const activeStep = resolveActiveStep(setup.hasMapImage, setup.zoneCount, 'vipTables');
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  const activeStep = resolveActiveStep(setup.hasMapImage, setup.zoneCount);
   const showSetupGate = !zonesReady;
 
   const headerActions = zonesReady ? (
@@ -73,6 +85,9 @@ export function EventVipTablesPage() {
           <LoadingBlock label={t('eventVipTables.loading')} />
         ) : (
           <div className="event-vip-tables-page">
+            {message ? <Alert tone="success">{message}</Alert> : null}
+            {error ? <Alert tone="error">{error}</Alert> : null}
+
             <EventVipSetupFlow
               eventId={eventId}
               activeStep={activeStep}
@@ -88,7 +103,6 @@ export function EventVipTablesPage() {
                 </span>
                 <h2>{t('eventVipTables.emptyTitle')}</h2>
                 <p>{t('eventVipTables.emptyBody')}</p>
-                {error ? <p className="event-vip-tables__error">{error}</p> : null}
                 <div className="event-vip-tables__empty-actions">
                   <Link
                     to={`/events/${eventId}/floor-plan`}
@@ -102,7 +116,9 @@ export function EventVipTablesPage() {
                     disabled={ensuringLayout}
                     onClick={() => void handleEnsureLayout()}
                   >
-                    {ensuringLayout ? t('eventVipTables.setupLayoutLoading') : t('eventVipTables.setupLayout')}
+                    {ensuringLayout
+                      ? t('eventVipTables.setupLayoutLoading')
+                      : t('eventVipTables.setupLayout')}
                   </button>
                 </div>
                 <p className="event-vip-tables__empty-hint">{t('eventVipTables.setupLayoutHint')}</p>
@@ -122,7 +138,6 @@ export function EventVipTablesPage() {
                     </button>
                   </div>
                 ) : null}
-                {error ? <p className="event-vip-tables__error">{error}</p> : null}
                 <EventVipTablesStatusLegend />
                 <EventVipTablesTable
                   eventId={eventId}
@@ -132,6 +147,7 @@ export function EventVipTablesPage() {
                     void reload();
                     void setup.reloadSetup();
                   }}
+                  onActionMessage={setMessage}
                 />
               </div>
             )}
@@ -146,6 +162,7 @@ export function EventVipTablesPage() {
         currency={currency}
         onClose={() => setCreateOpen(false)}
         onCreated={() => {
+          setMessage(t('eventVipTables.createSuccess'));
           void reload();
           void setup.reloadSetup();
         }}

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index,follow" />
+    <meta
+      name="description"
+      content="YouPass Privacy Policy. How we collect, use, share, and protect personal and device data in the YouPass app."
+    />
+    <title>YouPass Privacy Policy</title>
+    <link rel="stylesheet" href="/legal.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <p class="brand">YouPass</p>
+        <h1 id="title">Privacy Policy</h1>
+        <p class="meta" id="dates">Effective date: 21 September 2026 · Last updated: 21 September 2026</p>
+        <div class="langs">
+          <a href="#en" id="btn-en" class="active">English</a>
+          <a href="#es" id="btn-es">Español</a>
+        </div>
+      </header>
+
+      <section id="en">
+        <nav class="toc">
+          <strong>Contents</strong>
+          <p>
+            <a href="#who">Who we are</a> ·
+            <a href="#collect">Data we collect</a> ·
+            <a href="#use">How we use data</a> ·
+            <a href="#share">Sharing</a> ·
+            <a href="#permissions">App permissions</a> ·
+            <a href="#security">Security</a> ·
+            <a href="#retention">Retention</a> ·
+            <a href="#rights">Your rights</a> ·
+            <a href="#children">Children</a> ·
+            <a href="#contact">Contact</a>
+          </p>
+        </nav>
+
+        <p>
+          This Privacy Policy explains how <strong>YouPass</strong> (“we”, “us”) treats personal
+          and device data when you use the YouPass mobile app, website, and related services.
+          It is written to meet Google Play’s User Data policy and applicable privacy laws,
+          including Chilean Law 19.628 and, where it applies, the GDPR.
+        </p>
+
+        <h2 id="who">1. Who we are</h2>
+        <p>
+          YouPass is an events and ticketing platform for parties, concerts, and exclusive
+          experiences in Chile and Latin America. Contact:
+          <a href="mailto:soporte@youpass.app">soporte@youpass.app</a>.
+        </p>
+
+        <h2 id="collect">2. Data we collect</h2>
+        <div class="panel">
+          <p><strong>Account and identity</strong></p>
+          <ul>
+            <li>Phone number and country code (used to create and sign in to your account)</li>
+            <li>Full name, email, date of birth, gender</li>
+            <li>National ID (RUT or passport), required for nominal tickets and door access</li>
+            <li>Optional Instagram username and profile photo</li>
+            <li>Language and notification preferences</li>
+          </ul>
+          <p><strong>Authentication and device</strong></p>
+          <ul>
+            <li>WhatsApp one-time codes (hashed; we do not store the raw code)</li>
+            <li>App-generated device ID, platform (Android/iOS), app version, IP address, and user agent, used to secure sessions and prevent abuse</li>
+          </ul>
+          <p><strong>Purchases and payments</strong></p>
+          <ul>
+            <li>Ticket, VIP table, and drink orders</li>
+            <li>Payment tokens, card brand, last four digits, and expiry — processed by Kushki or Stripe. We do not store full card numbers or CVV</li>
+          </ul>
+          <p><strong>Location</strong></p>
+          <ul>
+            <li>Approximate or precise location only when you enable “Near me”, so we can sort events by distance. Location is not used for advertising or background tracking</li>
+          </ul>
+          <p><strong>Contacts</strong></p>
+          <ul>
+            <li>Only the name and phone number of a contact you explicitly pick when assigning a ticket. We do not upload your full address book</li>
+          </ul>
+          <p><strong>Photos, camera, and biometrics</strong></p>
+          <ul>
+            <li>Profile photos you choose to upload (stored with Cloudinary)</li>
+            <li>Camera is used to scan event QR codes. We do not record or store camera video</li>
+            <li>Face ID / fingerprint stay on your device to confirm sensitive actions such as account deletion. Biometric data is never sent to YouPass servers</li>
+          </ul>
+          <p><strong>Usage</strong></p>
+          <ul>
+            <li>Favorites, invitations, waitlist entries, in-app analytics events, and support requests</li>
+          </ul>
+        </div>
+
+        <h2 id="use">3. How we use data</h2>
+        <ul>
+          <li>Create and authenticate your account (passwordless WhatsApp OTP)</li>
+          <li>Sell, assign, and validate tickets, invitations, VIP tables, and drinks</li>
+          <li>Show events near you when you ask for that</li>
+          <li>Process payments and send purchase or reminder messages (email, push, WhatsApp)</li>
+          <li>Prevent fraud, enforce our 18+ rule, and comply with law</li>
+          <li>Improve the product with aggregated analytics</li>
+        </ul>
+        <p>We do not sell your personal data.</p>
+
+        <h2 id="share">4. Who we share data with</h2>
+        <ul>
+          <li><strong>Twilio / WhatsApp:</strong> security codes and transactional messages</li>
+          <li><strong>Cloudinary:</strong> profile and event images</li>
+          <li><strong>Kushki / Stripe:</strong> payment processing</li>
+          <li><strong>Hosting providers</strong> (including Vercel) that store or transmit our backend data</li>
+          <li><strong>Event producers and door staff:</strong> the guest name, ticket, and QR data needed to admit you</li>
+          <li><strong>Authorities:</strong> when required by law</li>
+        </ul>
+        <p>
+          These providers process data on our instructions or as independent payment/messaging
+          controllers. Some processing may occur outside Chile.
+        </p>
+
+        <h2 id="permissions">5. Android / device permissions</h2>
+        <ul>
+          <li><strong>Location:</strong> optional, for nearby events</li>
+          <li><strong>Contacts:</strong> optional, to pick a guest when assigning a ticket</li>
+          <li><strong>Photos / storage:</strong> optional, to set a profile photo</li>
+          <li><strong>Camera:</strong> to scan QR codes at events</li>
+          <li><strong>Biometrics:</strong> local confirmation of sensitive actions</li>
+          <li><strong>Internet:</strong> to operate the app</li>
+        </ul>
+        <p>You can refuse optional permissions; core login and browsing still work.</p>
+
+        <h2 id="security">6. Security</h2>
+        <p>
+          We use HTTPS, hashed one-time codes, session tokens, and payment tokenization.
+          No method of transmission is 100% secure, but we take reasonable technical and
+          organizational measures to protect your data.
+        </p>
+
+        <h2 id="retention">7. Retention and deletion</h2>
+        <p>
+          We keep account data while your account is active. You can request deletion in the app
+          (Profile). After confirmation we apply a cooling-off period of 7 days, then anonymize
+          your profile, revoke sessions, and delete saved payment methods. Some ticket and
+          payment records may be kept in anonymized form where tax or accounting law requires it.
+        </p>
+
+        <h2 id="rights">8. Your rights</h2>
+        <p>
+          Depending on your country, you may request access, correction, deletion, or a copy of
+          your data, or object to certain processing. Email
+          <a href="mailto:soporte@youpass.app">soporte@youpass.app</a>.
+          You can also edit profile data and notification settings in the app.
+        </p>
+
+        <h2 id="children">9. Children</h2>
+        <p>
+          YouPass is exclusively for people 18 years or older. We do not knowingly collect data
+          from children. If we learn that an underage account was created, we will delete it.
+        </p>
+
+        <h2 id="changes">10. Changes</h2>
+        <p>
+          We may update this policy. The “Last updated” date at the top will change. Continued
+          use of YouPass after an update means you accept the revised policy.
+        </p>
+
+        <h2 id="contact">11. Contact</h2>
+        <p>
+          Privacy questions: <a href="mailto:soporte@youpass.app">soporte@youpass.app</a><br />
+          Terms of use: <a href="/terms">youpass-backend-two.vercel.app/terms</a>
+        </p>
+      </section>
+
+      <section id="es" class="hidden">
+        <nav class="toc">
+          <strong>Contenido</strong>
+          <p>
+            <a href="#es-who">Quiénes somos</a> ·
+            <a href="#es-collect">Datos que recopilamos</a> ·
+            <a href="#es-use">Uso</a> ·
+            <a href="#es-share">Compartir</a> ·
+            <a href="#es-permissions">Permisos</a> ·
+            <a href="#es-security">Seguridad</a> ·
+            <a href="#es-retention">Conservación</a> ·
+            <a href="#es-rights">Tus derechos</a> ·
+            <a href="#es-children">Menores</a> ·
+            <a href="#es-contact">Contacto</a>
+          </p>
+        </nav>
+
+        <p>
+          Esta Política de Privacidad explica cómo <strong>YouPass</strong> trata los datos
+          personales y del dispositivo cuando usas la app, el sitio y servicios relacionados.
+          Cumple la política de Datos de usuario de Google Play, la Ley 19.628 de Chile y, cuando
+          corresponde, el GDPR.
+        </p>
+
+        <h2 id="es-who">1. Quiénes somos</h2>
+        <p>
+          YouPass es una plataforma de eventos y tickets para fiestas, conciertos y experiencias
+          exclusivas en Chile y Latinoamérica. Contacto:
+          <a href="mailto:soporte@youpass.app">soporte@youpass.app</a>.
+        </p>
+
+        <h2 id="es-collect">2. Datos que recopilamos</h2>
+        <div class="panel">
+          <p><strong>Cuenta e identidad</strong></p>
+          <ul>
+            <li>Número de teléfono y código de país (para crear e iniciar sesión)</li>
+            <li>Nombre completo, email, fecha de nacimiento, género</li>
+            <li>RUT o pasaporte, necesario para tickets nominales y acceso en puerta</li>
+            <li>Instagram y foto de perfil (opcionales)</li>
+            <li>Idioma y preferencias de notificación</li>
+          </ul>
+          <p><strong>Autenticación y dispositivo</strong></p>
+          <ul>
+            <li>Códigos OTP de WhatsApp (se almacenan hasheados)</li>
+            <li>ID de dispositivo generado por la app, plataforma, versión, IP y user agent, para proteger sesiones y prevenir abuso</li>
+          </ul>
+          <p><strong>Compras y pagos</strong></p>
+          <ul>
+            <li>Órdenes de tickets, mesas VIP y tragos</li>
+            <li>Tokens de pago, marca, últimos cuatro dígitos y vencimiento, procesados por Kushki o Stripe. No guardamos el número completo ni el CVV</li>
+          </ul>
+          <p><strong>Ubicación</strong></p>
+          <ul>
+            <li>Ubicación aproximada o precisa solo si activas “Cerca de mí”, para ordenar eventos por distancia. No se usa para publicidad ni seguimiento en segundo plano</li>
+          </ul>
+          <p><strong>Contactos</strong></p>
+          <ul>
+            <li>Solo el nombre y teléfono del contacto que eliges al asignar un ticket. No subimos tu agenda completa</li>
+          </ul>
+          <p><strong>Fotos, cámara y biometría</strong></p>
+          <ul>
+            <li>Fotos de perfil que subes (Cloudinary)</li>
+            <li>La cámara se usa para escanear QR. No grabamos ni guardamos video</li>
+            <li>Face ID / huella quedan en tu dispositivo para confirmar acciones sensibles. Nunca se envían a YouPass</li>
+          </ul>
+          <p><strong>Uso</strong></p>
+          <ul>
+            <li>Favoritos, invitaciones, lista de espera, analítica in-app y solicitudes de soporte</li>
+          </ul>
+        </div>
+
+        <h2 id="es-use">3. Cómo usamos los datos</h2>
+        <ul>
+          <li>Crear y autenticar tu cuenta (OTP por WhatsApp, sin contraseña)</li>
+          <li>Vender, asignar y validar tickets, invitaciones, mesas VIP y tragos</li>
+          <li>Mostrar eventos cercanos cuando lo pides</li>
+          <li>Procesar pagos y enviar confirmaciones o recordatorios</li>
+          <li>Prevenir fraude, aplicar la regla de 18+ y cumplir la ley</li>
+          <li>Mejorar el producto con analítica agregada</li>
+        </ul>
+        <p>No vendemos tus datos personales.</p>
+
+        <h2 id="es-share">4. Con quién los compartimos</h2>
+        <ul>
+          <li><strong>Twilio / WhatsApp:</strong> códigos de seguridad y mensajes transaccionales</li>
+          <li><strong>Cloudinary:</strong> imágenes de perfil y eventos</li>
+          <li><strong>Kushki / Stripe:</strong> procesamiento de pagos</li>
+          <li><strong>Proveedores de hosting</strong> (incluido Vercel)</li>
+          <li><strong>Productoras y staff de puerta:</strong> nombre, ticket y QR necesarios para tu ingreso</li>
+          <li><strong>Autoridades:</strong> cuando la ley lo exige</li>
+        </ul>
+
+        <h2 id="es-permissions">5. Permisos del dispositivo</h2>
+        <ul>
+          <li><strong>Ubicación:</strong> opcional, para eventos cercanos</li>
+          <li><strong>Contactos:</strong> opcional, para elegir un invitado</li>
+          <li><strong>Fotos / almacenamiento:</strong> opcional, foto de perfil</li>
+          <li><strong>Cámara:</strong> escanear códigos QR</li>
+          <li><strong>Biometría:</strong> confirmación local de acciones sensibles</li>
+          <li><strong>Internet:</strong> para operar la app</li>
+        </ul>
+
+        <h2 id="es-security">6. Seguridad</h2>
+        <p>
+          Usamos HTTPS, códigos OTP hasheados, tokens de sesión y tokenización de pagos.
+          Ningún sistema es 100% seguro, pero aplicamos medidas razonables de protección.
+        </p>
+
+        <h2 id="es-retention">7. Conservación y eliminación</h2>
+        <p>
+          Conservamos los datos mientras la cuenta está activa. Puedes pedir la eliminación en
+          Perfil. Tras confirmar, hay un plazo de 7 días y luego anonimizamos el perfil, cerramos
+          sesiones y borramos métodos de pago. Algunos registros de tickets o pagos pueden
+          conservarse anonimizados por obligación legal o tributaria.
+        </p>
+
+        <h2 id="es-rights">8. Tus derechos</h2>
+        <p>
+          Según tu país, puedes pedir acceso, corrección, eliminación o copia de tus datos.
+          Escríbenos a <a href="mailto:soporte@youpass.app">soporte@youpass.app</a>.
+        </p>
+
+        <h2 id="es-children">9. Menores</h2>
+        <p>
+          YouPass es solo para mayores de 18 años. No recopilamos datos de menores a sabiendas.
+          Si detectamos una cuenta de un menor, la eliminaremos.
+        </p>
+
+        <h2 id="es-changes">10. Cambios</h2>
+        <p>
+          Podemos actualizar esta política. La fecha de “Última actualización” cambiará.
+          Seguir usando YouPass implica aceptar la versión vigente.
+        </p>
+
+        <h2 id="es-contact">11. Contacto</h2>
+        <p>
+          Privacidad: <a href="mailto:soporte@youpass.app">soporte@youpass.app</a><br />
+          Términos: <a href="/terms">youpass-backend-two.vercel.app/terms</a>
+        </p>
+      </section>
+
+      <footer>
+        © 2026 YouPass · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a>
+      </footer>
+    </main>
+    <script>
+      const en = document.getElementById('en');
+      const es = document.getElementById('es');
+      const btnEn = document.getElementById('btn-en');
+      const btnEs = document.getElementById('btn-es');
+      const title = document.getElementById('title');
+      const dates = document.getElementById('dates');
+
+      function setLang(lang) {
+        const isEs = lang === 'es';
+        en.classList.toggle('hidden', isEs);
+        es.classList.toggle('hidden', !isEs);
+        btnEn.classList.toggle('active', !isEs);
+        btnEs.classList.toggle('active', isEs);
+        document.documentElement.lang = isEs ? 'es' : 'en';
+        title.textContent = isEs ? 'Política de privacidad' : 'Privacy Policy';
+        dates.textContent = isEs
+          ? 'Vigente: 21 de septiembre de 2026 · Última actualización: 21 de septiembre de 2026'
+          : 'Effective date: 21 September 2026 · Last updated: 21 September 2026';
+      }
+
+      btnEn.addEventListener('click', function (e) {
+        e.preventDefault();
+        setLang('en');
+      });
+      btnEs.addEventListener('click', function (e) {
+        e.preventDefault();
+        setLang('es');
+      });
+
+      if (location.hash === '#es') setLang('es');
+    </script>
+    <noscript>
+      <style>
+        #es { display: block !important; }
+      </style>
+    </noscript>
+  </body>
+</html>

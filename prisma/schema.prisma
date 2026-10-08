@@ -650,11 +650,17 @@ model StaffScanLog {
   productQuantity Int?   @map("product_quantity")
   lastUsedAt    DateTime? @map("last_used_at")
   scannedAt     DateTime @default(now()) @map("scanned_at")
+  /// Client-generated idempotency key for offline scan sync (M10).
+  /// Uniqueness is enforced via a sparse Mongo index (nulls allowed for online scans).
+  clientScanId  String?  @map("client_scan_id")
+  deviceId      String?  @map("device_id")
+  syncedFromOffline Boolean @default(false) @map("synced_from_offline")
 
   staffMember StaffMember @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
 
   @@index([staffMemberId, scannedAt])
   @@index([staffMemberId, scanType, scannedAt])
+  @@index([clientScanId])
   @@map("staff_scan_logs")
 }
 

@@ -151,6 +151,7 @@ export function EventInvitationCreateModal({
             <label className="event-invitations-create-form__select">
               <select
                 value={listAssignment}
+                aria-label={t('eventInvitations.createModal.fields.list')}
                 onChange={(event) => setListAssignment(event.target.value)}
               >
                 <option value="">{t('eventInvitations.createModal.selectList')}</option>
@@ -177,6 +178,7 @@ export function EventInvitationCreateModal({
           <label className="event-invitations-create-form__select">
             <select
               value={invitationType}
+              aria-label={t('eventInvitations.createModal.fields.type')}
               onChange={(event) => setInvitationType(event.target.value)}
             >
               <option value="">{t('eventInvitations.createModal.selectType')}</option>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   adminApi,
+  AdminEvent,
   AdminUser,
   getSession,
   Producer,
@@ -94,6 +95,14 @@ export function EventCompsPage() {
   }, [search]);
 
   useEffect(() => {
+    if (!message) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
     setPage(1);
   }, [debouncedSearch, activeType, statusFilters]);
 
@@ -101,22 +110,40 @@ export function EventCompsPage() {
     let cancelled = false;
 
     async function bootstrap() {
-      const [producersResult, usersResult] = await Promise.all([adminApi.producers(), adminApi.users()]);
+      const [producersResult, usersResult, eventsResult] = await Promise.all([
+        adminApi.producers(),
+        adminApi.users(),
+        adminApi.events(),
+      ]);
       if (cancelled) {
         return;
       }
 
-      if (producersResult.ok) {
-        const producers = producersResult.data?.producers ?? [];
-        const resolvedProducerId =
-          producerId || session?.producerId || (producers[0] as Producer | undefined)?.id || '';
-        if (resolvedProducerId && resolvedProducerId !== producerId) {
-          setProducerId(resolvedProducerId);
-        }
-      }
+      const producers = producersResult.ok ? (producersResult.data?.producers ?? []) : [];
+      const loadedEvents = eventsResult.ok ? (eventsResult.data?.events ?? []) : [];
 
       if (usersResult.ok) {
         setUsers(usersResult.data?.users ?? []);
+      }
+
+      // Bind comps to this event's producer (by name), not the first admin producer.
+      const eventProducerName = loadedEvents
+        .find((event: AdminEvent) => event.id === eventId)
+        ?.producer_name?.trim();
+      const matchedProducer = eventProducerName
+        ? producers.find(
+            (producer) =>
+              producer.name.trim().toLowerCase() === eventProducerName.toLowerCase(),
+          )
+        : undefined;
+      const resolvedProducerId =
+        matchedProducer?.id ||
+        session?.producerId ||
+        (producers[0] as Producer | undefined)?.id ||
+        '';
+
+      if (resolvedProducerId && resolvedProducerId !== producerId) {
+        setProducerId(resolvedProducerId);
       }
     }
 
@@ -124,7 +151,7 @@ export function EventCompsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [eventId]);
 
   async function loadComps() {
     if (!eventId) {
@@ -188,6 +215,10 @@ export function EventCompsPage() {
   const from = filteredComps.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const to = Math.min(page * PAGE_SIZE, filteredComps.length);
   const pageNumbers = visiblePages(page, totalPages);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
 
   function toggleAll(checked: boolean) {
     setSelectedIds(checked ? new Set(pageComps.map((item) => item.id)) : new Set());
@@ -452,30 +483,48 @@ export function EventCompsPage() {
                   total: new Intl.NumberFormat(numberLocale).format(filteredComps.length),
                 })}
               </p>
-              <div className="event-comps-pagination__controls">
-                <button type="button" className="outline-btn outline-btn--sm" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
-                  <IconChevronLeft />
-                </button>
-                {pageNumbers.map((number, index) => {
-                  const prev = pageNumbers[index - 1];
-                  const gap = prev !== undefined && number - prev > 1;
-                  return (
-                    <span key={number} className="event-comps-pagination__group">
-                      {gap ? <span className="event-comps-pagination__ellipsis">…</span> : null}
-                      <button
-                        type="button"
-                        className={number === page ? 'event-comps-pagination__page event-comps-pagination__page--active' : 'event-comps-pagination__page'}
-                        onClick={() => setPage(number)}
-                      >
-                        {number}
-                      </button>
-                    </span>
-                  );
-                })}
-                <button type="button" className="outline-btn outline-btn--sm" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>
-                  <IconChevronRight />
-                </button>
-              </div>
+              {totalPages > 1 ? (
+                <div className="event-comps-pagination__controls">
+                  <button
+                    type="button"
+                    className="outline-btn outline-btn--sm"
+                    disabled={page <= 1}
+                    aria-label={t('eventComps.previousPage')}
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  >
+                    <IconChevronLeft />
+                  </button>
+                  {pageNumbers.map((number, index) => {
+                    const prev = pageNumbers[index - 1];
+                    const gap = prev !== undefined && number - prev > 1;
+                    return (
+                      <span key={number} className="event-comps-pagination__group">
+                        {gap ? <span className="event-comps-pagination__ellipsis">…</span> : null}
+                        <button
+                          type="button"
+                          className={
+                            number === page
+                              ? 'event-comps-pagination__page event-comps-pagination__page--active'
+                              : 'event-comps-pagination__page'
+                          }
+                          onClick={() => setPage(number)}
+                        >
+                          {number}
+                        </button>
+                      </span>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="outline-btn outline-btn--sm"
+                    disabled={page >= totalPages}
+                    aria-label={t('eventComps.nextPage')}
+                    onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  >
+                    <IconChevronRight />
+                  </button>
+                </div>
+              ) : null}
             </footer>
           </>
         )}

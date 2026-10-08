@@ -55,7 +55,10 @@ export const staffAuthController = {
 
   me: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await staffAuthService.getProfile(req.staffMember!.id);
+      const data = await staffAuthService.getProfile(
+        req.staffMember!.id,
+        req.sessionId,
+      );
       res.status(200).json(successResponse(data));
     } catch (err) {
       next(err);

@@ -22,6 +22,7 @@ type Props = {
   onError: (message: string) => void;
   isEdit: boolean;
   usedOfferingTypes: TicketOfferingType[];
+  currency: string;
 };
 
 export function EventTicketCreateFormFields({
@@ -30,10 +31,12 @@ export function EventTicketCreateFormFields({
   onError,
   isEdit,
   usedOfferingTypes,
+  currency,
 }: Props) {
   const { t, numberLocale } = useI18n();
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const currencyCode = currency.trim().toUpperCase() || 'CLP';
 
   async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -82,7 +85,7 @@ export function EventTicketCreateFormFields({
               value={form.price}
               onChange={(e) => updateForm('price', e.target.value)}
             />
-            <span className="event-ticket-modal__price-suffix">CLP</span>
+            <span className="event-ticket-modal__price-suffix">{currencyCode}</span>
           </span>
         </EventInfoField>
         <EventInfoField
@@ -141,7 +144,7 @@ export function EventTicketCreateFormFields({
 
       <EventInfoField
         label={t('eventTickets.createModal.description')}
-        required
+        hint={t('eventTickets.createModal.descriptionHint')}
         className="event-ticket-modal__field event-info-field--textarea event-ticket-modal__field--description"
       >
         <textarea
@@ -284,7 +287,7 @@ export function EventTicketCreateFormFields({
             <EventTicketPreviewCard
               name={form.name}
               nameFallback={t('eventTickets.createModal.previewName')}
-              priceLabel={priceLabel}
+              priceLabel={`${priceLabel} ${currencyCode}`}
               color={form.color}
               imageUrl={form.imageUrl}
               validFromLabel={t('eventTickets.createModal.previewValidFrom')}

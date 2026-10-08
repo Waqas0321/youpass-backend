@@ -26,6 +26,14 @@ export function EventPaymentsContent() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
   const transactions = useMemo(
     () => filterPaymentTransactions(PAYMENT_TRANSACTIONS, debouncedSearch),
     [debouncedSearch],
@@ -50,6 +58,7 @@ export function EventPaymentsContent() {
       <EventPaymentsToolbar
         search={search}
         onSearchChange={setSearch}
+        onClearSearch={() => setSearch('')}
         onOpenFilters={showComingSoon}
       />
 

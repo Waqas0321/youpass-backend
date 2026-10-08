@@ -37,25 +37,33 @@ export function EventPaymentsBottomSection({ transactions }: Props) {
               </tr>
             </thead>
             <tbody>
-              {transactions.map((txn) => (
-                <tr key={txn.id}>
-                  <td>
-                    <code className="event-payments-table__code">{txn.id}</code>
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="event-payments-table__empty">
+                    {t('eventPayments.transactions.empty')}
                   </td>
-                  <td>{txn.user}</td>
-                  <td>{txn.product}</td>
-                  <td>
-                    <PaymentMethodBadge method={txn.method} tone={txn.methodTone} />
-                  </td>
-                  <td>
-                    <span className={`event-payments-status event-payments-status--${txn.status}`}>
-                      {t(`eventPayments.transactions.statuses.${txn.status}`)}
-                    </span>
-                  </td>
-                  <td>{formatPaymentClp(txn.amount, numberLocale)}</td>
-                  <td>{txn.date}</td>
                 </tr>
-              ))}
+              ) : (
+                transactions.map((txn) => (
+                  <tr key={txn.id}>
+                    <td>
+                      <code className="event-payments-table__code">{txn.id}</code>
+                    </td>
+                    <td>{txn.user}</td>
+                    <td>{txn.product}</td>
+                    <td>
+                      <PaymentMethodBadge method={txn.method} tone={txn.methodTone} />
+                    </td>
+                    <td>
+                      <span className={`event-payments-status event-payments-status--${txn.status}`}>
+                        {t(`eventPayments.transactions.statuses.${txn.status}`)}
+                      </span>
+                    </td>
+                    <td>{formatPaymentClp(txn.amount, numberLocale)}</td>
+                    <td>{txn.date}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

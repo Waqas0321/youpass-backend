@@ -10,6 +10,7 @@ type Props = {
   eventId: string;
   editingTicket: EventTicketRow | null;
   usedOfferingTypes: TicketOfferingType[];
+  currency: string;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -19,6 +20,7 @@ export function EventTicketModal({
   eventId,
   editingTicket,
   usedOfferingTypes,
+  currency,
   onClose,
   onSaved,
 }: Props) {
@@ -82,6 +84,7 @@ export function EventTicketModal({
         onError={setError}
         isEdit={isEdit}
         usedOfferingTypes={usedOfferingTypes}
+        currency={currency}
       />
     </Modal>
   );

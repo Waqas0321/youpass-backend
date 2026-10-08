@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { adminApi } from '../api/client';
 import { EventTicketModal } from '../components/event-tickets/EventTicketModal';
 import { EventTicketsTable } from '../components/event-tickets/EventTicketsTable';
 import type { EventTicketRow } from '../components/event-tickets/eventTicketsData';
+import { TICKET_OFFERING_TYPE_OPTIONS } from '../components/event-tickets/eventTicketOfferingTypes';
 import { EventWorkspacePage } from '../components/event-workspace/EventWorkspacePage';
 import { useEventTicketOfferings } from '../hooks/useEventTicketOfferings';
+import { useEventWorkspaceEvent } from '../components/event-workspace/useEventWorkspaceEvent';
 import { Alert } from '../components/ui/Alert';
 import { IconPlus } from '../components/ui/Icons';
 import { LoadingBlock } from '../components/ui/LoadingBlock';
@@ -14,18 +16,31 @@ import { useI18n } from '../i18n/useI18n';
 export function EventTicketsPage() {
   const { eventId = '' } = useParams();
   const { t } = useI18n();
+  const { event } = useEventWorkspaceEvent();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTicket, setEditingTicket] = useState<EventTicketRow | null>(null);
   const [actionError, setActionError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const { tickets, loading, error, reload } = useEventTicketOfferings(eventId);
 
+  const currency = event?.currency_code?.trim().toUpperCase() || 'CLP';
+  const usedOfferingTypes = useMemo(() => tickets.map((ticket) => ticket.offeringType), [tickets]);
+  const allTypesUsed = usedOfferingTypes.length >= TICKET_OFFERING_TYPE_OPTIONS.length;
+
   function openCreateModal() {
+    setActionError('');
+    setActionMessage('');
+    if (allTypesUsed) {
+      setActionError(t('eventTickets.allTypesUsed'));
+      return;
+    }
     setEditingTicket(null);
     setModalOpen(true);
   }
 
   function openEditModal(ticket: EventTicketRow) {
+    setActionError('');
+    setActionMessage('');
     setEditingTicket(ticket);
     setModalOpen(true);
   }
@@ -101,13 +116,13 @@ export function EventTicketsPage() {
       type="button"
       className="event-workspace__btn event-workspace__btn--primary"
       onClick={openCreateModal}
+      disabled={allTypesUsed}
+      title={allTypesUsed ? t('eventTickets.allTypesUsed') : undefined}
     >
       <IconPlus />
       {t('eventTickets.createTicket')}
     </button>
   );
-
-  const usedOfferingTypes = tickets.map((ticket) => ticket.offeringType);
 
   return (
     <>
@@ -125,6 +140,9 @@ export function EventTicketsPage() {
             {error ? <Alert tone="error">{error}</Alert> : null}
             {actionError ? <Alert tone="error">{actionError}</Alert> : null}
             {actionMessage ? <Alert tone="success">{actionMessage}</Alert> : null}
+            {allTypesUsed ? (
+              <Alert tone="info">{t('eventTickets.allTypesUsedHint')}</Alert>
+            ) : null}
             <EventTicketsTable
               tickets={tickets}
               onEdit={openEditModal}
@@ -141,6 +159,7 @@ export function EventTicketsPage() {
         eventId={eventId}
         editingTicket={editingTicket}
         usedOfferingTypes={usedOfferingTypes}
+        currency={currency}
         onClose={closeModal}
         onSaved={() => {
           setActionMessage(

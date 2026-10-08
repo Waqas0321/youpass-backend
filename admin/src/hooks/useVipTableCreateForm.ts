@@ -25,8 +25,17 @@ export function useVipTableCreateForm(
       setForm(EMPTY_VIP_TABLE_FORM);
       setSaving(false);
       setError('');
+      return;
     }
-  }, [open]);
+
+    setForm({
+      ...EMPTY_VIP_TABLE_FORM,
+      zoneId: zones[0]?.zoneId ?? '',
+      capacity: '10',
+    });
+    setSaving(false);
+    setError('');
+  }, [open, zones]);
 
   const updateForm = useCallback(<K extends keyof VipTableCreateFormState>(
     key: K,

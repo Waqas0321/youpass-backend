@@ -28,6 +28,7 @@ type Props = {
   tables: EventVipTableRow[];
   zones: VipZoneOption[];
   onChanged: () => void;
+  onActionMessage?: (message: string) => void;
 };
 
 type SortKey = 'number' | 'zone' | 'capacity' | 'status' | 'price' | 'buyer';
@@ -72,7 +73,13 @@ function SortableHeader({
   );
 }
 
-export function EventVipTablesTable({ eventId, tables, zones, onChanged }: Props) {
+export function EventVipTablesTable({
+  eventId,
+  tables,
+  zones,
+  onChanged,
+  onActionMessage,
+}: Props) {
   const { t, numberLocale } = useI18n();
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>('number');
@@ -184,6 +191,9 @@ export function EventVipTablesTable({ eventId, tables, zones, onChanged }: Props
       return;
     }
 
+    onActionMessage?.(
+      action === 'reserve' ? t('eventVipTables.reserveSuccess') : t('eventVipTables.releaseSuccess'),
+    );
     onChanged();
   }
 
@@ -355,28 +365,36 @@ export function EventVipTablesTable({ eventId, tables, zones, onChanged }: Props
               total: String(sortedTables.length),
             })}
           </p>
-          <div className="event-vip-tables__pager">
-            <button type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>
-              <IconChevronLeft />
-            </button>
-            {pageNumbers.map((pageNumber) => (
+          {totalPages > 1 ? (
+            <div className="event-vip-tables__pager">
               <button
-                key={pageNumber}
                 type="button"
-                className={pageNumber === page ? 'is-active' : undefined}
-                onClick={() => setPage(pageNumber)}
+                disabled={page <= 1}
+                aria-label={t('eventVipTables.paginationPrev')}
+                onClick={() => setPage((current) => current - 1)}
               >
-                {pageNumber}
+                <IconChevronLeft />
               </button>
-            ))}
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((current) => current + 1)}
-            >
-              <IconChevronRight />
-            </button>
-          </div>
+              {pageNumbers.map((pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  className={pageNumber === page ? 'is-active' : undefined}
+                  onClick={() => setPage(pageNumber)}
+                >
+                  {pageNumber}
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                aria-label={t('eventVipTables.paginationNext')}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                <IconChevronRight />
+              </button>
+            </div>
+          ) : null}
         </footer>
       </div>
 
@@ -392,7 +410,10 @@ export function EventVipTablesTable({ eventId, tables, zones, onChanged }: Props
         eventId={eventId}
         table={editTable}
         onClose={() => setEditTable(null)}
-        onSaved={onChanged}
+        onSaved={() => {
+          onActionMessage?.(t('eventVipTables.editSuccess'));
+          onChanged();
+        }}
       />
 
       <EventVipTableMoveModal

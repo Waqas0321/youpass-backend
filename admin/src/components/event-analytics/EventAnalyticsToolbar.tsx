@@ -37,6 +37,7 @@ export function EventAnalyticsToolbar({ period, dateRangeLabel, onPeriodChange }
           className="event-analytics__date-range"
           aria-haspopup="listbox"
           aria-expanded={open}
+          aria-label={t('eventAnalytics.periodFilter')}
           onClick={() => setOpen((current) => !current)}
         >
           <IconCalendar className="event-analytics__date-icon" />

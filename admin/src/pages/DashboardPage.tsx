@@ -273,7 +273,9 @@ export function DashboardPage() {
           value={formatCount(kpis.tickets_sold.value, numberLocale)}
           deltaLabel={dashboardKpiDeltaLabel(salesPeriod, kpis.tickets_sold.delta_pct, t)}
           deltaPositive={dashboardKpiDeltaPositive(kpis.tickets_sold.delta_pct)}
-          deltaNeutral={kpis.tickets_sold.delta_pct === null}
+          deltaNeutral={
+            kpis.tickets_sold.delta_pct === null || kpis.tickets_sold.delta_pct === 0
+          }
           sparkline={resolveDashboardKpiSparkline(salesPeriod, kpis.tickets_sold.sparkline)}
           icon={<IconTicket />}
         />
@@ -282,7 +284,9 @@ export function DashboardPage() {
           value={formatDashboardCurrency(kpis.total_revenue.value, numberLocale, dashboard.currency)}
           deltaLabel={dashboardKpiDeltaLabel(salesPeriod, kpis.total_revenue.delta_pct, t)}
           deltaPositive={dashboardKpiDeltaPositive(kpis.total_revenue.delta_pct)}
-          deltaNeutral={kpis.total_revenue.delta_pct === null}
+          deltaNeutral={
+            kpis.total_revenue.delta_pct === null || kpis.total_revenue.delta_pct === 0
+          }
           sparkline={resolveDashboardKpiSparkline(salesPeriod, kpis.total_revenue.sparkline)}
           icon={<IconTrending />}
         />
@@ -291,7 +295,9 @@ export function DashboardPage() {
           value={formatCount(kpis.bar_consumption.value, numberLocale)}
           deltaLabel={dashboardKpiDeltaLabel(salesPeriod, kpis.bar_consumption.delta_pct, t)}
           deltaPositive={dashboardKpiDeltaPositive(kpis.bar_consumption.delta_pct)}
-          deltaNeutral={kpis.bar_consumption.delta_pct === null}
+          deltaNeutral={
+            kpis.bar_consumption.delta_pct === null || kpis.bar_consumption.delta_pct === 0
+          }
           sparkline={resolveDashboardKpiSparkline(salesPeriod, kpis.bar_consumption.sparkline)}
           icon={<IconDrink />}
         />
@@ -300,7 +306,9 @@ export function DashboardPage() {
           value={formatCount(kpis.active_users.value, numberLocale)}
           deltaLabel={dashboardKpiDeltaLabel(salesPeriod, kpis.active_users.delta_pct, t)}
           deltaPositive={dashboardKpiDeltaPositive(kpis.active_users.delta_pct)}
-          deltaNeutral={kpis.active_users.delta_pct === null}
+          deltaNeutral={
+            kpis.active_users.delta_pct === null || kpis.active_users.delta_pct === 0
+          }
           sparkline={resolveDashboardKpiSparkline(salesPeriod, kpis.active_users.sparkline)}
           icon={<IconUsers />}
         />

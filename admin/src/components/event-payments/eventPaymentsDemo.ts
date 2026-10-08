@@ -233,3 +233,51 @@ export function filterPaymentTransactions(transactions: PaymentTransaction[], qu
       .includes(normalized),
   );
 }
+
+function csvEscape(value: string | number) {
+  const text = String(value);
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function csvRow(cells: Array<string | number>) {
+  return `${cells.map(csvEscape).join(',')}\n`;
+}
+
+export function downloadPaymentsReport(options?: {
+  eventId?: string;
+  transactions?: PaymentTransaction[];
+  kpis?: PaymentKpi[];
+}) {
+  const transactions = options?.transactions ?? PAYMENT_TRANSACTIONS;
+  const kpis = options?.kpis ?? PAYMENT_KPIS;
+  const eventId = options?.eventId ?? 'event';
+
+  let csv = csvRow(['YouPass Payments Report']);
+  csv += csvRow(['Event', eventId]);
+  csv += csvRow([]);
+  csv += csvRow(['KPI', 'Value']);
+  for (const kpi of kpis) {
+    csv += csvRow([kpi.id, kpi.value]);
+  }
+  csv += csvRow([]);
+  csv += csvRow(['Transaction ID', 'User', 'Product', 'Method', 'Status', 'Amount', 'Date']);
+  for (const txn of transactions) {
+    csv += csvRow([txn.id, txn.user, txn.product, txn.method, txn.status, txn.amount, txn.date]);
+  }
+  csv += csvRow([]);
+  csv += csvRow(['Method', 'Count', 'Share %', 'Amount']);
+  for (const row of PAYMENT_METHOD_SUMMARY) {
+    csv += csvRow([row.method, row.count, row.sharePct, row.amount]);
+  }
+
+  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `payments-report-${eventId}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}

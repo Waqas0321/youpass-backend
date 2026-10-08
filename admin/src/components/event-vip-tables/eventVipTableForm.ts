@@ -29,7 +29,7 @@ export function mapVipTableFormToInput(
   return {
     external_id: `${zone.externalId}-m${number}`,
     number,
-    label: `Mesa ${number}`,
+    label: `Table ${number}`,
     price: Number(form.price),
     capacity: Number(form.capacity),
     status: 'available',

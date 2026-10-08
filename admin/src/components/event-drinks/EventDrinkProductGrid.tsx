@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { IconChevronLeft, IconChevronRight } from '../ui/Icons';
 import { useI18n } from '../../i18n/useI18n';
 import { EventDrinkProductCard } from './EventDrinkProductCard';
@@ -32,6 +32,11 @@ export function EventDrinkProductGrid({
   const [page, setPage] = useState(1);
 
   const totalPages = Math.max(1, Math.ceil(products.length / DRINK_MENU_PAGE_SIZE));
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
   const pageProducts = useMemo(() => {
     const start = (page - 1) * DRINK_MENU_PAGE_SIZE;
     return products.slice(start, start + DRINK_MENU_PAGE_SIZE);
@@ -78,40 +83,42 @@ export function EventDrinkProductGrid({
             total: String(products.length),
           })}
         </p>
-        <div className="drink-menu-pagination__controls">
-          <button
-            type="button"
-            className="drink-menu-pagination__btn"
-            disabled={page <= 1}
-            onClick={() => setPage((current) => current - 1)}
-            aria-label={t('drinkMenu.previousPage')}
-          >
-            <IconChevronLeft />
-          </button>
-          {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+        {totalPages > 1 ? (
+          <div className="drink-menu-pagination__controls">
             <button
-              key={pageNumber}
               type="button"
-              className={
-                pageNumber === page
-                  ? 'drink-menu-pagination__btn drink-menu-pagination__btn--active'
-                  : 'drink-menu-pagination__btn'
-              }
-              onClick={() => setPage(pageNumber)}
+              className="drink-menu-pagination__btn"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => current - 1)}
+              aria-label={t('drinkMenu.previousPage')}
             >
-              {pageNumber}
+              <IconChevronLeft />
             </button>
-          ))}
-          <button
-            type="button"
-            className="drink-menu-pagination__btn"
-            disabled={page >= totalPages}
-            onClick={() => setPage((current) => current + 1)}
-            aria-label={t('drinkMenu.nextPage')}
-          >
-            <IconChevronRight />
-          </button>
-        </div>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+              <button
+                key={pageNumber}
+                type="button"
+                className={
+                  pageNumber === page
+                    ? 'drink-menu-pagination__btn drink-menu-pagination__btn--active'
+                    : 'drink-menu-pagination__btn'
+                }
+                onClick={() => setPage(pageNumber)}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="drink-menu-pagination__btn"
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => current + 1)}
+              aria-label={t('drinkMenu.nextPage')}
+            >
+              <IconChevronRight />
+            </button>
+          </div>
+        ) : null}
       </footer>
     </div>
   );

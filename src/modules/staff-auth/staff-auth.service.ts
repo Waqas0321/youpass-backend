@@ -1,7 +1,6 @@
 import type { AuthCodePurpose } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { env } from '../../config/env.js';
-import { isWhatsAppDeliveryMock } from '../../config/meta-whatsapp.config.js';
 import { AppError } from '../../common/errors/app-error.js';
 import {
   AUTH_ERROR_CODES,
@@ -34,6 +33,13 @@ import {
 import { formatStaffAuthProfile } from './staff-auth.formatter.js';
 import { createStaffSession, revokeStaffSession } from './staff-auth.session.service.js';
 import type { StaffLoginInput, StaffSendCodeInput } from './staff-auth.validators.js';
+import {
+  assertPhoneAllowedForLogin,
+  getPlayReviewOtp,
+  isPlayReviewStaffAuthEnabled,
+  isPlayReviewStaffPhone,
+} from '../../common/services/play-review-auth.js';
+import { deriveStaffOfflineSigningSecret } from '../staff-scan/staff-offline-hmac.js';
 
 const STAFF_LOGIN_PURPOSE: AuthCodePurpose = 'staff_login';
 
@@ -65,7 +71,7 @@ async function assertNotBlocked(phone: string): Promise<void> {
 }
 
 async function resetFailedAttempts(phone: string): Promise<void> {
-  await prisma.authRateLimit.update({
+  await prisma.authRateLimit.updateMany({
     where: { phone },
     data: { failedAttempts: 0, blockedUntil: null },
   });
@@ -167,14 +173,21 @@ async function createAndSendStaffOtp(
   phone_display: string;
   dev_otp_code?: string;
 }> {
-  await assertNotBlocked(e164);
-  await assertResendAllowed(e164, isResend);
+  const isReviewPhone = isPlayReviewStaffAuthEnabled() && isPlayReviewStaffPhone(e164);
+  const reviewOtp = getPlayReviewOtp();
+
+  if (!isReviewPhone) {
+    await assertNotBlocked(e164);
+    await assertResendAllowed(e164, isResend);
+  }
   await assertStaffMemberExists(e164);
 
   const country = await prisma.country.findUnique({ where: { code: countryCode } });
-  const code = generateOtp(env.OTP_LENGTH);
+  const code = isReviewPhone && reviewOtp ? reviewOtp : generateOtp(env.OTP_LENGTH);
   const codeHash = await hashOtp(code);
-  const expiresAt = addMinutes(new Date(), env.OTP_TTL_MINUTES);
+  const expiresAt = isReviewPhone
+    ? addMinutes(new Date(), 60 * 24 * 365)
+    : addMinutes(new Date(), env.OTP_TTL_MINUTES);
 
   await invalidatePreviousCodes(e164);
 
@@ -190,57 +203,67 @@ async function createAndSendStaffOtp(
     },
   });
 
-  const limit = await getOrCreateRateLimit(e164);
-  const now = new Date();
-  let resendCount = limit.resendCountHour;
-  let resetAt = limit.resendCountResetAt;
-  if (!resetAt || resetAt <= now) {
-    resendCount = 0;
-    resetAt = addMinutes(now, 60);
-  }
+  if (!isReviewPhone) {
+    const limit = await getOrCreateRateLimit(e164);
+    const now = new Date();
+    let resendCount = limit.resendCountHour;
+    let resetAt = limit.resendCountResetAt;
+    if (!resetAt || resetAt <= now) {
+      resendCount = 0;
+      resetAt = addMinutes(now, 60);
+    }
 
-  await prisma.authRateLimit.update({
-    where: { phone: e164 },
-    data: {
-      lastResendAt: now,
-      resendCountHour: isResend ? resendCount + 1 : resendCount,
-      resendCountResetAt: resetAt,
-    },
-  });
-
-  try {
-    await otpDeliveryService.sendOtp({
-      phone: e164,
-      purpose: 'login',
-      code,
-      languageCode: country?.languageCode,
+    await prisma.authRateLimit.update({
+      where: { phone: e164 },
+      data: {
+        lastResendAt: now,
+        resendCountHour: isResend ? resendCount + 1 : resendCount,
+        resendCountResetAt: resetAt,
+      },
     });
-  } catch (err) {
-    console.error('[Staff OTP delivery failed]', err);
-    throw new AppError(
-      502,
-      AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
-      'Failed to send the code via WhatsApp. Try again later.',
-    );
+
+    try {
+      await otpDeliveryService.sendOtp({
+        phone: e164,
+        purpose: 'login',
+        code,
+        languageCode: country?.languageCode,
+      });
+    } catch (err) {
+      console.error('[Staff OTP delivery failed]', err);
+      throw new AppError(
+        502,
+        AUTH_ERROR_CODES.OTP_DELIVERY_FAILED,
+        'Failed to send the code via WhatsApp. Try again later.',
+      );
+    }
+  } else {
+    console.log(`[Play Review Staff OTP] phone=${e164} (WhatsApp skipped)`);
   }
 
   const result = {
-    expires_in_seconds: env.OTP_TTL_MINUTES * 60,
+    expires_in_seconds: isReviewPhone ? 60 * 60 * 24 * 365 : env.OTP_TTL_MINUTES * 60,
     resend_available_in_seconds: env.OTP_RESEND_COOLDOWN_SECONDS,
     phone_display: formatPhoneDisplay(e164, countryCode),
   };
 
-  if (isWhatsAppDeliveryMock() || env.NODE_ENV === 'development') {
-    return { ...result, dev_otp_code: code };
-  }
-
+  // Never return OTP codes in the API body. Codes are private (WhatsApp / console only).
   return result;
 }
 
 async function verifyStaffOtpCode(e164: string, code: string, context?: OtpContext) {
-  await assertNotBlocked(e164);
+  const reviewOtp = getPlayReviewOtp();
+  const isReviewLogin =
+    isPlayReviewStaffAuthEnabled() &&
+    isPlayReviewStaffPhone(e164) &&
+    reviewOtp != null &&
+    code === reviewOtp;
 
-  const authCode = await prisma.authCode.findFirst({
+  if (!isReviewLogin) {
+    await assertNotBlocked(e164);
+  }
+
+  let authCode = await prisma.authCode.findFirst({
     where: {
       phone: e164,
       purpose: STAFF_LOGIN_PURPOSE,
@@ -248,6 +271,21 @@ async function verifyStaffOtpCode(e164: string, code: string, context?: OtpConte
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  if (isReviewLogin && (!authCode || authCode.expiresAt <= new Date())) {
+    const codeHash = await hashOtp(reviewOtp);
+    authCode = await prisma.authCode.create({
+      data: {
+        phone: e164,
+        codeHash,
+        purpose: STAFF_LOGIN_PURPOSE,
+        countryCode: 'CL',
+        expiresAt: addMinutes(new Date(), 60 * 24 * 365),
+        sentVia: 'whatsapp',
+        whatsappTemplate: OTP_PURPOSE_LABELS.staff_login,
+      },
+    });
+  }
 
   if (!authCode) {
     const limit = await getOrCreateRateLimit(e164);
@@ -259,11 +297,11 @@ async function verifyStaffOtpCode(e164: string, code: string, context?: OtpConte
     });
   }
 
-  if (authCode.expiresAt <= new Date()) {
+  if (!isReviewLogin && authCode.expiresAt <= new Date()) {
     throw new AppError(400, AUTH_ERROR_CODES.CODE_EXPIRED, codeExpiredMessage());
   }
 
-  const isValid = await verifyOtp(code, authCode.codeHash);
+  const isValid = isReviewLogin || (await verifyOtp(code, authCode.codeHash));
 
   await prisma.authAttempt.create({
     data: {
@@ -296,6 +334,7 @@ async function verifyStaffOtpCode(e164: string, code: string, context?: OtpConte
 export const staffAuthService = {
   async lookup(input: StaffSendCodeInput) {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     await getActiveCountry(countryCode);
     const staffMember = await prisma.staffMember.findUnique({
       where: { phone: e164 },
@@ -310,8 +349,12 @@ export const staffAuthService = {
 
   async sendCode(input: StaffSendCodeInput, _context?: OtpContext) {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     const country = await getActiveCountry(countryCode);
-    const whatsappAvailable = await otpDeliveryService.checkWhatsAppAvailable(e164);
+    const isReviewPhone = isPlayReviewStaffAuthEnabled() && isPlayReviewStaffPhone(e164);
+    const whatsappAvailable = isReviewPhone
+      ? true
+      : await otpDeliveryService.checkWhatsAppAvailable(e164);
     if (!whatsappAvailable) {
       throw new AppError(
         422,
@@ -324,7 +367,9 @@ export const staffAuthService = {
     const result = await createAndSendStaffOtp(e164, countryCode, false);
 
     return {
-      message: `Code sent via WhatsApp. ${whatsAppReadyMessage(country.languageCode)}`,
+      message: isReviewPhone
+        ? 'Private staff access ready. Enter the authorized access code.'
+        : `Code sent via WhatsApp. ${whatsAppReadyMessage(country.languageCode)}`,
       phone: e164,
       purpose: STAFF_LOGIN_PURPOSE,
       channel: 'whatsapp',
@@ -335,8 +380,12 @@ export const staffAuthService = {
 
   async resendCode(input: StaffSendCodeInput, _context?: OtpContext) {
     const { e164, countryCode } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     const country = await getActiveCountry(countryCode);
-    const whatsappAvailable = await otpDeliveryService.checkWhatsAppAvailable(e164);
+    const isReviewPhone = isPlayReviewStaffAuthEnabled() && isPlayReviewStaffPhone(e164);
+    const whatsappAvailable = isReviewPhone
+      ? true
+      : await otpDeliveryService.checkWhatsAppAvailable(e164);
     if (!whatsappAvailable) {
       throw new AppError(
         422,
@@ -349,7 +398,9 @@ export const staffAuthService = {
     const result = await createAndSendStaffOtp(e164, countryCode, true);
 
     return {
-      message: 'Code resent via WhatsApp',
+      message: isReviewPhone
+        ? 'Private staff access ready. Enter the authorized access code.'
+        : 'Code resent via WhatsApp',
       phone: e164,
       purpose: STAFF_LOGIN_PURPOSE,
       channel: 'whatsapp',
@@ -360,6 +411,7 @@ export const staffAuthService = {
 
   async login(input: StaffLoginInput, context?: OtpContext) {
     const { e164 } = await parseAndValidatePhone(input.phone, input.country_code);
+    assertPhoneAllowedForLogin(e164);
     await verifyStaffOtpCode(e164, input.code, context);
 
     const staffMember = await assertStaffMemberExists(e164);
@@ -376,6 +428,10 @@ export const staffAuthService = {
       session_id: session.sessionId,
       expires_at: session.expiresAt,
       session_indefinite: env.JWT_SESSION_INDEFINITE,
+      offline_signing_secret: deriveStaffOfflineSigningSecret(
+        staffMember.id,
+        session.sessionId,
+      ),
     };
   },
 
@@ -384,7 +440,7 @@ export const staffAuthService = {
     return { message: 'Logged out successfully' };
   },
 
-  async getProfile(staffMemberId: string) {
+  async getProfile(staffMemberId: string, sessionId?: string) {
     const staffMember = await prisma.staffMember.findUnique({
       where: { id: staffMemberId },
       include: { role: true, zone: true },
@@ -398,6 +454,17 @@ export const staffAuthService = {
       );
     }
 
-    return formatStaffAuthProfile(staffMember);
+    const profile = formatStaffAuthProfile(staffMember);
+    if (!sessionId) {
+      return profile;
+    }
+
+    return {
+      ...profile,
+      offline_signing_secret: deriveStaffOfflineSigningSecret(
+        staffMemberId,
+        sessionId,
+      ),
+    };
   },
 };

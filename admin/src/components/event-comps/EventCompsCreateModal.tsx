@@ -132,6 +132,7 @@ export function EventCompsCreateModal({ open, eventId, producerId, onClose, onCr
               <CompsTextInput
                 value={form.name}
                 placeholder={t('eventComps.createModal.namePlaceholder')}
+                ariaLabel={t('eventComps.createModal.fields.name')}
                 onChange={(value) => updateField('name', value)}
               />
             </CompsFormField>
@@ -141,6 +142,7 @@ export function EventCompsCreateModal({ open, eventId, producerId, onClose, onCr
               <CompsPhoneField
                 value={form.phone}
                 placeholder={t('eventComps.createModal.phonePlaceholder')}
+                ariaLabel={t('eventComps.createModal.fields.phone')}
                 onChange={(value) => updateField('phone', value)}
               />
             </CompsFormField>
@@ -151,6 +153,7 @@ export function EventCompsCreateModal({ open, eventId, producerId, onClose, onCr
                 value={form.type}
                 placeholder={t('eventComps.createModal.selectType')}
                 createLabel={t('eventComps.createModal.createType')}
+                ariaLabel={t('eventComps.createModal.fields.type')}
                 onChange={(value) => updateField('type', value)}
                 onCreateType={() => undefined}
               />
@@ -165,6 +168,7 @@ export function EventCompsCreateModal({ open, eventId, producerId, onClose, onCr
               <CompsBenefitTextarea
                 value={form.benefit}
                 placeholder={t('eventComps.createModal.benefitPlaceholder')}
+                ariaLabel={t('eventComps.createModal.fields.benefit')}
                 onChange={(value) => updateField('benefit', value)}
               />
             </CompsFormField>
@@ -175,7 +179,11 @@ export function EventCompsCreateModal({ open, eventId, producerId, onClose, onCr
               required
               hint={t('eventComps.createModal.issueDateHint')}
             >
-              <CompsDateInput value={form.issueDate} onChange={(value) => updateField('issueDate', value)} />
+              <CompsDateInput
+                value={form.issueDate}
+                ariaLabel={t('eventComps.createModal.fields.issueDate')}
+                onChange={(value) => updateField('issueDate', value)}
+              />
             </CompsFormField>
           </li>
           <li>

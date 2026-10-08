@@ -156,14 +156,22 @@ function roleColor(roleId: string, roles: AdminEventStaffQrDashboard['roles']) {
 type StaffQrPanelProps = {
   eventId: string;
   embedded?: boolean;
+  /** Increment to open the Add staff modal from a parent header action. */
+  addStaffRequestId?: number;
   onRegisterAddStaff?: (open: () => void) => void;
 };
 
-export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: StaffQrPanelProps) {
+export function StaffQrPanel({
+  eventId,
+  embedded = false,
+  addStaffRequestId = 0,
+  onRegisterAddStaff,
+}: StaffQrPanelProps) {
   const { t, dateLocale, numberLocale } = useI18n();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [actionError, setActionError] = useState('');
   const [data, setData] = useState<AdminEventStaffQrDashboard | null>(null);
   const [staff, setStaff] = useState<AdminStaffMember[]>([]);
   const [permissions, setPermissions] = useState<AdminStaffPermission[]>([]);
@@ -186,6 +194,21 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
   useEffect(() => {
     onRegisterAddStaff?.(() => setShowAddModal(true));
   }, [onRegisterAddStaff]);
+
+  useEffect(() => {
+    if (addStaffRequestId <= 0) {
+      return;
+    }
+    setShowAddModal(true);
+  }, [addStaffRequestId]);
+
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
 
   async function loadDashboard(options?: { silent?: boolean }) {
     if (!eventId) {
@@ -294,7 +317,12 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
     return staff.slice(start, start + PAGE_SIZE);
   }, [page, staff]);
 
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
   async function handleAddStaff(values: AddStaffFormValues) {
+    setActionError('');
     const result = await adminApi.createStaff({
       name: values.name,
       phone: values.phone,
@@ -303,7 +331,7 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
     });
 
     if (!result.ok || !result.data) {
-      setMessage(result.error ?? t('staffQr.staffAddError'));
+      setActionError(result.error ?? t('staffQr.staffAddError'));
       return;
     }
 
@@ -328,12 +356,13 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
       return;
     }
 
+    setActionError('');
     setActionLoadingId(member.id);
     const result = await adminApi.updateStaff(member.id, { role_id: roleId });
     setActionLoadingId(null);
 
     if (!result.ok || !result.data) {
-      setMessage(result.error ?? t('staffQr.staffRoleUpdateError'));
+      setActionError(result.error ?? t('staffQr.staffRoleUpdateError'));
       return;
     }
 
@@ -352,9 +381,10 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
   }
 
   async function handlePermissionChange(staffId: string, permissionIds: string[]) {
+    setActionError('');
     const result = await adminApi.updateStaff(staffId, { permission_ids: permissionIds });
     if (!result.ok) {
-      setMessage(result.error ?? t('staffQr.permissionsUpdateError'));
+      setActionError(result.error ?? t('staffQr.permissionsUpdateError'));
       return false;
     }
 
@@ -363,12 +393,13 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
   }
 
   async function handleViewSupervisorPin(member: AdminStaffMember) {
+    setActionError('');
     setActionLoadingId(member.id);
     const result = await adminApi.getSupervisorPin(member.id);
     setActionLoadingId(null);
 
     if (!result.ok || !result.data) {
-      setMessage(result.error ?? t('staffQr.supervisorPinViewError'));
+      setActionError(result.error ?? t('staffQr.supervisorPinViewError'));
       return;
     }
 
@@ -380,12 +411,13 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
       return;
     }
 
+    setActionError('');
     setActionLoadingId(member.id);
     const result = await adminApi.resetSupervisorPin(member.id);
     setActionLoadingId(null);
 
     if (!result.ok || !result.data) {
-      setMessage(result.error ?? t('staffQr.supervisorPinResetError'));
+      setActionError(result.error ?? t('staffQr.supervisorPinResetError'));
       return;
     }
 
@@ -395,12 +427,13 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
   }
 
   async function handleGenerateSupervisorPin(member: AdminStaffMember) {
+    setActionError('');
     setActionLoadingId(member.id);
     const result = await adminApi.resetSupervisorPin(member.id);
     setActionLoadingId(null);
 
     if (!result.ok || !result.data) {
-      setMessage(result.error ?? t('staffQr.supervisorPinGenerateError'));
+      setActionError(result.error ?? t('staffQr.supervisorPinGenerateError'));
       return;
     }
 
@@ -410,12 +443,17 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
   }
 
   async function handleResetQr(member: AdminStaffMember) {
+    if (!window.confirm(t('staffQr.resetQrConfirm', { name: member.name }))) {
+      return;
+    }
+
+    setActionError('');
     setActionLoadingId(member.id);
     const result = await adminApi.resetStaffQr(member.id);
     setActionLoadingId(null);
 
     if (!result.ok || !result.data) {
-      setMessage(result.error ?? t('staffQr.staffResetQrError'));
+      setActionError(result.error ?? t('staffQr.staffResetQrError'));
       return;
     }
 
@@ -426,12 +464,13 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
 
   async function handleTogglePause(member: AdminStaffMember) {
     const nextStatus = member.status === 'paused' ? 'online' : 'paused';
+    setActionError('');
     setActionLoadingId(member.id);
     const result = await adminApi.updateStaff(member.id, { status: nextStatus });
     setActionLoadingId(null);
 
     if (!result.ok || !result.data) {
-      setMessage(result.error ?? t('staffQr.staffPauseError'));
+      setActionError(result.error ?? t('staffQr.staffPauseError'));
       return;
     }
 
@@ -446,12 +485,13 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
       return;
     }
 
+    setActionError('');
     setActionLoadingId(member.id);
     const result = await adminApi.deleteStaff(member.id);
     setActionLoadingId(null);
 
     if (!result.ok) {
-      setMessage(result.error ?? t('staffQr.staffDeleteError'));
+      setActionError(result.error ?? t('staffQr.staffDeleteError'));
       return;
     }
 
@@ -486,6 +526,7 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
     <section className={`page staff-qr-page${embedded ? ' staff-qr-page--embedded' : ''}`}>
       {embedded ? null : <StaffQrHeader onAddStaff={() => setShowAddModal(true)} />}
 
+      {actionError ? <Alert tone="error">{actionError}</Alert> : null}
       {message ? <Alert tone="success">{message}</Alert> : null}
 
       <div className="staff-qr-top-grid">
@@ -698,6 +739,7 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
                 staff: String(staff.length),
               })}
             </span>
+            {totalPages > 1 ? (
             <div className="staff-qr-pagination__controls">
               <button
                 type="button"
@@ -726,6 +768,7 @@ export function StaffQrPanel({ eventId, embedded = false, onRegisterAddStaff }: 
                 <IconChevronRight />
               </button>
             </div>
+            ) : null}
           </footer>
         </article>
 

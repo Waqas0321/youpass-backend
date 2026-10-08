@@ -319,7 +319,7 @@ const SAMPLE_EVENTS: SampleEventSeed[] = [
     venueName: 'Bar Liguria',
     city: 'Santiago',
     countryCode: 'CL',
-    imageUrl: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d87?w=800',
+    imageUrl: 'https://images.unsplash.com/photo-1514933651103-005eec06c04b?w=800',
     eventTypeSlug: 'bar',
     isFeatured: false,
     featuredOrder: 0,

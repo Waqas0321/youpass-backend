@@ -70,7 +70,11 @@ function assertScanTypePermission(staffMember: StaffMember, scanType: StaffRecen
   }
 }
 
-async function logStaffScan(staffMemberId: string, response: StaffScanResponse) {
+async function logStaffScan(
+  staffMemberId: string,
+  response: StaffScanResponse,
+  meta?: StaffScanLogMeta,
+) {
   await prisma.staffScanLog.create({
     data: {
       staffMemberId,
@@ -88,15 +92,27 @@ async function logStaffScan(staffMemberId: string, response: StaffScanResponse) 
       barName: response.bar_name,
       productQuantity: response.product_quantity,
       lastUsedAt: response.last_used_at ? new Date(response.last_used_at) : null,
+      scannedAt: meta?.scannedAt ?? new Date(),
+      clientScanId: meta?.clientScanId,
+      deviceId: meta?.deviceId,
+      syncedFromOffline: meta?.syncedFromOffline ?? false,
     },
   });
 }
 
+export type StaffScanLogMeta = {
+  clientScanId?: string;
+  deviceId?: string;
+  scannedAt?: Date;
+  syncedFromOffline?: boolean;
+};
+
 async function finalizeScan(
   staffMember: StaffMember,
   response: StaffScanResponse,
+  meta?: StaffScanLogMeta,
 ): Promise<StaffScanResponse> {
-  await logStaffScan(staffMember.id, response);
+  await logStaffScan(staffMember.id, response, meta);
   return response;
 }
 
@@ -171,7 +187,11 @@ async function buildProductScanResponse(
 }
 
 export const staffScanService = {
-  async scanEntry(scanInput: string, staffMember: StaffMember): Promise<StaffScanResponse> {
+  async scanEntry(
+    scanInput: string,
+    staffMember: StaffMember,
+    meta?: StaffScanLogMeta,
+  ): Promise<StaffScanResponse> {
     const data = await invitationDoorValidationService.validateQrPayload(scanInput);
 
     if ('already_validated' in data && data.already_validated) {
@@ -180,6 +200,7 @@ export const staffScanService = {
       return finalizeScan(
         staffMember,
         await buildEntryScanResponse(scanInput, true, ticket?.validatedAt),
+        meta,
       );
     }
 
@@ -194,29 +215,38 @@ export const staffScanService = {
         ticket?.validatedAt ?? new Date(),
         isReentry,
       ),
+      meta,
     );
   },
 
-  async scanProduct(scanInput: string, staffMember: StaffMember): Promise<StaffScanResponse> {
+  async scanProduct(
+    scanInput: string,
+    staffMember: StaffMember,
+    meta?: StaffScanLogMeta,
+  ): Promise<StaffScanResponse> {
     try {
       const [data, staffContext] = await Promise.all([
         eventDrinkRedemptionService.validateQrPayload(scanInput),
         loadStaffContext(staffMember),
       ]);
-      return finalizeScan(staffMember, {
-        outcome: 'valid',
-        scan_type: 'product',
-        guest_name: data.guest_name,
-        event_id: data.event_id,
-        event_title: data.event_title,
-        product_name: data.line_items[0]?.product_name ?? 'Product',
-        product_quantity: data.line_items[0]?.quantity ?? 1,
-        entry_id: data.entry_code,
-        transaction_id: data.entry_code,
-        bar_name: staffContext.zone.label,
-        validated_at: data.redeemed_at,
-        qr_payload: data.qr_payload ?? scanInput,
-      });
+      return finalizeScan(
+        staffMember,
+        {
+          outcome: 'valid',
+          scan_type: 'product',
+          guest_name: data.guest_name,
+          event_id: data.event_id,
+          event_title: data.event_title,
+          product_name: data.line_items[0]?.product_name ?? 'Product',
+          product_quantity: data.line_items[0]?.quantity ?? 1,
+          entry_id: data.entry_code,
+          transaction_id: data.entry_code,
+          bar_name: staffContext.zone.label,
+          validated_at: data.redeemed_at,
+          qr_payload: data.qr_payload ?? scanInput,
+        },
+        meta,
+      );
     } catch (err) {
       if (err instanceof AppError && err.code === 'DRINK_QR_ALREADY_REDEEMED') {
         const redemption = await findDrinkRedemptionByScanInput(scanInput);
@@ -228,6 +258,7 @@ export const staffScanService = {
             true,
             redemption?.validatedAt,
           ),
+          meta,
         );
       }
       throw err;

@@ -49,19 +49,23 @@ export function EventWorkspaceLayout({
   const producerName = event?.producer_name?.trim() || 'Producer';
   const lifecycleBadge = event ? eventDisplayBadge(event) : null;
 
+  // Prefer live draftPreview so Event Information edits update the sidebar
+  // before save (title/venue/schedule/image). Fall back to saved event.
   const previewTitle =
-    event?.title?.trim() ||
     draftPreview?.title?.trim() ||
+    event?.title?.trim() ||
     (isNewEvent ? t('eventInfo.newEventTitle') : '');
-  const previewImage = event?.image_url ?? draftPreview?.image_url;
-  const previewStartsAt = event?.starts_at ?? draftPreview?.starts_at;
-  const previewVenue = event?.venue_name ?? draftPreview?.venue_name ?? '';
-  const previewCity = event?.city ?? draftPreview?.city ?? '';
+  const previewImage = draftPreview?.image_url || event?.image_url;
+  const previewStartsAt = draftPreview?.starts_at || event?.starts_at;
+  const previewVenue = draftPreview?.venue_name ?? event?.venue_name ?? '';
+  const previewCity = draftPreview?.city ?? event?.city ?? '';
   const joinedLocation = [previewVenue, previewCity].filter(Boolean).join(', ');
-  const previewLocation =
-    event?.location_display ??
-    (joinedLocation || (isNewEvent ? t('eventInfo.locationPending') : ''));
-  const previewCapacity = event?.capacity_total ?? draftPreview?.capacity_total ?? null;
+  const previewLocation = draftPreview
+    ? joinedLocation || (isNewEvent ? t('eventInfo.locationPending') : '')
+    : event?.location_display ||
+      joinedLocation ||
+      (isNewEvent ? t('eventInfo.locationPending') : '');
+  const previewCapacity = draftPreview?.capacity_total ?? event?.capacity_total ?? null;
   const showEventCard = Boolean(event) || isNewEvent;
 
   function formatEventDate(iso: string) {
@@ -101,17 +105,15 @@ export function EventWorkspaceLayout({
             <div className="event-workspace__event-body">
               <div className="event-workspace__event-top">
                 <strong>{previewTitle}</strong>
-                {lifecycleBadge ? (
-                  <span
-                    className={`event-workspace__event-badge event-workspace__event-badge--${lifecycleBadge}`}
-                  >
-                    {t(`eventsPage.badge.${lifecycleBadge}`)}
-                  </span>
-                ) : (
-                  <span className="event-workspace__event-badge event-workspace__event-badge--draft">
-                    {t('eventsPage.badge.draft')}
-                  </span>
-                )}
+                <span
+                  className={`event-workspace__event-badge event-workspace__event-badge--${
+                    lifecycleBadge ?? (isNewEvent ? 'draft' : 'finished')
+                  }`}
+                >
+                  {t(
+                    `eventsPage.badge.${lifecycleBadge ?? (isNewEvent ? 'draft' : 'finished')}`,
+                  )}
+                </span>
               </div>
               {previewStartsAt ? (
                 <p className="event-workspace__event-meta">
@@ -195,23 +197,25 @@ export function EventWorkspaceLayout({
               {pageSubtitle ? <p className="event-workspace__page-subtitle">{pageSubtitle}</p> : null}
             </div>
           ) : null}
-          <div className="event-workspace__topbar-row">
-            <LanguageToggle />
-            <button type="button" className="event-workspace__icon-btn" aria-label={t('eventWorkspace.notifications')}>
-              <IconBell />
-            </button>
-            <div className="event-workspace__profile event-workspace__profile--rich">
-              <span className="event-workspace__avatar">{producerInitials(producerName)}</span>
-              <div>
-                <strong>{producerName}</strong>
-                <p>{t('common.administrator')}</p>
+          <div className="event-workspace__page-meta">
+            <div className="event-workspace__topbar-row">
+              <LanguageToggle />
+              <button type="button" className="event-workspace__icon-btn" aria-label={t('eventWorkspace.notifications')}>
+                <IconBell />
+              </button>
+              <div className="event-workspace__profile event-workspace__profile--rich">
+                <span className="event-workspace__avatar">{producerInitials(producerName)}</span>
+                <div>
+                  <strong>{producerName}</strong>
+                  <p>{t('common.administrator')}</p>
+                </div>
+                <IconChevronDown className="event-workspace__profile-chevron" />
               </div>
-              <IconChevronDown className="event-workspace__profile-chevron" />
             </div>
+            {headerActions ? (
+              <div className="event-workspace__header-actions">{headerActions}</div>
+            ) : null}
           </div>
-          {headerActions ? (
-            <div className="event-workspace__header-actions">{headerActions}</div>
-          ) : null}
         </header>
 
         <main className="event-workspace__main">{children}</main>

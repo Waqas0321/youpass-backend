@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
+import type { EventDisplayBadge } from '../events/eventsUtils';
 import { IconCalendar, IconPause, IconPlayCircle } from '../ui/Icons';
 import { useI18n } from '../../i18n/useI18n';
 
 type EventSummaryStatusBarProps = {
-  badge: 'active' | 'upcoming' | 'draft' | null;
+  badge: EventDisplayBadge | null;
   dateLabel: string;
   timeLabel: string;
   locationLabel: string;
@@ -50,12 +51,25 @@ export function EventSummaryStatusBar({
       ? t('eventSummary.eventStatusActiveHint')
       : badge === 'upcoming'
         ? t('eventSummary.eventStatusUpcomingHint')
-        : null;
+        : badge === 'draft'
+          ? t('eventSummary.eventStatusDraftHint')
+          : badge === 'finished'
+            ? t('eventSummary.eventStatusFinishedHint')
+            : null;
 
   return (
     <section className="event-summary__status-bar" aria-label={t('eventSummary.eventStatus')}>
       <div className="event-summary__status-segment event-summary__status-segment--state">
-        <span className="event-summary__status-icon" aria-hidden="true">
+        <span
+          className={`event-summary__status-icon ${
+            salesPaused
+              ? 'event-summary__status-icon--paused'
+              : badge
+                ? `event-summary__status-icon--${badge}`
+                : ''
+          }`.trim()}
+          aria-hidden="true"
+        >
           <IconCalendar />
         </span>
         <div>

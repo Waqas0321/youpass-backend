@@ -107,6 +107,17 @@ const envSchema = z.object({
   WHATSAPP_TEMPLATE_PHONE_CHANGE: z.string().optional().default('').transform((v) => v.trim()),
   WHATSAPP_TEMPLATE_DELETE_ACCOUNT: z.string().optional().default('').transform((v) => v.trim()),
   WHATSAPP_TEMPLATE_STAFF_LOGIN: z.string().optional().default('').transform((v) => v.trim()),
+  /** Utility template for guest invitation WhatsApp (Meta Cloud API). */
+  WHATSAPP_INVITATION_TEMPLATE_NAME: z
+    .string()
+    .optional()
+    .default('youpass_invite')
+    .transform((v) => v.trim()),
+  WHATSAPP_INVITATION_TEMPLATE_LANGUAGE: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v) => v.trim()),
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional().default('').transform((v) => v.trim()),
   WHATSAPP_APP_SECRET: z.string().optional().default('').transform((v) => v.trim()),
   CHECKOUT_MOCK_PAYMENT: z
@@ -157,6 +168,50 @@ const envSchema = z.object({
     .optional()
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
+  /**
+   * Private / Play-review login (passwordless OTP apps).
+   * Empty by default = disabled. Set explicitly in .env only — never commit secrets.
+   * Phones enter these E.164 numbers + fixed OTP — no WhatsApp required.
+   */
+  PLAY_REVIEW_PHONE: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v) => v.replace(/\s+/g, '').trim()),
+  PLAY_REVIEW_STAFF_PHONE: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v) => v.replace(/\s+/g, '').trim()),
+  PLAY_REVIEW_OTP: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v) => v.trim()),
+  /** Supervisor PIN for the private / Play-review staff account. */
+  PLAY_REVIEW_STAFF_PIN: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v) => v.trim()),
+  /**
+   * When non-empty, ONLY these E.164 phones may send/verify login codes
+   * (customer + staff). Comma-separated. Empty = no restriction.
+   */
+  AUTH_LOGIN_ALLOWLIST: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v) => v.replace(/\s+/g, '').trim()),
+  /**
+   * Root secret used to derive per-session offline HMAC keys for staff scan sync.
+   * Falls back to JWT_SECRET when unset.
+   */
+  STAFF_OFFLINE_HMAC_SECRET: z
+    .string()
+    .optional()
+    .default('')
+    .transform((v) => v.trim()),
 });
 
 export type Env = z.infer<typeof envSchema>;
