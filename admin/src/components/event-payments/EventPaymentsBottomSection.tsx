@@ -1,21 +1,33 @@
 import { useI18n } from '../../i18n/useI18n';
 import {
   formatPaymentClp,
-  PAYMENT_METHOD_SUMMARY,
-  PAYMENT_SETTLEMENTS,
+  type PaymentMethodSummary,
+  type PaymentSettlement,
   type PaymentTransaction,
 } from './eventPaymentsDemo';
 
 type Props = {
   transactions: PaymentTransaction[];
+  hasActiveSearch: boolean;
+  methodSummary: PaymentMethodSummary[];
+  settlements: PaymentSettlement[];
 };
 
 function PaymentMethodBadge({ method, tone }: { method: string; tone: PaymentTransaction['methodTone'] }) {
   return <span className={`event-payments-method event-payments-method--${tone}`}>{method}</span>;
 }
 
-export function EventPaymentsBottomSection({ transactions }: Props) {
+export function EventPaymentsBottomSection({
+  transactions,
+  hasActiveSearch,
+  methodSummary,
+  settlements,
+}: Props) {
   const { t, numberLocale } = useI18n();
+
+  const transactionsEmptyLabel = hasActiveSearch
+    ? t('eventPayments.transactions.empty')
+    : t('eventPayments.transactions.emptyNoData');
 
   return (
     <section className="event-payments-bottom">
@@ -40,7 +52,7 @@ export function EventPaymentsBottomSection({ transactions }: Props) {
               {transactions.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="event-payments-table__empty">
-                    {t('eventPayments.transactions.empty')}
+                    {transactionsEmptyLabel}
                   </td>
                 </tr>
               ) : (
@@ -85,16 +97,24 @@ export function EventPaymentsBottomSection({ transactions }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {PAYMENT_METHOD_SUMMARY.map((row) => (
-                  <tr key={row.method}>
-                    <td>
-                      <PaymentMethodBadge method={row.method} tone={row.methodTone} />
+                {methodSummary.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="event-payments-table__empty">
+                      {t('eventPayments.methods.empty')}
                     </td>
-                    <td>{new Intl.NumberFormat(numberLocale).format(row.count)}</td>
-                    <td>{row.sharePct.toFixed(1)}%</td>
-                    <td>{formatPaymentClp(row.amount, numberLocale)}</td>
                   </tr>
-                ))}
+                ) : (
+                  methodSummary.map((row) => (
+                    <tr key={row.method}>
+                      <td>
+                        <PaymentMethodBadge method={row.method} tone={row.methodTone} />
+                      </td>
+                      <td>{new Intl.NumberFormat(numberLocale).format(row.count)}</td>
+                      <td>{row.sharePct.toFixed(1)}%</td>
+                      <td>{formatPaymentClp(row.amount, numberLocale)}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -115,20 +135,28 @@ export function EventPaymentsBottomSection({ transactions }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {PAYMENT_SETTLEMENTS.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.date}</td>
-                    <td>
-                      <span className={`event-payments-settlement event-payments-settlement--${row.status}`}>
-                        {t(`eventPayments.settlements.statuses.${row.status}`)}
-                      </span>
-                    </td>
-                    <td>{formatPaymentClp(row.amount, numberLocale)}</td>
-                    <td>
-                      <code className="event-payments-table__code">{row.accountMask}</code>
+                {settlements.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="event-payments-table__empty">
+                      {t('eventPayments.settlements.empty')}
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  settlements.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.date}</td>
+                      <td>
+                        <span className={`event-payments-settlement event-payments-settlement--${row.status}`}>
+                          {t(`eventPayments.settlements.statuses.${row.status}`)}
+                        </span>
+                      </td>
+                      <td>{formatPaymentClp(row.amount, numberLocale)}</td>
+                      <td>
+                        <code className="event-payments-table__code">{row.accountMask}</code>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

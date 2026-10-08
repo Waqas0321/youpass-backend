@@ -18,20 +18,25 @@ test.describe('Payments & finance', () => {
     await expect(page.getByRole('region', { name: /Finance summary/i })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByText(/Gross total/i)).toBeVisible();
-    await expect(page.getByText(/Producer net/i)).toBeVisible();
+    await expect(page.getByText('Gross total', { exact: true })).toBeVisible();
+    await expect(page.getByText('Producer net', { exact: true })).toBeVisible();
     await expect(page.getByRole('region', { name: /Finance charts/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: /Daily sales/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: /^Transactions$/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: /^Settlements$/i })).toBeVisible();
+    await expect(page.getByText(/Settlements are not configured yet/i)).toBeVisible();
     await expect(page.locator('body')).not.toContainText('Something went wrong');
     await expect(page.locator('body')).not.toContainText('Cannot GET /api');
+    await expect(page.locator('body')).not.toContainText('Could not load payments data');
   });
 
   test('search filters transactions and can clear', async ({ page }) => {
     await page.goto(`/admin/events/${EVENT_ID}/payments`);
     const search = page.getByPlaceholder(/Search transactions/i);
     await expect(search).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('region', { name: /Finance summary/i })).toBeVisible({
+      timeout: 20_000,
+    });
     await search.fill('zzzz-no-match');
     await expect(page.getByText(/No transactions match/i)).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: /Clear search/i }).click();
@@ -42,6 +47,9 @@ test.describe('Payments & finance', () => {
   test('download report shows success message', async ({ page }) => {
     await page.goto(`/admin/events/${EVENT_ID}/payments`);
     await expect(page.getByRole('button', { name: /Download report/i })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole('region', { name: /Finance summary/i })).toBeVisible({
       timeout: 20_000,
     });
     const downloadPromise = page.waitForEvent('download', { timeout: 10_000 }).catch(() => null);
@@ -70,6 +78,9 @@ test.describe('Payments & finance', () => {
         timeout: 20_000,
       });
       await expect(page.getByText(/Gross total/i)).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText(/No paid ticket or drink orders yet/i)).toBeVisible({
+        timeout: 20_000,
+      });
       await expect(page.getByRole('button', { name: /Download report/i })).toBeVisible();
     } finally {
       await deleteEventById(seeded.id);

@@ -416,6 +416,8 @@ export const adminApi = {
     ),
   eventDashboardPanels: (eventId: string, period: DashboardSalesPeriod) =>
     apiRequest<AdminEventDashboardPanels>(`/admin/events/${eventId}/dashboard/panels?period=${period}`),
+  eventPayments: (eventId: string) =>
+    apiRequest<AdminEventPayments>(`/admin/events/${eventId}/payments`),
   eventStaffQr: (eventId: string) =>
     apiRequest<AdminEventStaffQrDashboard>(`/admin/events/${eventId}/staff-qr`),
   eventStaffQrScans: (eventId: string, page = 1, limit = 20) =>
@@ -1261,6 +1263,61 @@ export type AdminEventDashboardPanels = {
   top_bar_items: AdminDashboardTopBarItem[];
   tickets_by_category: AdminDashboardTicketCategory[];
   recent_activity: AdminDashboardActivity[];
+};
+
+export type AdminEventPaymentsKpi = {
+  id: 'gross' | 'commission' | 'net' | 'refunds' | 'pendingSettlement';
+  tone: 'purple' | 'gold' | 'green' | 'red' | 'blue';
+  value: number;
+  delta_pct: number;
+  delta_tone: 'good' | 'bad' | 'neutral';
+};
+
+export type AdminEventPaymentsChartPoint = {
+  label: string;
+  value: number;
+};
+
+export type AdminEventPaymentsTransaction = {
+  id: string;
+  user: string;
+  product: string;
+  method: string;
+  method_tone: 'webpay' | 'visa' | 'mastercard' | 'amex' | 'transfer';
+  status: 'approved' | 'pending' | 'refunded';
+  amount: number;
+  date: string;
+  created_at: string;
+};
+
+export type AdminEventPaymentsMethodSummary = {
+  method: string;
+  method_tone: AdminEventPaymentsTransaction['method_tone'];
+  count: number;
+  share_pct: number;
+  amount: number;
+};
+
+export type AdminEventPaymentsSettlement = {
+  id: string;
+  date: string;
+  status: 'transferred' | 'scheduled';
+  amount: number;
+  account_mask: string;
+};
+
+export type AdminEventPayments = {
+  event: { id: string; title: string };
+  kpis: AdminEventPaymentsKpi[];
+  daily_sales: AdminEventPaymentsChartPoint[];
+  refunds_series: AdminEventPaymentsChartPoint[];
+  revenue_by_category: AdminEventPaymentsChartPoint[];
+  payment_methods: AdminEventPaymentsChartPoint[];
+  method_summary: AdminEventPaymentsMethodSummary[];
+  settlements: AdminEventPaymentsSettlement[];
+  payment_methods_available: boolean;
+  settlements_available: boolean;
+  transactions: AdminEventPaymentsTransaction[];
 };
 
 export type AdminDashboardTopBarItem = {

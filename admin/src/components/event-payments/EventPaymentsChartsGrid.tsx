@@ -1,45 +1,59 @@
 import { useMemo } from 'react';
 import { EventAnalyticsDonutPanel } from '../event-analytics/EventAnalyticsDonutPanel';
 import { useI18n } from '../../i18n/useI18n';
-import {
-  DAILY_SALES_POINTS,
-  formatPaymentClp,
-  PAYMENT_METHOD_SLICES,
-  REFUND_POINTS,
-  REVENUE_BY_CATEGORY,
-} from './eventPaymentsDemo';
+import { formatPaymentClp, type PaymentCategorySlice, type PaymentChartPoint } from './eventPaymentsDemo';
 import { EventPaymentsMiniLineChart } from './EventPaymentsMiniLineChart';
 
-export function EventPaymentsChartsGrid() {
+type Props = {
+  dailySales: PaymentChartPoint[];
+  refundSeries: PaymentChartPoint[];
+  revenueByCategory: PaymentCategorySlice[];
+  paymentMethods: PaymentCategorySlice[];
+};
+
+export function EventPaymentsChartsGrid({
+  dailySales,
+  refundSeries,
+  revenueByCategory,
+  paymentMethods,
+}: Props) {
   const { t, numberLocale } = useI18n();
 
   const categorySlices = useMemo(
     () =>
-      REVENUE_BY_CATEGORY.map((slice) => ({
-        label: t(`eventPayments.categories.${slice.label}`),
-        value: slice.value,
-      })),
-    [t],
+      revenueByCategory.map((slice) => {
+        const key = `eventPayments.categories.${slice.label}`;
+        const translated = t(key);
+        return {
+          label: translated === key ? slice.label : translated,
+          value: slice.value,
+        };
+      }),
+    [revenueByCategory, t],
   );
 
   const methodSlices = useMemo(
     () =>
-      PAYMENT_METHOD_SLICES.map((slice) => ({
-        label: t(`eventPayments.methods.labels.${slice.label}`),
-        value: slice.value,
-      })),
-    [t],
+      paymentMethods.map((slice) => {
+        const key = `eventPayments.methods.labels.${slice.label}`;
+        const translated = t(key);
+        return {
+          label: translated === key ? slice.label : translated,
+          value: slice.value,
+        };
+      }),
+    [paymentMethods, t],
   );
 
-  const categoryTotal = REVENUE_BY_CATEGORY.reduce((sum, slice) => sum + slice.value, 0);
-  const methodTotal = PAYMENT_METHOD_SLICES.reduce((sum, slice) => sum + slice.value, 0);
+  const categoryTotal = revenueByCategory.reduce((sum, slice) => sum + slice.value, 0);
+  const methodTotal = paymentMethods.reduce((sum, slice) => sum + slice.value, 0);
 
   return (
     <section className="event-payments-charts-grid" aria-label={t('eventPayments.chartsSection')}>
       <EventPaymentsMiniLineChart
         title={t('eventPayments.charts.dailySales')}
         subtitle={t('eventPayments.charts.last7Days')}
-        points={DAILY_SALES_POINTS}
+        points={dailySales}
         tone="purple"
       />
       <EventAnalyticsDonutPanel
@@ -52,7 +66,7 @@ export function EventPaymentsChartsGrid() {
       <EventPaymentsMiniLineChart
         title={t('eventPayments.charts.refunds')}
         subtitle={t('eventPayments.charts.last7Days')}
-        points={REFUND_POINTS}
+        points={refundSeries}
         tone="red"
       />
       <EventAnalyticsDonutPanel

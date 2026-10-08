@@ -5,6 +5,7 @@ import { adminVenueLayoutController } from './admin-venue-layout.controller.js';
 import { adminEventDrinksController } from './admin-event-drinks.controller.js';
 import { adminEventDrinkOrdersController } from './admin-event-drink-orders.controller.js';
 import { adminEventDashboardController } from './admin-event-dashboard.controller.js';
+import { adminEventPaymentsController } from './admin-event-payments.controller.js';
 import { adminEventSalesController } from './admin-event-sales.controller.js';
 import { adminEventStaffQrController } from './admin-event-staff-qr.controller.js';
 import { adminEventVipTablesController } from './admin-event-vip-tables.controller.js';
@@ -38,6 +39,7 @@ adminRouter.get(
   adminEventDashboardController.getHourlyTicketSales,
 );
 adminRouter.get('/events/:eventId/dashboard/panels', adminEventDashboardController.getPanels);
+adminRouter.get('/events/:eventId/payments', adminEventPaymentsController.get);
 adminRouter.get('/events/:eventId/sales', adminEventSalesController.get);
 adminRouter.patch('/events/:eventId/sales', adminEventSalesController.update);
 adminRouter.get('/events/:eventId/staff-qr', adminEventStaffQrController.get);

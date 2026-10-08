@@ -250,9 +250,11 @@ export function downloadPaymentsReport(options?: {
   eventId?: string;
   transactions?: PaymentTransaction[];
   kpis?: PaymentKpi[];
+  methodSummary?: PaymentMethodSummary[];
 }) {
-  const transactions = options?.transactions ?? PAYMENT_TRANSACTIONS;
-  const kpis = options?.kpis ?? PAYMENT_KPIS;
+  const transactions = options?.transactions ?? [];
+  const kpis = options?.kpis ?? [];
+  const methodSummary = options?.methodSummary ?? [];
   const eventId = options?.eventId ?? 'event';
 
   let csv = csvRow(['YouPass Payments Report']);
@@ -269,7 +271,7 @@ export function downloadPaymentsReport(options?: {
   }
   csv += csvRow([]);
   csv += csvRow(['Method', 'Count', 'Share %', 'Amount']);
-  for (const row of PAYMENT_METHOD_SUMMARY) {
+  for (const row of methodSummary) {
     csv += csvRow([row.method, row.count, row.sharePct, row.amount]);
   }
 

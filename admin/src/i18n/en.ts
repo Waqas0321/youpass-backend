@@ -1342,6 +1342,7 @@ export const en = {
     title: 'Payments & finance',
     subtitle: 'Manage your event income, commissions, refunds, and settlements.',
     loading: 'Loading finance…',
+    loadError: 'Could not load payments data.',
     notFound: 'We could not find this event.',
     comingSoon: 'This action will be available soon.',
     downloadReport: 'Download report',
@@ -1379,6 +1380,7 @@ export const en = {
     transactions: {
       title: 'Transactions',
       empty: 'No transactions match the current search.',
+      emptyNoData: 'No paid ticket or drink orders yet for this event.',
       columns: {
         id: 'Transaction ID',
         user: 'User',
@@ -1396,6 +1398,7 @@ export const en = {
     },
     methods: {
       title: 'Payment methods',
+      empty: 'Payment method breakdown will appear once gateway metadata is stored.',
       labels: {
         webpay: 'Webpay',
         visa: 'Visa',
@@ -1412,6 +1415,7 @@ export const en = {
     },
     settlements: {
       title: 'Settlements',
+      empty: 'Settlements are not configured yet. Producer net is shown as pending settlement.',
       columns: {
         date: 'Date',
         status: 'Status',

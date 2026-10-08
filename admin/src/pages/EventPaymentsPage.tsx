@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   EventPaymentsContent,
   EventPaymentsDownloadButton,
 } from '../components/event-payments/EventPaymentsContent';
-import { downloadPaymentsReport } from '../components/event-payments/eventPaymentsDemo';
+import {
+  downloadPaymentsReport,
+  type PaymentKpi,
+  type PaymentMethodSummary,
+  type PaymentTransaction,
+} from '../components/event-payments/eventPaymentsDemo';
 import { EventWorkspacePage } from '../components/event-workspace/EventWorkspacePage';
 import { Alert } from '../components/ui/Alert';
 import { useI18n } from '../i18n/useI18n';
@@ -13,6 +18,11 @@ export function EventPaymentsPage() {
   const { eventId = '' } = useParams();
   const { t } = useI18n();
   const [message, setMessage] = useState('');
+  const reportRef = useRef<{
+    kpis: PaymentKpi[];
+    transactions: PaymentTransaction[];
+    methodSummary: PaymentMethodSummary[];
+  }>({ kpis: [], transactions: [], methodSummary: [] });
 
   useEffect(() => {
     if (!message) {
@@ -22,8 +32,24 @@ export function EventPaymentsPage() {
     return () => window.clearTimeout(timer);
   }, [message]);
 
+  const handleDataChange = useCallback(
+    (data: {
+      kpis: PaymentKpi[];
+      transactions: PaymentTransaction[];
+      methodSummary: PaymentMethodSummary[];
+    }) => {
+      reportRef.current = data;
+    },
+    [],
+  );
+
   function handleDownloadReport() {
-    downloadPaymentsReport({ eventId: eventId || 'event' });
+    downloadPaymentsReport({
+      eventId: eventId || 'event',
+      transactions: reportRef.current.transactions,
+      kpis: reportRef.current.kpis,
+      methodSummary: reportRef.current.methodSummary,
+    });
     setMessage(t('eventPayments.downloadSuccess'));
   }
 
@@ -36,7 +62,7 @@ export function EventPaymentsPage() {
       notFoundLabel={t('eventPayments.notFound')}
     >
       {message ? <Alert tone="success">{message}</Alert> : null}
-      <EventPaymentsContent />
+      <EventPaymentsContent onDataChange={handleDataChange} />
     </EventWorkspacePage>
   );
 }

@@ -1348,6 +1348,7 @@ export const es: Messages = {
     title: 'Pagos & finanzas',
     subtitle: 'Gestiona los ingresos, comisiones, reembolsos y liquidaciones de tu evento.',
     loading: 'Cargando finanzas…',
+    loadError: 'No se pudieron cargar los datos de pagos.',
     notFound: 'No encontramos este evento.',
     comingSoon: 'Esta acción estará disponible pronto.',
     downloadReport: 'Descargar reporte',
@@ -1385,6 +1386,7 @@ export const es: Messages = {
     transactions: {
       title: 'Transacciones',
       empty: 'No hay transacciones que coincidan con la búsqueda actual.',
+      emptyNoData: 'Aún no hay órdenes de tickets o bebidas pagadas para este evento.',
       columns: {
         id: 'ID transacción',
         user: 'Usuario',
@@ -1402,6 +1404,7 @@ export const es: Messages = {
     },
     methods: {
       title: 'Métodos de pago',
+      empty: 'El desglose por método aparecerá cuando se guarde la metadata del gateway.',
       labels: {
         webpay: 'Webpay',
         visa: 'Visa',
@@ -1418,6 +1421,7 @@ export const es: Messages = {
     },
     settlements: {
       title: 'Liquidaciones',
+      empty: 'Las liquidaciones aún no están configuradas. El neto del productor se muestra como pendiente.',
       columns: {
         date: 'Fecha',
         status: 'Estado',
