@@ -31,7 +31,7 @@ export function useVipTableCreateForm(
     setForm({
       ...EMPTY_VIP_TABLE_FORM,
       zoneId: zones[0]?.zoneId ?? '',
-      capacity: '10',
+      capacity: String(zones[0]?.defaultCapacity ?? 10),
     });
     setSaving(false);
     setError('');
@@ -41,8 +41,18 @@ export function useVipTableCreateForm(
     key: K,
     value: VipTableCreateFormState[K],
   ) => {
-    setForm((current) => ({ ...current, [key]: value }));
-  }, []);
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      // Picking a zone pre-fills its default table capacity.
+      if (key === 'zoneId') {
+        const zone = zones.find((item) => item.zoneId === value);
+        if (zone?.defaultCapacity) {
+          next.capacity = String(zone.defaultCapacity);
+        }
+      }
+      return next;
+    });
+  }, [zones]);
 
   const persistTable = useCallback(async () => {
     if (!form.number.trim() || !form.zoneId || !form.capacity.trim() || !form.price.trim()) {

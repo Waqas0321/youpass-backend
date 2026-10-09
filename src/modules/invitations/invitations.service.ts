@@ -183,7 +183,8 @@ async function getInvitationForUser(id: string, userId: string, userPhone: strin
 
 function buildListWhere(userId: string, userPhone: string, query: ListInvitationsQuery): Prisma.InvitationWhereInput {
   const recipientFilter: Prisma.InvitationWhereInput = {
-    OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null }],
+    OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null },
+        { recipientPhone: userPhone, recipientUserId: { isSet: false } }],
   };
 
   const where: Prisma.InvitationWhereInput = {
@@ -342,7 +343,8 @@ export const invitationsService = {
     await purgeExpiredInvitationsForRecipient(userId, userPhone);
 
     const recipientFilter: Prisma.InvitationWhereInput = {
-      OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null }],
+      OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null },
+        { recipientPhone: userPhone, recipientUserId: { isSet: false } }],
     };
 
     const [pending, total, newCount] = await Promise.all([

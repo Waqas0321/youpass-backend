@@ -1,4 +1,5 @@
 import type { Event, InvitationSettings, User, WaitlistEntry, WaitlistOffer } from '@prisma/client';
+import { freedSlotNotReinvitedWhere } from '../../common/utils/session-query.js';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import {
@@ -59,7 +60,7 @@ async function countActiveCourtesyInvitations(eventId: string): Promise<number> 
 
 async function countUnreinvitedFreedSlots(eventId: string): Promise<number> {
   return prisma.freedInvitationSlot.count({
-    where: { eventId, reinvitedAt: null },
+    where: { eventId, ...freedSlotNotReinvitedWhere },
   });
 }
 
@@ -88,7 +89,8 @@ async function userHasActiveCourtesyInvitation(eventId: string, userId: string, 
       eventId,
       type: 'guaranteed',
       status: { in: [...ACTIVE_COURTESY_STATUSES] },
-      OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null }],
+      OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null },
+        { recipientPhone: userPhone, recipientUserId: { isSet: false } }],
     },
   });
   return existing != null;
@@ -357,7 +359,7 @@ export async function processOfferReminders(now = new Date()): Promise<number> {
   const offers = await prisma.waitlistOffer.findMany({
     where: {
       status: 'active',
-      reminderSentAt: null,
+      OR: [{ reminderSentAt: null }, { reminderSentAt: { isSet: false } }],
       expiresAt: { gt: now },
     },
     include: { event: true },
@@ -535,7 +537,7 @@ export const waitlistService = {
     }
 
     const slot = await prisma.freedInvitationSlot.findFirst({
-      where: { id: offer.freedSlotId, reinvitedAt: null },
+      where: { id: offer.freedSlotId, ...freedSlotNotReinvitedWhere },
     });
     if (!slot) {
       throw new AppError(409, 'WAITLIST_OFFER_INVALID', 'This slot has already been claimed');

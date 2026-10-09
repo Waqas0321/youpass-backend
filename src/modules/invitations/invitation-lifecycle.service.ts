@@ -97,7 +97,8 @@ export async function expireInvitationRecord(
 
 function recipientWhere(userId: string, userPhone: string): Prisma.InvitationWhereInput {
   return {
-    OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null }],
+    OR: [{ recipientUserId: userId }, { recipientPhone: userPhone, recipientUserId: null },
+        { recipientPhone: userPhone, recipientUserId: { isSet: false } }],
   };
 }
 

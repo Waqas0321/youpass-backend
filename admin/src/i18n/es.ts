@@ -1634,7 +1634,7 @@ export const es: Messages = {
     welcome: '¡Bienvenido de vuelta! 👋',
     welcomeSubtitle: 'Aquí tienes un resumen de lo que está pasando en tu evento.',
     yourEvent: 'tu evento',
-    defaultProducer: 'Productora Prime',
+    defaultProducer: 'YouPass',
     kpiTicketsSold: 'Entradas vendidas',
     kpiTotalRevenue: 'Ingresos totales',
     kpiBarConsumption: 'Consumos en barra',

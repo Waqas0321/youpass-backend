@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { freedSlotNotReinvitedWhere } from '../../common/utils/session-query.js';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
@@ -497,7 +498,7 @@ export const producerInvitationsService = {
     });
 
     const freedSlots = await prisma.freedInvitationSlot.findMany({
-      where: { producerId, reinvitedAt: null },
+      where: { producerId, ...freedSlotNotReinvitedWhere },
       include: { event: true },
       orderBy: { releasedAt: 'desc' },
       take: 50,
@@ -555,7 +556,7 @@ export const producerInvitationsService = {
     await assertProducerExists(producerId);
     const now = new Date();
     const slots = await prisma.freedInvitationSlot.findMany({
-      where: { producerId, reinvitedAt: null },
+      where: { producerId, ...freedSlotNotReinvitedWhere },
       include: { event: true },
       orderBy: { releasedAt: 'desc' },
     });
@@ -575,7 +576,7 @@ export const producerInvitationsService = {
   async reinvite(producerId: string, input: ReinviteProducerInvitationInput) {
     await assertProducerExists(producerId);
     const slot = await prisma.freedInvitationSlot.findFirst({
-      where: { id: input.freed_slot_id, producerId, reinvitedAt: null },
+      where: { id: input.freed_slot_id, producerId, ...freedSlotNotReinvitedWhere },
       include: { event: { include: { invitationSettings: true, ticketOfferings: true } } },
     });
 

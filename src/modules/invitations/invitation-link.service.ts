@@ -6,7 +6,8 @@ export async function linkPendingInvitationsByPhone(userId: string, phone: strin
     where: {
       source: 'guest',
       recipientPhone: phone,
-      recipientUserId: null,
+      // Prisma MongoDB: `null` alone misses invitations where the field was never set.
+      OR: [{ recipientUserId: null }, { recipientUserId: { isSet: false } }],
       status: { in: ['sent', 'viewed'] },
     },
     data: { recipientUserId: userId },

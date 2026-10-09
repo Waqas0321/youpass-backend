@@ -4,6 +4,8 @@ export type VipZoneOption = {
   zoneId: string;
   externalId: string;
   label: string;
+  /** Zone's "default table capacity" from the floor plan. */
+  defaultCapacity?: number;
 };
 
 export type VipTableCreateFormState = {

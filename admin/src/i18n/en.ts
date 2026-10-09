@@ -1628,7 +1628,7 @@ export const en = {
     welcome: 'Welcome back! 👋',
     welcomeSubtitle: 'Here is a summary of what is happening in your event.',
     yourEvent: 'your event',
-    defaultProducer: 'Prime Productions',
+    defaultProducer: 'YouPass',
     kpiTicketsSold: 'Tickets sold',
     kpiTotalRevenue: 'Total revenue',
     kpiBarConsumption: 'Bar consumption',

@@ -29,12 +29,13 @@ export const cloudinaryService = {
           overwrite: Boolean(options.publicId),
           invalidate: true,
           resource_type: 'image',
+          // Keep the original aspect ratio (banners are 1920×600, maps are wide);
+          // only shrink oversized files. "fill 900×900" cropped every image to a square.
           transformation: [
             {
-              width: 900,
-              height: 900,
-              crop: 'fill',
-              gravity: 'auto',
+              width: 1920,
+              height: 1920,
+              crop: 'limit',
               quality: 'auto',
               fetch_format: 'auto',
             },

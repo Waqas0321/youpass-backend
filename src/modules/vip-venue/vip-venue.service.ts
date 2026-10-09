@@ -172,9 +172,13 @@ export const vipVenueService = {
   },
 
   async getVenueLayout(eventId: string) {
-    await getPublishedEvent(eventId);
+    const event = await getPublishedEvent(eventId);
     const layout = await getLayoutForEvent(eventId);
-    return formatVenueLayout(layout);
+    // The admin "Event map" upload is the venue image the app shows above the zones.
+    return {
+      ...formatVenueLayout(layout),
+      floor_plan_image_url: event.floorPlanImageUrl ?? null,
+    };
   },
 
   async listZoneTables(eventId: string, zoneRef: string, userId?: string) {

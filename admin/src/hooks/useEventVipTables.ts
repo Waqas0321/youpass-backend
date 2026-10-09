@@ -13,6 +13,7 @@ function mapLayoutZones(zones: ReturnType<typeof filterVipZones>): VipZoneOption
     zoneId: zone.zone_id,
     externalId: zone.external_id,
     label: zone.name,
+    defaultCapacity: zone.capacity_per_table,
   }));
 }
 

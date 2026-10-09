@@ -47,6 +47,7 @@ export function useEventVipSetupStatus(eventId: string, mapImageUrl?: string | n
       zoneId: zone.zone_id,
       externalId: zone.external_id,
       label: zone.name,
+      defaultCapacity: zone.capacity_per_table,
     }));
 
     const tableCount = tablesResult.ok ? (tablesResult.data?.tables.length ?? 0) : 0;

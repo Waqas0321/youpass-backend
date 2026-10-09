@@ -22,12 +22,13 @@ function resolveAdminTablePosition(input: AdminVenueTableInput) {
   return { x: input.position_x ?? 0, y: input.position_y ?? 0 };
 }
 
-function resolveAdminTableIncludes(input: AdminVenueTableInput, zoneKind: string) {
+// Only what the admin actually entered: invented defaults ("2 bottles · 20 vouchers")
+// were shown to buyers as table perks the venue never configured.
+function resolveAdminTableIncludes(input: AdminVenueTableInput, _zoneKind: string) {
   return buildTableIncludes({
-    bottles: input.includes?.bottles ?? input.bottle_count ?? (zoneKind === 'vip_premium_zone' ? 3 : 2),
-    bar_vouchers:
-      input.includes?.bar_vouchers ?? input.voucher_count ?? (zoneKind === 'vip_premium_zone' ? 30 : 20),
-    extras: input.includes?.extras ?? input.extras ?? (zoneKind === 'vip_premium_zone' ? ['premium_service'] : []),
+    bottles: input.includes?.bottles ?? input.bottle_count ?? 0,
+    bar_vouchers: input.includes?.bar_vouchers ?? input.voucher_count ?? 0,
+    extras: input.includes?.extras ?? input.extras ?? [],
   });
 }
 

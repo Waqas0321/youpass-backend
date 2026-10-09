@@ -842,7 +842,7 @@ async function buildRevenueByZone(eventId: string, window?: DayWindow) {
         venueZoneId: { not: null },
         ...(window ? { createdAt: window } : {}),
       },
-      select: { venueZoneId: true, totalAmount: true },
+      select: { venueZoneId: true, venueTableId: true, totalAmount: true },
     }),
     prisma.venueTable.findMany({
       where: {
@@ -852,9 +852,15 @@ async function buildRevenueByZone(eventId: string, window?: DayWindow) {
           ? { soldAt: { not: null, gte: window.gte, lte: window.lte } }
           : { soldAt: { not: null } }),
       },
-      select: { zoneId: true, price: true },
+      select: { id: true, zoneId: true, price: true },
     }),
   ]);
+
+  // A purchased table already counts through its paid order; only tables sold
+  // without an app order (e.g. marked sold by admin) add their list price.
+  const tablesWithOrders = new Set(
+    ticketOrders.map((order) => order.venueTableId).filter((id): id is string => Boolean(id)),
+  );
 
   for (const order of ticketOrders) {
     if (!order.venueZoneId) {
@@ -867,6 +873,9 @@ async function buildRevenueByZone(eventId: string, window?: DayWindow) {
   }
 
   for (const table of soldTables) {
+    if (tablesWithOrders.has(table.id)) {
+      continue;
+    }
     revenue.set(table.zoneId, (revenue.get(table.zoneId) ?? 0) + Math.round(table.price));
   }
 

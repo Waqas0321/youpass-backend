@@ -9,6 +9,11 @@ export const staffActiveSessionWhere: Pick<Prisma.StaffSessionWhereInput, 'OR'> 
   OR: [{ revokedAt: null }, { revokedAt: { isSet: false } }],
 };
 
+/** Freed courtesy slot not yet re-invited (`reinvitedAt` null OR never set). */
+export const freedSlotNotReinvitedWhere: Pick<Prisma.FreedInvitationSlotWhereInput, 'OR'> = {
+  OR: [{ reinvitedAt: null }, { reinvitedAt: { isSet: false } }],
+};
+
 export function isSessionActive(revokedAt: Date | null | undefined): boolean {
   return revokedAt == null;
 }
