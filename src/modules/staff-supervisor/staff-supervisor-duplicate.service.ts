@@ -1,4 +1,5 @@
 import type { InvitationAuditLog } from '@prisma/client';
+import { resolvePurchasedTicketName } from '../tickets/ticket-label.utils.js';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { verifyOtp } from '../../common/utils/crypto.js';
@@ -292,7 +293,11 @@ export async function formatDuplicateAlertResponse(ticket: TicketWithInvitation)
     invitation_id: invitation.id,
     guest_name: guestName,
     event_name: invitation.event.title,
-    ticket_type_label: formatTicketTypeLabel(invitation, vipTags),
+    ticket_type_label:
+      vipTags.length >= 2
+        ? formatTicketTypeLabel(invitation, vipTags)
+        : ((await resolvePurchasedTicketName(invitation)) ??
+          formatTicketTypeLabel(invitation, vipTags)),
     qr_id: ticket.manualEntryId,
     purchase_id: purchaseId,
     is_vip: invitation.tier === 'vip',
@@ -373,18 +378,15 @@ async function applyDuplicateResolution(
       });
       break;
     case 'release_reentry':
-      await prisma.$transaction(async (tx) => {
-        await tx.invitationTicket.update({
+      // Same mechanism as the override "authorize_reentry": grant one re-entry via
+      // unlockAt > validatedAt, keeping the first-entry record. Clearing validatedAt
+      // made the next scan look like a first entry and lost the original entry time.
+      if (ticket.validatedAt) {
+        await prisma.invitationTicket.update({
           where: { id: ticket.id },
-          data: { validatedAt: null },
+          data: { unlockAt: now },
         });
-        if (invitation.status === 'validated') {
-          await tx.invitation.update({
-            where: { id: invitation.id },
-            data: { status: 'accepted' },
-          });
-        }
-      });
+      }
       break;
     case 'block_qr':
       await prisma.invitation.update({

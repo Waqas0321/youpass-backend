@@ -20,6 +20,15 @@ export const adminTicketOfferingSchema = z.object({
   sale_end_at: z.string().datetime().optional().nullable(),
   status: ticketOfferingStatusSchema.optional(),
   display_order: z.coerce.number().int().min(0).optional(),
+  description: z.string().max(500).optional().nullable(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Use a hex colour like #8A2BE2')
+    .optional()
+    .nullable(),
+  image_url: z.string().url().max(2000).optional().nullable(),
+  is_featured: z.boolean().optional(),
+  max_per_user: z.coerce.number().int().positive().optional().nullable(),
 });
 
 export const adminTicketOfferingUpdateSchema = adminTicketOfferingSchema.partial();

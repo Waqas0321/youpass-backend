@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { activeSessionWhere } from '../../common/utils/session-query.js';
 import { prisma } from '../../config/database.js';
 
 const ANONYMIZED_EMAIL_DOMAIN = 'deleted.youpass.invalid';
@@ -67,6 +68,34 @@ async function anonymizeUserRecord(tx: Prisma.TransactionClient, userId: string)
   });
 }
 
+
+/** Refund future tickets, drop cards/settings, revoke sessions and anonymize the user. */
+async function runDeletion(userId: string) {
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await cancelActiveTicketsForUser(tx, userId, now);
+
+    await tx.userPaymentMethod.deleteMany({ where: { userId } });
+    await tx.userNotificationSettings.deleteMany({ where: { userId } });
+    await tx.userProfileCompletion.deleteMany({ where: { userId } });
+
+    const sessions = await tx.userSession.findMany({
+      where: { userId, ...activeSessionWhere },
+      select: { id: true, tokenHash: true },
+    });
+
+    if (sessions.length > 0) {
+      await tx.userSession.updateMany({
+        where: { userId, ...activeSessionWhere },
+        data: { revokedAt: now },
+      });
+    }
+
+    await anonymizeUserRecord(tx, userId);
+  });
+}
+
 export const accountDeletionService = {
   async finalizeDeletion(userId: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -78,29 +107,7 @@ export const accountDeletionService = {
       return { finalized: false };
     }
 
-    const now = new Date();
-
-    await prisma.$transaction(async (tx) => {
-      await cancelActiveTicketsForUser(tx, userId, now);
-
-      await tx.userPaymentMethod.deleteMany({ where: { userId } });
-      await tx.userNotificationSettings.deleteMany({ where: { userId } });
-      await tx.userProfileCompletion.deleteMany({ where: { userId } });
-
-      const sessions = await tx.userSession.findMany({
-        where: { userId, revokedAt: null },
-        select: { id: true, tokenHash: true },
-      });
-
-      if (sessions.length > 0) {
-        await tx.userSession.updateMany({
-          where: { userId, revokedAt: null },
-          data: { revokedAt: now },
-        });
-      }
-
-      await anonymizeUserRecord(tx, userId);
-    });
+    await runDeletion(userId);
 
     console.log(
       `[account-deletion] Finalized deletion for user ${userId}. ` +
@@ -108,6 +115,17 @@ export const accountDeletionService = {
     );
 
     return { finalized: true, user_id: userId };
+  },
+
+  /** Admin action: anonymize the account now, skipping the 7-day grace period. */
+  async deleteNowByAdmin(userId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.accountStatus === 'deleted') {
+      return { deleted: false };
+    }
+    await runDeletion(userId);
+    console.log(`[account-deletion] Admin deleted user ${userId}.`);
+    return { deleted: true, user_id: userId };
   },
 
   async processDueDeletions() {

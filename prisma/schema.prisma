@@ -40,6 +40,8 @@ enum AccountStatus {
   active
   pending_deletion
   deleted
+  /// Set by an admin; cannot log in and existing sessions are rejected.
+  blocked
 }
 
 enum PaymentGateway {
@@ -68,6 +70,8 @@ model User {
   deletionRequestedAt DateTime?     @map("deletion_requested_at")
   deletionScheduledAt DateTime?     @map("deletion_scheduled_at")
   pendingPhoneChange  String?       @map("pending_phone_change")
+  blockedAt           DateTime?     @map("blocked_at")
+  blockedReason       String?       @map("blocked_reason")
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
 
@@ -438,6 +442,14 @@ model EventTicketOffering {
   saleEndAt      DateTime?            @map("sale_end_at")
   status         TicketOfferingStatus @default(active)
   displayOrder   Int                  @default(0) @map("display_order")
+  /// What the ticket includes; shown in the app's ticket picker.
+  description    String?
+  /// Accent colour (hex) for the ticket card.
+  color          String?
+  imageUrl       String?              @map("image_url")
+  isFeatured     Boolean              @default(false) @map("is_featured")
+  /// Max tickets of this type one user may buy across orders. Null = unlimited.
+  maxPerUser     Int?                 @map("max_per_user")
   createdAt      DateTime             @default(now()) @map("created_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")
 
@@ -519,6 +531,15 @@ model EventDrinkOrder {
   itemCount     Int                   @map("item_count")
   status        EventDrinkOrderStatus @default(confirmed)
   isComplimentary Boolean             @default(false) @map("is_complimentary")
+  /// Saved card charged for this order (null for courtesies / legacy orders).
+  paymentMethodId  String?            @map("payment_method_id") @db.ObjectId
+  paymentGateway   String?            @map("payment_gateway")
+  /// Gateway charge id (Kushki ticketNumber) or mock_* in mock checkout.
+  paymentReference String?            @map("payment_reference")
+  cardBrand        String?            @map("card_brand")
+  cardLastFour     String?            @map("card_last_four")
+  refundReference  String?            @map("refund_reference")
+  refundedAt       DateTime?          @map("refunded_at")
   createdAt     DateTime              @default(now()) @map("created_at")
   updatedAt     DateTime              @updatedAt @map("updated_at")
 

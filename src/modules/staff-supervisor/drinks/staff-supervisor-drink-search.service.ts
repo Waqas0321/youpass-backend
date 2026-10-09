@@ -241,12 +241,14 @@ async function searchByOrderReference(
     });
   }
 
-  const normalized = normalizeManualEntryCode(term);
-  if (!normalized.startsWith('DRK-') || normalized.length < 8) {
+  // Customers and admin show "#ORD-XXXXXXX"; "DRK-XXXXXX" is the legacy supervisor format.
+  const normalized = normalizeManualEntryCode(term).replace(/^#/, '');
+  const prefix = ['ORD-', 'DRK-'].find((candidate) => normalized.startsWith(candidate));
+  if (!prefix || normalized.length < prefix.length + 4) {
     return [];
   }
 
-  const suffix = normalized.slice(4).toLowerCase();
+  const suffix = normalized.slice(prefix.length).toLowerCase();
   const scopedRedemptions = await prisma.eventDrinkRedemption.findMany({
     where: buildRedemptionWhere(query, { restrictToActiveEvents }),
     include: drinkRedemptionSearchInclude,
@@ -314,13 +316,15 @@ export async function searchSupervisorDrinks(query: StaffSupervisorSearchDrinksQ
 
   if (term.length >= 4) {
     tasks.push(
-      findDrinkRedemptionByScanInput(term).then((direct) => {
+      findDrinkRedemptionByScanInput(term).then(async (direct) => {
         if (!direct) {
           return [];
         }
 
-        const redemption = direct as DrinkRedemptionWithContext;
-        return matchesQueryFilter(redemption, query) ? [redemption] : [];
+        // The scan loader uses a slimmer include (no event.countryCode etc.); casting it
+        // crashed the formatter, so reload with the search include.
+        const redemption = await loadDrinkRedemptionById(direct.id);
+        return redemption && matchesQueryFilter(redemption, query) ? [redemption] : [];
       }),
     );
   }
@@ -359,8 +363,9 @@ export function resolveRedemptionLine(redemption: DrinkRedemptionWithContext) {
   );
 }
 
+/** Same "#ORD-XXXXXXX" the customer app and admin panel show for drink orders. */
 export function formatDrinkOrderCode(orderId: string) {
-  return `DRK-${orderId.slice(-6).toUpperCase()}`;
+  return `#ORD-${orderId.slice(-7).toUpperCase()}`;
 }
 
 export { resolveDrinkStatus, drinkRedemptionSearchInclude };

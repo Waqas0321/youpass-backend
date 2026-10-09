@@ -5,7 +5,6 @@ import {
   AdminEvent,
   AdminUser,
   getSession,
-  Producer,
   ProducerInvitation,
   saveSession,
 } from '../api/client';
@@ -67,7 +66,7 @@ export function EventCompsPage() {
   const { t, numberLocale } = useI18n();
   const session = getSession();
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [producerId, setProducerId] = useState(session?.producerId ?? '');
+  const [producerId, setProducerId] = useState('');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [comps, setComps] = useState<Comp[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,12 +136,10 @@ export function EventCompsPage() {
           )
         : undefined;
       const resolvedProducerId =
-        matchedProducer?.id ||
-        session?.producerId ||
-        (producers[0] as Producer | undefined)?.id ||
-        '';
+        // No silent fallback: an unrelated producer would sign the guest's invitation.
+        matchedProducer?.id || '';
 
-      if (resolvedProducerId && resolvedProducerId !== producerId) {
+      if (resolvedProducerId !== producerId) {
         setProducerId(resolvedProducerId);
       }
     }

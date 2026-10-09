@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database.js';
+import { resolvePurchasedTicketName } from '../tickets/ticket-label.utils.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { formatTimeLabel } from './staff-supervisor-entry-search.service.js';
 import type { StaffSupervisorActionHistoryQuery } from './staff-supervisor.validators.js';
@@ -226,6 +227,8 @@ export const staffSupervisorActionHistoryService = {
         manualEntryId: true,
         invitation: {
           select: {
+            id: true,
+            source: true,
             assignedSlot: true,
             tier: true,
             recipientName: true,
@@ -266,6 +269,20 @@ export const staffSupervisorActionHistoryService = {
       },
     });
 
+    // Re-entry/supervisor rows carry no ticket name; resolve purchased ticket types once.
+    const purchasedNameByEntryId = new Map<string, string | null>();
+    await Promise.all(
+      [...new Set(logs.map((log) => log.entryId).filter((id): id is string => Boolean(id)))].map(
+        async (entryId) => {
+          const invitation = ticketByEntryId.get(entryId)?.invitation;
+          purchasedNameByEntryId.set(
+            entryId,
+            invitation ? await resolvePurchasedTicketName(invitation) : null,
+          );
+        },
+      ),
+    );
+
     const actions = logs.map((log) => {
       const ticket = log.entryId ? ticketByEntryId.get(log.entryId) : null;
       const guestName =
@@ -280,7 +297,8 @@ export const staffSupervisorActionHistoryService = {
         log.itemName.toLowerCase() !== 're-entry' &&
         log.itemName.toLowerCase() !== 'scan'
           ? log.itemName
-          : ticket?.invitation.assignedSlot?.trim() ||
+          : (log.entryId ? purchasedNameByEntryId.get(log.entryId) : null) ||
+            ticket?.invitation.assignedSlot?.trim() ||
             (ticket?.invitation.tier === 'vip' ? 'VIP' : 'General');
       const accessPoint = log.staffMember.zone?.label ?? null;
       const isSupervisorStaff = log.staffMember.permissionIds.some((permissionId) =>

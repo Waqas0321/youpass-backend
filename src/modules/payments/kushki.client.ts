@@ -54,6 +54,7 @@ export function buildKushkiAmount(total: number, currency: string): KushkiAmount
 async function kushkiRequest<T>(
   path: string,
   body: Record<string, unknown>,
+  method: 'POST' | 'DELETE' = 'POST',
 ): Promise<T> {
   if (!env.KUSHKI_PRIVATE_MERCHANT_ID) {
     throw new AppError(
@@ -64,7 +65,7 @@ async function kushkiRequest<T>(
   }
 
   const response = await fetch(`${kushkiBaseUrl()}${path}`, {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
@@ -227,4 +228,26 @@ export async function chargeKushkiSubscription(input: {
     transactionReference: String(result.transactionReference ?? ticketNumber),
     details: result,
   };
+}
+
+/**
+ * Refund (void/reverse) an approved card charge by its ticket number.
+ * Kushki: DELETE /v1/charges/{ticketNumber}; full refund when no amount is given.
+ */
+export async function refundKushkiCharge(input: {
+  ticketNumber: string;
+  amount?: number;
+  currency?: string;
+}): Promise<{ refundTicketNumber: string; details: Record<string, unknown> }> {
+  const body: Record<string, unknown> = { fullResponse: true };
+  if (input.amount != null && input.currency) {
+    body.amount = buildKushkiAmount(input.amount, input.currency);
+  }
+  const result = await kushkiRequest<Record<string, unknown>>(
+    `/v1/charges/${encodeURIComponent(input.ticketNumber)}`,
+    body,
+    'DELETE',
+  );
+  assertKushkiApproved(result);
+  return { refundTicketNumber: kushkiRef(result) || input.ticketNumber, details: result };
 }

@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database.js';
+import { resolvePurchasedTicketName } from '../tickets/ticket-label.utils.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { verifyOtp } from '../../common/utils/crypto.js';
 import { hasSupervisorAccess } from '../staff/staff-permissions.constants.js';
@@ -181,7 +182,11 @@ export async function formatEntryManualValidationContext(ticket: TicketWithInvit
     guest_name: guestName,
     initials: formatGuestInitials(guestName),
     event_name: invitation.event.title,
-    ticket_type_label: formatTicketTypeLabel(invitation, vipTags),
+    ticket_type_label:
+      vipTags.length >= 2
+        ? formatTicketTypeLabel(invitation, vipTags)
+        : ((await resolvePurchasedTicketName(invitation)) ??
+          formatTicketTypeLabel(invitation, vipTags)),
     access_label: formatAccessLabel(invitation),
     qr_id: ticket.manualEntryId,
     guest_phone: guestPhone,

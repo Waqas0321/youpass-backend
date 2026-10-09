@@ -5,6 +5,7 @@ import { useSelectedEvent } from '../context/SelectedEventContext';
 import { useI18n } from '../i18n/useI18n';
 import {
   IconCalendar,
+  IconUsers,
   IconChart,
   IconChevronDown,
   IconCreditCard,
@@ -28,11 +29,12 @@ type NavItem = {
   isActive: (pathname: string) => boolean;
 };
 
-function formatEventSelectorDate(iso: string, locale: string) {
+function formatEventSelectorDate(iso: string, locale: string, timeZone?: string) {
   return new Intl.DateTimeFormat(locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone,
   }).format(new Date(iso));
 }
 
@@ -64,6 +66,13 @@ export function AdminLayout() {
         label: t('adminLayout.events'),
         icon: IconCalendar,
         isActive: (pathname) => pathname === '/events',
+      },
+      {
+        id: 'users',
+        to: '/users',
+        label: t('adminLayout.users'),
+        icon: IconUsers,
+        isActive: (pathname) => pathname === '/users',
       },
       {
         id: 'tickets',
@@ -157,7 +166,7 @@ export function AdminLayout() {
           </div>
           {selectedEvent ? (
             <span className="sidebar__event-meta">
-              {formatEventSelectorDate(selectedEvent.starts_at, dateLocale)}
+              {formatEventSelectorDate(selectedEvent.starts_at, dateLocale, selectedEvent.timezone)}
               {selectedEvent.venue_name ? ` · ${selectedEvent.venue_name}` : ''}
             </span>
           ) : null}

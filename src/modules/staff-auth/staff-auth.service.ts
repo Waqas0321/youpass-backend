@@ -160,6 +160,15 @@ async function assertStaffMemberExists(e164: string) {
     );
   }
 
+  // Admin "Pause" is how staff access is revoked.
+  if (staffMember.status === 'paused') {
+    throw new AppError(
+      403,
+      STAFF_AUTH_ERROR_CODES.STAFF_INACTIVE,
+      'Your staff access is paused. Contact the event administrator.',
+    );
+  }
+
   return staffMember;
 }
 

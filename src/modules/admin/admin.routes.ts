@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { adminUsersController } from './admin-users.controller.js';
 import { requireAdminApiKey } from '../../common/middleware/admin-api-key.js';
 import { adminController } from './admin.controller.js';
 import { adminVenueLayoutController } from './admin-venue-layout.controller.js';
@@ -29,6 +30,13 @@ adminRouter.get('/producers', adminController.listProducers);
 adminRouter.post('/producers', adminController.createProducer);
 adminRouter.patch('/producers/:producerId', adminController.updateProducer);
 adminRouter.get('/users', adminController.listUsers);
+// Customer management (Users tab). Separate path so /users stays the recipient picker.
+adminRouter.get('/customers', adminUsersController.list);
+adminRouter.get('/customers/:userId', adminUsersController.detail);
+adminRouter.patch('/customers/:userId', adminUsersController.update);
+adminRouter.post('/customers/:userId/block', adminUsersController.block);
+adminRouter.post('/customers/:userId/unblock', adminUsersController.unblock);
+adminRouter.delete('/customers/:userId', adminUsersController.remove);
 adminRouter.get('/events', adminController.listEvents);
 adminRouter.post('/events', adminController.createEvent);
 adminRouter.patch('/events/:eventId', adminController.updateEvent);

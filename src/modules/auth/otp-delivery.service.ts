@@ -1,4 +1,5 @@
 import type { AuthCodePurpose } from '@prisma/client';
+import { resolveDisplayLanguage } from '../../common/services/request-language.service.js';
 import { env } from '../../config/env.js';
 import { OTP_PURPOSE_LABELS } from '../../config/constants.js';
 import { SUPPORT_EMAIL } from '../../common/constants/auth-messages.js';
@@ -193,7 +194,7 @@ function createOtpDeliveryService(): OtpDeliveryService {
 export const otpDeliveryService: OtpDeliveryService = createOtpDeliveryService();
 
 export function whatsAppUnavailableMessage(languageCode = 'es'): string {
-  switch (languageCode) {
+  switch (resolveDisplayLanguage(languageCode)) {
     case 'pt':
       return `Este número não pode receber WhatsApp. O YouPass usa apenas WhatsApp Business para login — use um número com WhatsApp ativo. Precisa de ajuda? ${SUPPORT_EMAIL}`;
     case 'en':
@@ -204,7 +205,7 @@ export function whatsAppUnavailableMessage(languageCode = 'es'): string {
 }
 
 export function whatsAppReadyMessage(languageCode = 'es'): string {
-  switch (languageCode) {
+  switch (resolveDisplayLanguage(languageCode)) {
     case 'pt':
       return 'Enviaremos seu código de verificação pelo WhatsApp Business.';
     case 'en':

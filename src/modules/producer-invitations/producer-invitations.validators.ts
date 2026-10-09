@@ -22,6 +22,8 @@ export const createProducerInvitationSchema = z
     cancellation_deadline_days: z.coerce.number().int().min(0).max(90).optional(),
     discount_percentage: z.coerce.number().int().min(1).max(99).optional(),
     personalised_message: z.string().max(500).optional(),
+    /** Entry tier on the generated ticket. Omitted → vip (previous behaviour). */
+    tier: z.enum(['general', 'vip']).optional(),
   })
   .refine((data) => Boolean(data.recipient_user_id) !== Boolean(data.recipient_phone), {
     message: 'Provide exactly one of recipient_user_id or recipient_phone',

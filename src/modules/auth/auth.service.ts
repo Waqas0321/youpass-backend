@@ -320,6 +320,14 @@ async function resolveSendCodePurpose(
     return { purpose: 'register', accountExists: false };
   }
 
+  if (existingUser.accountStatus === 'blocked') {
+    throw new AppError(
+      403,
+      'ACCOUNT_BLOCKED',
+      'This account has been blocked. Please contact support.',
+    );
+  }
+
   if (existingUser.accountStatus !== 'active' && existingUser.accountStatus !== 'pending_deletion') {
     throw new AppError(403, AUTH_ERROR_CODES.UNAUTHORIZED, 'This account is not active');
   }

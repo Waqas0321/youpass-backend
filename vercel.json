@@ -4,6 +4,7 @@
   "installCommand": "NODE_ENV=development npm install && npm run admin:install && npm run producer:install",
   "buildCommand": "NODE_ENV=development npm run vercel-build",
   "outputDirectory": "public",
+  "regions": ["bom1"],
   "functions": {
     "api/index.ts": {
       "memory": 1024,

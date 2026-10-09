@@ -1,10 +1,12 @@
 import type { Prisma } from '@prisma/client';
+import { refundDrinkPayment } from '../event-drinks/event-drink-payment.service.js';
 import crypto from 'node:crypto';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import {
   formatAdminDrinkOrderDetail,
   formatAdminDrinkOrderListItem,
+  formatAdminDrinkPaymentMethod,
   resolveAdminDrinkOrderQrStatus,
   type AdminDrinkOrderQrStatus,
 } from './admin-event-drink-orders.formatter.js';
@@ -18,6 +20,8 @@ type ListQuery = {
   limit?: number;
   product_id?: string;
   qr_status?: AdminDrinkOrderQrStatus;
+  /** Card brand (visa, mastercard, …), `courtesy`, or `none`. */
+  payment?: string;
   date_from?: string;
   date_to?: string;
 };
@@ -132,15 +136,46 @@ async function loadOrderForEvent(eventId: string, orderId: string) {
   return order;
 }
 
+
+/** Statuses whose unserved lines still hold stock (i.e. not yet given back). */
+const STOCK_HOLDING_STATUSES = new Set(['confirmed']);
+
+/**
+ * Returns unserved lines (no bar redemption yet) of an order to product stock.
+ * Called when a still-open order is refunded or invalidated; served drinks stay consumed.
+ */
+async function restockUnservedLines(order: Awaited<ReturnType<typeof loadOrderForEvent>>) {
+  if (!STOCK_HOLDING_STATUSES.has(order.status)) {
+    return;
+  }
+  for (const line of order.lines) {
+    if (!line.productId || line.redemption?.validatedAt) {
+      continue;
+    }
+    const product = await prisma.eventDrinkProduct.findUnique({ where: { id: line.productId } });
+    if (!product || product.stockRemaining == null) {
+      continue;
+    }
+    const nextRemaining = product.stockRemaining + line.quantity;
+    await prisma.eventDrinkProduct.update({
+      where: { id: product.id },
+      data: {
+        stockRemaining: nextRemaining,
+        ...(product.status === 'sold_out' && nextRemaining > 0 ? { status: 'available' } : {}),
+      },
+    });
+  }
+}
+
 export const adminEventDrinkOrdersService = {
-  async listForEvent(eventId: string, query: ListQuery) {
+  async listForEvent(eventId: string, query: ListQuery, maxLimit = 50) {
     const event = await prisma.event.findUnique({ where: { id: eventId } });
     if (!event) {
       throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
     }
 
     const page = Math.max(query.page ?? 1, 1);
-    const limit = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), 50);
+    const limit = Math.min(Math.max(query.limit ?? DEFAULT_PAGE_SIZE, 1), maxLimit);
 
     const where = buildSearchWhere(eventId, query.q);
 
@@ -170,9 +205,19 @@ export const adminEventDrinkOrdersService = {
       orderBy: { createdAt: 'desc' },
     });
 
-    const filtered = query.qr_status
-      ? allMatching.filter((order) => resolveAdminDrinkOrderQrStatus(order) === query.qr_status)
-      : allMatching;
+    const payment = query.payment?.trim().toLowerCase();
+    const filtered = allMatching.filter((order) => {
+      if (query.qr_status && resolveAdminDrinkOrderQrStatus(order) !== query.qr_status) {
+        return false;
+      }
+      if (payment) {
+        const method = formatAdminDrinkPaymentMethod(order);
+        return payment === 'courtesy' || payment === 'none'
+          ? method.type === payment
+          : method.type === 'card' && method.brand === payment;
+      }
+      return true;
+    });
 
     const total = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -247,9 +292,16 @@ export const adminEventDrinkOrdersService = {
       throw new AppError(409, 'DRINK_ORDER_ALREADY_REFUNDED', 'Order already refunded');
     }
 
+    // Money first: if the gateway refund fails the order stays as it was.
+    const refundReference = await refundDrinkPayment(order);
+    await restockUnservedLines(order);
     await prisma.eventDrinkOrder.update({
       where: { id: order.id },
-      data: { status: 'refunded' },
+      data: {
+        status: 'refunded',
+        refundReference,
+        refundedAt: refundReference ? new Date() : null,
+      },
     });
 
     return this.getForEvent(eventId, orderId);
@@ -261,7 +313,12 @@ export const adminEventDrinkOrdersService = {
     if (order.status === 'cancelled') {
       throw new AppError(409, 'DRINK_ORDER_ALREADY_INVALID', 'Order already invalid');
     }
+    // A fully served order has no QR left to invalidate; use refund instead.
+    if (order.status === 'redeemed') {
+      throw new AppError(409, 'DRINK_ORDER_ALREADY_REDEEMED', 'This order was already redeemed at the bar');
+    }
 
+    await restockUnservedLines(order);
     await prisma.eventDrinkOrder.update({
       where: { id: order.id },
       data: { status: 'cancelled' },
@@ -275,7 +332,7 @@ export const adminEventDrinkOrdersService = {
       ...query,
       page: 1,
       limit: 5000,
-    });
+    }, 5000);
 
     const header = [
       'order_id',

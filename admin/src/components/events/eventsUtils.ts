@@ -64,7 +64,8 @@ export function matchesLifecycleFilter(event: AdminEvent, filter: EventLifecycle
   const nowMs = now.getTime();
 
   if (filter === 'upcoming') {
-    return isWithinUpcomingWindow(event.starts_at, now);
+    // Same rule as the UPCOMING badge, so every future event lands in a tab.
+    return startsAtMs > nowMs && event.status !== 'cancelled';
   }
 
   if (filter === 'active') {
@@ -83,6 +84,8 @@ export function countEventsByLifecycle(events: AdminEvent[]) {
     all: events.length,
     active: 0,
     upcoming: 0,
+    /** Subset of `upcoming` starting within the next 30 days (KPI card). */
+    upcomingNext30Days: 0,
     finished: 0,
     drafts: 0,
   };
@@ -98,6 +101,9 @@ export function countEventsByLifecycle(events: AdminEvent[]) {
     }
     if (matchesLifecycleFilter(event, 'upcoming')) {
       counts.upcoming += 1;
+      if (isWithinUpcomingWindow(event.starts_at)) {
+        counts.upcomingNext30Days += 1;
+      }
     }
     if (matchesLifecycleFilter(event, 'finished')) {
       counts.finished += 1;

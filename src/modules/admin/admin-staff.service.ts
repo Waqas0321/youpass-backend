@@ -105,38 +105,56 @@ function nextCustomRoleColor(existingCount: number) {
   return CUSTOM_ROLE_COLORS[existingCount % CUSTOM_ROLE_COLORS.length] ?? '#ffb800';
 }
 
-async function ensureDefaultCatalog() {
-  await Promise.all([
-    ...DEFAULT_STAFF_ROLES.map((role) =>
-      prisma.staffRole.upsert({
-        where: { slug: role.slug },
-        create: {
-          slug: role.slug,
-          label: role.label,
-          color: role.color,
-          displayOrder: role.displayOrder,
-          isSystem: true,
-        },
-        update: {
-          label: role.label,
-          color: role.color,
-          displayOrder: role.displayOrder,
-          isSystem: true,
-        },
-      }),
-    ),
-    ...DEFAULT_STAFF_ZONES.map((zone) =>
-      prisma.staffZone.upsert({
-        where: { slug: zone.slug },
-        create: {
-          slug: zone.slug,
-          label: zone.label,
-          displayOrder: zone.displayOrder,
-        },
-        update: {},
-      }),
-    ),
+let defaultCatalogReady: Promise<void> | null = null;
+
+/**
+ * Seeds the system roles/zones once per process. It used to upsert on every read,
+ * and parallel admin requests then hit Mongo write conflicts (P2034 -> 500).
+ */
+function ensureDefaultCatalog() {
+  defaultCatalogReady ??= seedDefaultCatalog().catch((error) => {
+    defaultCatalogReady = null;
+    throw error;
+  });
+  return defaultCatalogReady;
+}
+
+async function seedDefaultCatalog() {
+  const [roles, zones] = await Promise.all([
+    prisma.staffRole.findMany({ where: { slug: { in: DEFAULT_STAFF_ROLES.map((r) => r.slug) } } }),
+    prisma.staffZone.findMany({ where: { slug: { in: DEFAULT_STAFF_ZONES.map((z) => z.slug) } } }),
   ]);
+  const roleBySlug = new Map(roles.map((role) => [role.slug, role]));
+  const zoneSlugs = new Set(zones.map((zone) => zone.slug));
+
+  // Sequential and change-only: parallel upserts caused Mongo write conflicts.
+  for (const role of DEFAULT_STAFF_ROLES) {
+    const existing = roleBySlug.get(role.slug);
+    const data = {
+      label: role.label,
+      color: role.color,
+      displayOrder: role.displayOrder,
+      isSystem: true,
+    };
+    if (!existing) {
+      await prisma.staffRole.create({ data: { slug: role.slug, ...data } });
+    } else if (
+      existing.label !== data.label ||
+      existing.color !== data.color ||
+      existing.displayOrder !== data.displayOrder ||
+      !existing.isSystem
+    ) {
+      await prisma.staffRole.update({ where: { slug: role.slug }, data });
+    }
+  }
+
+  for (const zone of DEFAULT_STAFF_ZONES) {
+    if (!zoneSlugs.has(zone.slug)) {
+      await prisma.staffZone.create({
+        data: { slug: zone.slug, label: zone.label, displayOrder: zone.displayOrder },
+      });
+    }
+  }
 }
 
 async function resolveRole(roleRef: string): Promise<StaffRole> {
@@ -198,10 +216,8 @@ async function getMemberOrThrow(staffId: string) {
 }
 
 function buildQrCredentials(staffId: string) {
-  return {
-    qrToken: generateStaffQrToken(),
-    qrPayload: generateStaffQrPayload(staffId),
-  };
+  const qrToken = generateStaffQrToken();
+  return { qrToken, qrPayload: generateStaffQrPayload(staffId, qrToken) };
 }
 
 async function ensureMemberQrCredentials(staffId: string) {

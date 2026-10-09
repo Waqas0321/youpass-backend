@@ -37,6 +37,11 @@ export function formatPublicTicketOffering(
     is_sold_out: availability.is_sold_out,
     is_selectable: availability.is_selectable,
     is_active: offering.status === 'active',
+    description: offering.description ?? null,
+    color: offering.color ?? null,
+    image_url: offering.imageUrl ?? null,
+    is_featured: offering.isFeatured,
+    max_per_user: offering.maxPerUser ?? null,
   };
 }
 
@@ -76,5 +81,10 @@ export function formatAdminTicketOffering(
     is_selectable: formatted.is_selectable,
     slug: offering.type,
     label: offering.name,
+    description: formatted.description,
+    color: formatted.color,
+    image_url: formatted.image_url,
+    is_featured: formatted.is_featured,
+    max_per_user: formatted.max_per_user,
   };
 }

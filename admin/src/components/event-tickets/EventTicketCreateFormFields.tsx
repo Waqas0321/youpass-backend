@@ -201,13 +201,7 @@ export function EventTicketCreateFormFields({
               </button>
             </div>
           </EventInfoField>
-          <ToggleSwitch
-            className="event-ticket-modal__toggle-row"
-            label={t('eventTickets.createModal.promoCode')}
-            hint={t('eventTickets.createModal.promoCodeHint')}
-            checked={form.promoCodeRequired}
-            onChange={(checked) => updateForm('promoCodeRequired', checked)}
-          />
+          {/* "Code-required sale" is hidden until the backend has promo codes. */}
         </section>
 
         <section className="event-ticket-modal__section">
@@ -287,7 +281,7 @@ export function EventTicketCreateFormFields({
             <EventTicketPreviewCard
               name={form.name}
               nameFallback={t('eventTickets.createModal.previewName')}
-              priceLabel={`${priceLabel} ${currencyCode}`}
+              priceLabel={`$${priceLabel} ${currencyCode}`}
               color={form.color}
               imageUrl={form.imageUrl}
               validFromLabel={t('eventTickets.createModal.previewValidFrom')}

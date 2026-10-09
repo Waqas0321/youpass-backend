@@ -1,4 +1,5 @@
 import type { Event, EventType, Venue } from '@prisma/client';
+import { resolveDisplayLanguage } from '../../common/services/request-language.service.js';
 import { getTimezone, localeForLanguage } from '../../common/services/country-config.service.js';
 import { formatVenue } from '../venues/venues.formatter.js';
 import {
@@ -96,7 +97,7 @@ export function formatEvent(
   options?: { timezone?: string; languageCode?: string },
 ) {
   const timezone = options?.timezone ?? getTimezone(event.countryCode);
-  const languageCode = options?.languageCode ?? 'es';
+  const languageCode = resolveDisplayLanguage(options?.languageCode);
   const dateShort = formatEventDateShort(event.startsAt, timezone, languageCode);
   const time = formatEventTime(event.startsAt, timezone, languageCode);
 
@@ -186,7 +187,7 @@ export function formatEventListingCard(
   },
 ) {
   const timezone = options?.timezone ?? getTimezone(event.countryCode);
-  const languageCode = options?.languageCode ?? 'es';
+  const languageCode = resolveDisplayLanguage(options?.languageCode);
 
   return {
     id: event.id,
@@ -244,7 +245,7 @@ export function formatBannerSlide(
   options?: { timezone?: string; languageCode?: string },
 ) {
   const timezone = options?.timezone ?? getTimezone(event.countryCode);
-  const languageCode = options?.languageCode ?? 'es';
+  const languageCode = resolveDisplayLanguage(options?.languageCode);
   const dateShort = formatEventDateShort(event.startsAt, timezone, languageCode);
   const time = formatEventTime(event.startsAt, timezone, languageCode);
 

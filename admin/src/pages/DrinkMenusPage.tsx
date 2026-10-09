@@ -17,11 +17,12 @@ type EventMenu = {
 
 type FilterMode = 'with-products' | 'all' | 'empty';
 
-function formatEventDate(iso: string) {
+function formatEventDate(iso: string, timeZone?: string) {
   return new Intl.DateTimeFormat('en-US', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone,
   }).format(new Date(iso));
 }
 
@@ -221,7 +222,7 @@ export function DrinkMenusPage() {
                           <StatusPill label={event.status ?? 'draft'} tone={statusTone(event.status)} />
                         </div>
                         <p className="drink-menu-event-block__meta muted">
-                          {formatEventDate(event.starts_at)}
+                          {formatEventDate(event.starts_at, event.timezone)}
                           {' · '}
                           {event.location_display ?? `${event.venue_name ?? 'Venue'}, ${event.city}`}
                           {' · '}

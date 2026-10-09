@@ -44,7 +44,7 @@ export function EventsSummaryCards({ events, summary }: EventsSummaryCardsProps)
     },
     {
       label: t('eventsPage.kpiUpcomingEvents'),
-      value: String(lifecycleCounts.upcoming),
+      value: String(lifecycleCounts.upcomingNext30Days),
       hint: t('eventsPage.kpiUpcomingEventsHint'),
       hintTone: 'muted',
       Icon: IconClock,

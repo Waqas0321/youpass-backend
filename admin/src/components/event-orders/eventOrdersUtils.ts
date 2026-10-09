@@ -1,11 +1,13 @@
 import type { AdminDrinkOrderListItem } from '../../api/client';
 import { formatDrinkPrice } from '../../utils/drinkPrice';
 
-export function formatOrderDate(iso: string, dateLocale: string) {
+// timeZone = event timezone, so order times match scans and the event schedule.
+export function formatOrderDate(iso: string, dateLocale: string, timeZone?: string) {
   const formatted = new Intl.DateTimeFormat(dateLocale, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    timeZone,
   }).format(new Date(iso));
 
   if (!dateLocale.startsWith('es')) {
@@ -18,11 +20,12 @@ export function formatOrderDate(iso: string, dateLocale: string) {
   );
 }
 
-export function formatOrderTime(iso: string, dateLocale: string) {
+export function formatOrderTime(iso: string, dateLocale: string, timeZone?: string) {
   const formatted = new Intl.DateTimeFormat(dateLocale, {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+    timeZone,
   }).format(new Date(iso));
 
   return dateLocale.startsWith('es') ? `${formatted} hrs` : formatted;

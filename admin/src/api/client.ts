@@ -65,6 +65,12 @@ export async function apiRequest<T>(
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    // Stored key was rejected (e.g. rotated): drop it and go back to login.
+    const loginPath = `${import.meta.env.BASE_URL}login`;
+    if (response.status === 401 && window.location.pathname !== loginPath) {
+      clearSession();
+      window.location.assign(loginPath);
+    }
     return {
       ok: false,
       status: response.status,
@@ -174,6 +180,29 @@ export const adminApi = {
       body: JSON.stringify(body),
     }),
   users: () => apiRequest<{ users: AdminUser[] }>('/admin/users'),
+  customers: (params: AdminCustomersQuery = {}) => {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') search.set(key, String(value));
+    });
+    const qs = search.toString();
+    return apiRequest<AdminCustomersList>(`/admin/customers${qs ? `?${qs}` : ''}`);
+  },
+  customer: (userId: string) => apiRequest<AdminCustomerDetail>(`/admin/customers/${userId}`),
+  updateCustomer: (userId: string, body: AdminCustomerUpdate) =>
+    apiRequest<AdminCustomer>(`/admin/customers/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  blockCustomer: (userId: string, reason?: string) =>
+    apiRequest<AdminCustomer>(`/admin/customers/${userId}/block`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  unblockCustomer: (userId: string) =>
+    apiRequest<AdminCustomer>(`/admin/customers/${userId}/unblock`, { method: 'POST' }),
+  deleteCustomer: (userId: string) =>
+    apiRequest<{ deleted: boolean }>(`/admin/customers/${userId}`, { method: 'DELETE' }),
   events: () =>
     apiRequest<{ events: AdminEvent[]; summary?: AdminEventsListSummary }>('/admin/events'),
   createEvent: (body: AdminEventInput) =>
@@ -520,6 +549,7 @@ export const adminApi = {
       limit?: number;
       product_id?: string;
       qr_status?: AdminDrinkOrderQrStatus;
+      payment?: string;
       date_from?: string;
       date_to?: string;
     },
@@ -530,6 +560,7 @@ export const adminApi = {
     if (params?.limit) query.set('limit', String(params.limit));
     if (params?.product_id) query.set('product_id', params.product_id);
     if (params?.qr_status) query.set('qr_status', params.qr_status);
+    if (params?.payment) query.set('payment', params.payment);
     if (params?.date_from) query.set('date_from', params.date_from);
     if (params?.date_to) query.set('date_to', params.date_to);
     const suffix = query.toString() ? `?${query.toString()}` : '';
@@ -560,6 +591,7 @@ export const adminApi = {
       q?: string;
       product_id?: string;
       qr_status?: AdminDrinkOrderQrStatus;
+      payment?: string;
       date_from?: string;
       date_to?: string;
     },
@@ -572,6 +604,7 @@ export const adminApi = {
     if (params?.q) query.set('q', params.q);
     if (params?.product_id) query.set('product_id', params.product_id);
     if (params?.qr_status) query.set('qr_status', params.qr_status);
+    if (params?.payment) query.set('payment', params.payment);
     if (params?.date_from) query.set('date_from', params.date_from);
     if (params?.date_to) query.set('date_to', params.date_to);
     const suffix = query.toString() ? `?${query.toString()}` : '';
@@ -658,6 +691,8 @@ export type AdminEvent = {
   starts_at: string;
   ends_at?: string | null;
   starts_at_display?: string;
+  /** IANA timezone of the event's country (e.g. America/Santiago). */
+  timezone?: string;
   starts_at_short?: string;
   starts_at_time?: string;
   ends_at_time?: string | null;
@@ -762,6 +797,11 @@ export type AdminTicketOffering = {
   is_selectable: boolean;
   slug: string;
   label: string;
+  description?: string | null;
+  color?: string | null;
+  image_url?: string | null;
+  is_featured?: boolean;
+  max_per_user?: number | null;
 };
 
 export type AdminTicketOfferingInput = {
@@ -774,6 +814,11 @@ export type AdminTicketOfferingInput = {
   sale_end_at?: string | null;
   status?: 'active' | 'sold_out' | 'paused' | 'closed';
   display_order?: number;
+  description?: string | null;
+  color?: string | null;
+  image_url?: string | null;
+  is_featured?: boolean;
+  max_per_user?: number | null;
 };
 
 export type AdminVenueLayout = {
@@ -1054,6 +1099,7 @@ export type CreateInvitationBody = {
   cancellation_deadline_days?: number;
   discount_percentage?: number;
   personalised_message?: string;
+  tier?: 'general' | 'vip';
 };
 
 export type EventWaitlistDashboard = {
@@ -1169,7 +1215,7 @@ export type AdminDrinkOrderListItem = {
   };
   product_summary: string;
   payment_method: {
-    type: 'none';
+    type: 'none' | 'card' | 'courtesy';
     label: string;
     brand: string;
     last_four: string | null;
@@ -1471,6 +1517,7 @@ export type AdminEventStaffQrScanItem = {
   id: string;
   time_label: string;
   staff_name: string;
+  guest_name?: string;
   detail: string;
   zone: string;
   kind: 'drink' | 'ticket';
@@ -1485,3 +1532,112 @@ export type AdminEventStaffQrScanList = {
   total: number;
   scans: AdminEventStaffQrScanItem[];
 };
+
+export type AdminCustomerStatus = 'active' | 'blocked' | 'pending_deletion' | 'deleted';
+export type AdminCustomerCategory = 'bronze' | 'silver' | 'gold';
+export type AdminCustomerGender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
+
+export type AdminCustomer = {
+  id: string;
+  full_name: string;
+  phone: string;
+  email: string;
+  country_code: string;
+  rut_or_passport: string;
+  birthdate: string;
+  gender: AdminCustomerGender;
+  instagram_username: string | null;
+  profile_photo_url: string | null;
+  preferred_language: 'es' | 'en' | 'pt' | null;
+  category: AdminCustomerCategory;
+  account_status: AdminCustomerStatus;
+  blocked_at: string | null;
+  blocked_reason: string | null;
+  deletion_scheduled_at: string | null;
+  created_at: string;
+  tickets_bought: number;
+  orders_count: number;
+  total_spent: number;
+  drink_orders_count: number;
+  drinks_spent: number;
+  last_active_at: string | null;
+};
+
+export type AdminCustomersQuery = {
+  q?: string;
+  status?: AdminCustomerStatus | 'all';
+  category?: AdminCustomerCategory;
+  sort?: 'newest' | 'oldest' | 'name' | 'last_active';
+  page?: number;
+  page_size?: number;
+};
+
+export type AdminCustomersList = {
+  users: AdminCustomer[];
+  pagination: { page: number; page_size: number; total: number; total_pages: number };
+  summary: {
+    total_users: number;
+    active: number;
+    blocked: number;
+    pending_deletion: number;
+    deleted: number;
+    new_this_month: number;
+  };
+};
+
+export type AdminCustomerDetail = {
+  user: AdminCustomer;
+  active_sessions: number;
+  favorites_count: number;
+  ticket_orders: Array<{
+    id: string;
+    event_id: string;
+    event_title: string;
+    event_starts_at: string;
+    quantity: number;
+    type: string;
+    total_amount: number;
+    currency: string;
+    status: string;
+    created_at: string;
+  }>;
+  invitations: Array<{
+    id: string;
+    event_id: string;
+    event_title: string;
+    event_starts_at: string;
+    type: string;
+    tier: string;
+    source: string;
+    status: string;
+    created_at: string;
+  }>;
+  drink_orders: Array<{
+    id: string;
+    event_id: string;
+    event_title: string;
+    total_clp: number;
+    status: string;
+    created_at: string;
+  }>;
+  payment_methods: Array<{
+    id: string;
+    brand: string;
+    last_four: string;
+    is_default: boolean;
+    gateway: string | null;
+  }>;
+};
+
+export type AdminCustomerUpdate = Partial<{
+  full_name: string;
+  email: string;
+  phone: string;
+  country_code: string;
+  rut_or_passport: string;
+  birthdate: string;
+  gender: AdminCustomerGender;
+  instagram_username: string | null;
+  category: AdminCustomerCategory;
+  preferred_language: 'es' | 'en' | 'pt' | null;
+}>;

@@ -57,6 +57,8 @@ export function EventWorkspaceLayout({
     (isNewEvent ? t('eventInfo.newEventTitle') : '');
   const previewImage = draftPreview?.image_url || event?.image_url;
   const previewStartsAt = draftPreview?.starts_at || event?.starts_at;
+  // Saved ISO times are shown in the event's timezone; draft wall-clock values as typed.
+  const previewTimeZone = draftPreview?.starts_at ? undefined : event?.timezone;
   const previewVenue = draftPreview?.venue_name ?? event?.venue_name ?? '';
   const previewCity = draftPreview?.city ?? event?.city ?? '';
   const joinedLocation = [previewVenue, previewCity].filter(Boolean).join(', ');
@@ -73,6 +75,7 @@ export function EventWorkspaceLayout({
       day: '2-digit',
       month: 'short',
       year: 'numeric',
+      timeZone: previewTimeZone,
     }).format(new Date(iso));
   }
 
@@ -81,6 +84,7 @@ export function EventWorkspaceLayout({
       hour: 'numeric',
       minute: '2-digit',
       hour12: dateLocale !== 'es-CL',
+      timeZone: previewTimeZone,
     }).format(new Date(iso));
   }
 

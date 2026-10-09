@@ -49,12 +49,26 @@ const PAGE_SIZE = 6;
 
 function formatRelativeTime(iso: string, locale: string) {
   const minutes = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-
-  if (locale.startsWith('es')) {
-    return `Hace ${minutes} min`;
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'always', style: 'short' });
+  if (minutes < 60) {
+    return rtf.format(-minutes, 'minute');
   }
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) {
+    return rtf.format(-hours, 'hour');
+  }
+  return rtf.format(-Math.round(hours / 24), 'day');
+}
 
-  return minutes === 1 ? '1 min ago' : `${minutes} min ago`;
+/** Staff seen within this window count as online; `status` alone is only the admin on/pause switch. */
+const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+
+function presenceStatus(member: AdminStaffMember): AdminStaffMember['status'] {
+  if (member.status !== 'online') {
+    return member.status;
+  }
+  const lastSeen = new Date(member.last_activity_at).getTime();
+  return Date.now() - lastSeen <= ONLINE_WINDOW_MS ? 'online' : 'away';
 }
 
 function roleLabel(roleId: string, roles: AdminEventStaffQrDashboard['roles'], t: ReturnType<typeof useI18n>['t']) {
@@ -518,7 +532,7 @@ export function StaffQrPanel({
 
   const from = staff.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const to = Math.min(page * PAGE_SIZE, staff.length);
-  const activeStaffCount = staff.filter((member) => member.status === 'online').length;
+  const activeStaffCount = staff.filter((member) => presenceStatus(member) === 'online').length;
   const zonesCount = new Set(staff.map((member) => member.zone)).size;
   const pageNumbers = visiblePages(page, totalPages);
 
@@ -653,9 +667,9 @@ export function StaffQrPanel({
                     </td>
                     <td className="staff-qr-zone">{zoneLabel(member.zone, t)}</td>
                     <td>
-                      <span className={`staff-qr-status staff-qr-status--${member.status}`}>
+                      <span className={`staff-qr-status staff-qr-status--${presenceStatus(member)}`}>
                         <span className="staff-qr-status__dot" />
-                        {staffStatusLabel(member.status, t)}
+                        {staffStatusLabel(presenceStatus(member), t)}
                       </span>
                     </td>
                     <td className="staff-qr-last-activity">
@@ -783,9 +797,13 @@ export function StaffQrPanel({
         open={showAddModal}
         roles={rolesForAddStaff}
         zones={availableZones}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => {
+          setShowAddModal(false);
+          setActionError('');
+        }}
         onSubmit={handleAddStaff}
         onZonesChange={setAvailableZones}
+        error={showAddModal ? actionError : undefined}
       />
 
       <ManagePermissionsModal

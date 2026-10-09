@@ -6,9 +6,10 @@ import { EventOrderQrStatusPill } from './EventOrderQrStatusPill';
 type Props = {
   order: AdminDrinkOrderDetail;
   onClose: () => void;
+  timeZone?: string;
 };
 
-export function EventOrderDetailModal({ order, onClose }: Props) {
+export function EventOrderDetailModal({ order, onClose, timeZone }: Props) {
   const { t, dateLocale, numberLocale } = useI18n();
 
   function formatMoney(amountMinor: number) {
@@ -23,13 +24,20 @@ export function EventOrderDetailModal({ order, onClose }: Props) {
       hour: '2-digit',
       minute: '2-digit',
       hour12: dateLocale !== 'es-CL',
+      timeZone,
     })
       .format(new Date(iso))
       .replace(',', ',');
   }
 
   const paymentLabel =
-    order.payment_method.type === 'none' ? t('orders.noPayment') : order.payment_method.label;
+    order.payment_method.type === 'none'
+      ? t('orders.noPayment')
+      : order.payment_method.type === 'courtesy'
+        ? t('orders.courtesy')
+        : order.payment_method.last_four
+          ? `${order.payment_method.label} •••• ${order.payment_method.last_four}`
+          : order.payment_method.label;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

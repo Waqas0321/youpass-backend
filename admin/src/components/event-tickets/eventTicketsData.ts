@@ -17,6 +17,10 @@ export type EventTicketRow = {
   status: EventTicketStatus;
   saleStart: string | null;
   saleEnd: string | null;
+  description: string;
+  imageUrl: string;
+  featured: boolean;
+  maxPerUser: number | null;
 };
 
 export const TICKETS_PAGE_SIZE = 10;
@@ -76,7 +80,7 @@ export function mapOfferingToTicketRow(
     backendStatus: offering.status,
     name: offering.name,
     subtitle: ticketSubtitleKey(offering.type),
-    color: TICKET_COLORS[index % TICKET_COLORS.length],
+    color: offering.color || TICKET_COLORS[index % TICKET_COLORS.length],
     price: offering.price,
     currency: offering.currency || 'CLP',
     stockRemaining,
@@ -85,5 +89,9 @@ export function mapOfferingToTicketRow(
     status: resolveUiStatus(offering),
     saleStart: offering.sale_start_at ?? null,
     saleEnd: offering.sale_end_at ?? null,
+    description: offering.description ?? '',
+    imageUrl: offering.image_url ?? '',
+    featured: offering.is_featured ?? false,
+    maxPerUser: offering.max_per_user ?? null,
   };
 }

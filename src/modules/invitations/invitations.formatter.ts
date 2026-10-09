@@ -201,8 +201,10 @@ function computeFlags(
       !pastExpiry &&
       invitation.event.status === 'published',
     can_reject: isPending && !pastDeadline && !pastExpiry,
+    // Mirrors cancelInvitation(): only accepted Guaranteed Passes can be cancelled.
     can_cancel:
       isAccepted &&
+      resolveInvitationProductKind(invitation) === 'guaranteed_pass' &&
       now <= invitation.cancellationDeadline,
     can_view_qr:
       (isAccepted || invitation.status === 'validated') &&
@@ -215,7 +217,12 @@ export function formatInvitationListItem(
   expiryDays: number,
 ) {
   const timezone = getTimezone(invitation.event.countryCode);
-  return baseFields(invitation, timezone, expiryDays);
+  // The app's list cards rely on these flags (e.g. without can_cancel every
+  // confirmed invitation shows "Cancellation deadline has passed").
+  return {
+    ...baseFields(invitation, timezone, expiryDays),
+    ...computeFlags(invitation, expiryDays),
+  };
 }
 
 export function formatInvitationDetail(

@@ -56,10 +56,55 @@ export function createEventInfoId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function toDatetimeLocalValue(iso: string) {
-  const date = new Date(iso);
+/** Used until the event/country timezone is known (most events are in Chile). */
+export const DEFAULT_EVENT_TIMEZONE = 'America/Santiago';
+
+function zonedParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value);
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    hour: get('hour'),
+    minute: get('minute'),
+    second: get('second'),
+  };
+}
+
+function timeZoneOffsetMs(date: Date, timeZone: string) {
+  const p = zonedParts(date, timeZone);
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - date.getTime();
+}
+
+/**
+ * Interprets a "YYYY-MM-DDTHH:mm" wall-clock value in the event's timezone
+ * (not the admin's browser timezone) and returns the matching instant.
+ */
+export function zonedWallTimeToDate(local: string, timeZone: string) {
+  const [datePart, timePart = '00:00'] = local.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.split(':').map(Number);
+  const asUtc = Date.UTC(year, month - 1, day, hour, minute);
+  // Second pass corrects the offset around DST transitions.
+  let ts = asUtc - timeZoneOffsetMs(new Date(asUtc), timeZone);
+  ts = asUtc - timeZoneOffsetMs(new Date(ts), timeZone);
+  return new Date(ts);
+}
+
+export function toDatetimeLocalValue(iso: string, timeZone = DEFAULT_EVENT_TIMEZONE) {
+  const p = zonedParts(new Date(iso), timeZone);
   const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
 }
 
 export function splitDatetimeLocal(value: string) {
@@ -77,14 +122,14 @@ export function mergeDateAndTime(date: string, time: string) {
   return `${date}T${time || '20:00'}`;
 }
 
-export function buildEndsAtIso(startsAtLocal: string, endTime: string) {
+export function buildEndsAtIso(startsAtLocal: string, endTime: string, timeZone = DEFAULT_EVENT_TIMEZONE) {
   if (!startsAtLocal || !endTime) {
     return undefined;
   }
 
   const { date } = splitDatetimeLocal(startsAtLocal);
-  const start = new Date(startsAtLocal);
-  let end = new Date(`${date}T${endTime}`);
+  const start = zonedWallTimeToDate(startsAtLocal, timeZone);
+  let end = zonedWallTimeToDate(`${date}T${endTime}`, timeZone);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     return undefined;
   }
@@ -94,17 +139,11 @@ export function buildEndsAtIso(startsAtLocal: string, endTime: string) {
   return end.toISOString();
 }
 
-export function extractEndTime(endsAtIso: string | null | undefined, startsAtIso: string) {
+export function extractEndTime(endsAtIso: string | null | undefined, timeZone = DEFAULT_EVENT_TIMEZONE) {
   if (!endsAtIso) {
     return '05:00';
   }
-  const end = new Date(endsAtIso);
-  const start = new Date(startsAtIso);
-  const pad = (value: number) => String(value).padStart(2, '0');
-  if (end.getDate() !== start.getDate() || end.getMonth() !== start.getMonth()) {
-    return `${pad(end.getHours())}:${pad(end.getMinutes())}`;
-  }
-  return `${pad(end.getHours())}:${pad(end.getMinutes())}`;
+  return splitDatetimeLocal(toDatetimeLocalValue(endsAtIso, timeZone)).time;
 }
 
 export function buildAddressLine(venue?: string | null, city?: string | null) {
@@ -146,12 +185,12 @@ export type EventInfoFormState = {
   socialLinks: EventInfoSocialLink[];
 };
 
-export function eventToFormState(event: AdminEvent): EventInfoFormState {
+export function eventToFormState(event: AdminEvent, timeZone = DEFAULT_EVENT_TIMEZONE): EventInfoFormState {
   return {
     form: {
       title: event.title,
       description: event.description ?? '',
-      starts_at: toDatetimeLocalValue(event.starts_at),
+      starts_at: toDatetimeLocalValue(event.starts_at, timeZone),
       ends_at: event.ends_at ?? undefined,
       venue_id: event.venue_id ?? undefined,
       venue_name: event.venue_name ?? '',
@@ -178,20 +217,23 @@ export function eventToFormState(event: AdminEvent): EventInfoFormState {
       event.address_line ??
       event.physical_venue?.address ??
       buildAddressLine(event.venue_name, event.city),
-    endTime: extractEndTime(event.ends_at, event.starts_at),
+    endTime: extractEndTime(event.ends_at, timeZone),
     sponsors: parseSponsors(event.sponsors),
     socialLinks: parseSocialLinks(event.social_links),
   };
 }
 
-export function buildEventInfoPayload(state: EventInfoFormState): AdminEventInput | null {
+export function buildEventInfoPayload(
+  state: EventInfoFormState,
+  timeZone = DEFAULT_EVENT_TIMEZONE,
+): AdminEventInput | null {
   const { form, addressLine, endTime, sponsors, socialLinks } = state;
 
   if (!form.title.trim() || !form.starts_at) {
     return null;
   }
 
-  const endsAt = buildEndsAtIso(form.starts_at, endTime);
+  const endsAt = buildEndsAtIso(form.starts_at, endTime, timeZone);
 
   return {
     ...form,
@@ -206,7 +248,7 @@ export function buildEventInfoPayload(state: EventInfoFormState): AdminEventInpu
     logo_url: form.logo_url?.trim() || undefined,
     teaser_video_url: form.teaser_video_url?.trim() || undefined,
     carousel_images: form.carousel_images ?? [],
-    starts_at: new Date(form.starts_at).toISOString(),
+    starts_at: zonedWallTimeToDate(form.starts_at, timeZone).toISOString(),
     ends_at: endsAt,
     min_age: form.min_age ?? 18,
     dress_code: form.dress_code ?? 'casual',

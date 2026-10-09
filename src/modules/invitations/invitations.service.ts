@@ -934,7 +934,10 @@ function formatPaymentMethod(m: {
     holder_name: m.cardholderName,
     is_default: m.isDefault,
     gateway: m.gateway ?? 'klap',
+    // With mock checkout no real charge happens, so mock-tokenized cards are usable;
+    // otherwise the app loops back to "add card" and checkout can never complete.
     chargeable:
+      env.CHECKOUT_MOCK_PAYMENT ||
       (m.gateway ?? 'klap') !== 'kushki' ||
       (typeof m.providerToken === 'string' &&
         m.providerToken.length > 0 &&

@@ -106,14 +106,12 @@ export function EventOrdersToolbar({
             value={paymentFilter}
             onChange={(event) => onPaymentFilterChange(event.target.value)}
             aria-label={t('orders.paymentMethod')}
-            disabled
-            title={t('orders.paymentFilterSoon')}
           >
             <option value="">{t('orders.allPaymentMethods')}</option>
-            <option value="webpay">Webpay</option>
             <option value="visa">Visa</option>
             <option value="mastercard">Mastercard</option>
-            <option value="apple_pay">Apple Pay</option>
+            <option value="amex">American Express</option>
+            <option value="courtesy">{t('orders.courtesy')}</option>
             <option value="none">{t('orders.noPayment')}</option>
           </select>
 

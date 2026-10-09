@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { PhoneInput } from 'react-international-phone';
+import { Alert } from '../ui/Alert';
 import 'react-international-phone/style.css';
 import type { AdminStaffRole } from '../../api/client';
 import { IconInfo, IconPlus, IconX } from '../ui/Icons';
@@ -30,6 +31,8 @@ type Props = {
   onClose: () => void;
   onSubmit: (values: AddStaffFormValues) => void;
   onZonesChange: (zones: string[]) => void;
+  /** Server error from the last save attempt (shown inside the modal, not behind it). */
+  error?: string;
 };
 
 function roleDisplayLabel(role: AdminStaffRole, t: ReturnType<typeof useI18n>['t']) {
@@ -64,18 +67,21 @@ export function AddStaffModal({
   onClose,
   onSubmit,
   onZonesChange,
+  error,
 }: Props) {
   const { t } = useI18n();
   const formId = useId();
   const [form, setForm] = useState(emptyForm);
   const [showCreateZone, setShowCreateZone] = useState(false);
   const [newZoneName, setNewZoneName] = useState('');
+  const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
     if (!open) {
       setForm(emptyForm());
       setShowCreateZone(false);
       setNewZoneName('');
+      setValidationError('');
     }
   }, [open]);
 
@@ -85,9 +91,15 @@ export function AddStaffModal({
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!form.name.trim() || !isPhoneComplete(form.phone) || !form.role_id || !form.zone) {
+    if (!form.name.trim() || !form.role_id || !form.zone) {
+      setValidationError(t('staffQr.addStaffMissingFields'));
       return;
     }
+    if (!isPhoneComplete(form.phone)) {
+      setValidationError(t('staffQr.addStaffInvalidPhone'));
+      return;
+    }
+    setValidationError('');
 
     onSubmit({
       name: form.name.trim(),
@@ -244,6 +256,12 @@ export function AddStaffModal({
             <span>{t('staffQr.addStaffHint')}</span>
           </p>
         </div>
+
+        {validationError || error ? (
+          <div className="staff-qr-modal__error">
+            <Alert tone="error">{validationError || error}</Alert>
+          </div>
+        ) : null}
 
         <footer className="staff-qr-modal__footer">
           <button type="button" className="ghost-btn staff-qr-modal__cancel" onClick={onClose}>

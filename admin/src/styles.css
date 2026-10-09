@@ -15312,3 +15312,159 @@ a.outline-btn {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Users page ─────────────────────────────────────────────── */
+.users-page__toolbar {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.users-page__filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.users-page__filter select {
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+  padding: 6px 10px;
+}
+
+.users-page__table-wrap {
+  overflow-x: auto;
+}
+
+.users-page__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.users-page__identity > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.users-page__sub {
+  font-size: 12px;
+}
+
+.users-page__avatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-weight: 700;
+  font-size: 13px;
+  background: rgba(242, 183, 5, 0.18);
+  color: #f2b705;
+}
+
+.users-page__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.users-page__actions,
+.users-page td:nth-child(7),
+.users-page td:nth-child(8) {
+  white-space: nowrap;
+}
+
+.users-page__actions .ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.users-page__actions svg {
+  width: 14px;
+  height: 14px;
+}
+
+.users-page__pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+}
+
+.users-page__modal {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.users-page__modal--wide {
+  width: min(820px, calc(100vw - 32px));
+}
+
+.users-page__detail h4 {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.users-page__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.users-page__facts dt {
+  font-size: 11px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+}
+
+.users-page__facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+
+.users-page__cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.users-page__cards li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.users-page__danger-btn {
+  background: #d64545;
+  border-color: #d64545;
+  color: #fff;
+}
+
+.users-page__danger-btn:disabled {
+  opacity: 0.5;
+}
+
+/* Keep row actions reachable when the users table scrolls horizontally. */
+.users-page .data-table th:last-child,
+.users-page .data-table td.users-page__actions {
+  position: sticky;
+  right: 0;
+  background: var(--surface-card, #111);
+  box-shadow: -8px 0 12px -10px rgba(0, 0, 0, 0.8);
+}
+
+.staff-qr-modal__error {
+  padding: 0 24px 8px;
+}

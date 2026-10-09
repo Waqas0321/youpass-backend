@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { AuthRequestContext } from '../types/auth.js';
+import { parseAcceptLanguage, runWithRequestLanguage } from '../services/request-language.service.js';
 
 export function attachRequestContext(req: Request, _res: Response, next: NextFunction): void {
   const deviceIdHeader = req.headers['x-device-id'];
@@ -18,5 +19,6 @@ export function attachRequestContext(req: Request, _res: Response, next: NextFun
     },
   };
   req.authContext = ctx;
-  next();
+  // Lets formatters localise dates/messages to the app's UI language (see request-language.service).
+  runWithRequestLanguage(parseAcceptLanguage(req.headers['accept-language']), next);
 }

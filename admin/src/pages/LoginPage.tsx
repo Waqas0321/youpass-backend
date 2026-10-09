@@ -1,6 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { adminApi, getSession, saveSession } from '../api/client';
+import { adminApi, clearSession, getSession, saveSession } from '../api/client';
 import { Alert } from '../components/ui/Alert';
 import { IconEye, IconLock, IconLogin, IconMail } from '../components/ui/Icons';
 import { LanguageToggle } from '../components/ui/LanguageToggle';
@@ -11,7 +11,10 @@ export function LoginPage() {
   const { t } = useI18n();
   const existing = getSession();
   const [email, setEmail] = useState('admin@youpass.com');
-  const [apiKey, setApiKey] = useState(existing?.apiKey ?? 'youpass-dev-admin-key');
+  // Only pre-fill the dev key in local dev builds, never in the deployed panel.
+  const [apiKey, setApiKey] = useState(
+    existing?.apiKey ?? (import.meta.env.DEV ? 'youpass-dev-admin-key' : ''),
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +29,9 @@ export function LoginPage() {
     setLoading(false);
 
     if (!result.ok) {
-      setError(result.error ?? t('login.error'));
+      // Don't keep a rejected key around, or RequireAuth would let it through.
+      clearSession();
+      setError(result.status === 401 ? t('login.invalidKey') : (result.error ?? t('login.error')));
       return;
     }
 

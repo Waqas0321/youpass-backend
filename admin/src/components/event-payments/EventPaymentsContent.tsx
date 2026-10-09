@@ -121,7 +121,7 @@ export function EventPaymentsContent({
         }
         if (!result.ok || !result.data) {
           setPayload(null);
-          setError(result.ok ? t('eventPayments.loadError') : result.error);
+          setError(result.ok ? t('eventPayments.loadError') : (result.error ?? t('eventPayments.loadError')));
           onDataChange?.({ kpis: [], transactions: [], methodSummary: [] });
           return;
         }

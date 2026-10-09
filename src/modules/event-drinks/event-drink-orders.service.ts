@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { chargeDrinkOrder, refundDrinkPayment } from './event-drink-payment.service.js';
 import type { EventDrinkProductStatus } from '@prisma/client';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
@@ -141,78 +142,115 @@ export const eventDrinkOrdersService = {
       lineRedemptions.map((redemption) => [redemption.lineId, redemption]),
     );
 
-    const order = await prisma.$transaction(async (tx) => {
-      for (const line of requestedLines) {
-        if (line.product.stockRemaining == null) {
-          continue;
-        }
-
-        const nextRemaining = line.product.stockRemaining - line.quantity;
-        const updated = await tx.eventDrinkProduct.updateMany({
-          where: {
-            id: line.product.id,
-            stockRemaining: { gte: line.quantity },
-          },
-          data: {
-            stockRemaining: { decrement: line.quantity },
-            status: nextRemaining <= 0 ? 'sold_out' : line.product.status,
-          },
+    // Paid orders charge the saved card first; courtesies (total 0) are free.
+    const payment = isComplimentary
+      ? null
+      : await chargeDrinkOrder({
+          userId,
+          paymentMethodId: input.payment_method_id,
+          amount: totalClp,
+          currency,
+          orderId,
         });
 
-        if (updated.count === 0) {
-          throw new AppError(
-            409,
-            'DRINK_PRODUCT_OUT_OF_STOCK',
-            `${line.product.name} is out of stock`,
-          );
+    let order;
+    try {
+      order = await prisma.$transaction(async (tx) => {
+        for (const line of requestedLines) {
+          if (line.product.stockRemaining == null) {
+            continue;
+          }
+
+          const nextRemaining = line.product.stockRemaining - line.quantity;
+          const updated = await tx.eventDrinkProduct.updateMany({
+            where: {
+              id: line.product.id,
+              stockRemaining: { gte: line.quantity },
+            },
+            data: {
+              stockRemaining: { decrement: line.quantity },
+              status: nextRemaining <= 0 ? 'sold_out' : line.product.status,
+            },
+          });
+
+          if (updated.count === 0) {
+            throw new AppError(
+              409,
+              'DRINK_PRODUCT_OUT_OF_STOCK',
+              `${line.product.name} is out of stock`,
+            );
+          }
         }
-      }
 
-      const createdOrder = await tx.eventDrinkOrder.create({
-        data: {
-          id: orderId,
-          userId,
-          eventId,
-          subtotalClp,
-          serviceFeeClp,
-          totalClp,
-          itemCount,
-          currency,
-          status: 'confirmed',
-          isComplimentary,
-          lines: {
-            create: requestedLines.map(({ lineId, product, quantity }) => {
-              const redemption = redemptionByLineId.get(lineId);
-              if (!redemption) {
-                throw new AppError(500, 'DRINK_ORDER_QR_FAILED', 'Could not generate QR payload');
-              }
+        const createdOrder = await tx.eventDrinkOrder.create({
+          data: {
+            id: orderId,
+            userId,
+            eventId,
+            subtotalClp,
+            serviceFeeClp,
+            totalClp,
+            itemCount,
+            currency,
+            status: 'confirmed',
+            isComplimentary,
+            ...(payment
+              ? {
+                  paymentMethodId: payment.paymentMethodId,
+                  paymentGateway: payment.paymentGateway,
+                  paymentReference: payment.paymentReference,
+                  cardBrand: payment.cardBrand,
+                  cardLastFour: payment.cardLastFour,
+                }
+              : {}),
+            lines: {
+              create: requestedLines.map(({ lineId, product, quantity }) => {
+                const redemption = redemptionByLineId.get(lineId);
+                if (!redemption) {
+                  throw new AppError(500, 'DRINK_ORDER_QR_FAILED', 'Could not generate QR payload');
+                }
 
-              return {
-                id: lineId,
-                productId: product.id,
-                productName: product.name,
-                quantity,
-                unitPriceClp: product.priceClp,
-                lineTotalClp: product.priceClp * quantity,
-                volumeMl: product.volumeMl,
-                imageUrl: product.imageUrl,
-                redemption: {
-                  create: {
-                    orderId,
-                    manualEntryId: redemption.manualEntryId,
-                    qrPayload: redemption.qrPayload,
-                    unlockAt,
+                return {
+                  id: lineId,
+                  productId: product.id,
+                  productName: product.name,
+                  quantity,
+                  unitPriceClp: product.priceClp,
+                  lineTotalClp: product.priceClp * quantity,
+                  volumeMl: product.volumeMl,
+                  imageUrl: product.imageUrl,
+                  redemption: {
+                    create: {
+                      orderId,
+                      manualEntryId: redemption.manualEntryId,
+                      qrPayload: redemption.qrPayload,
+                      unlockAt,
+                    },
                   },
-                },
-              };
-            }),
+                };
+              }),
+            },
           },
-        },
-        include: loadOrderInclude(),
-      });
+          include: loadOrderInclude(),
+        });
 
-      return createdOrder;
-    });
+        return createdOrder;
+      });
+    } catch (error) {
+      // Charged but the order could not be created (e.g. stock ran out meanwhile):
+      // give the money back before surfacing the error.
+      if (payment) {
+        await refundDrinkPayment({
+          paymentGateway: payment.paymentGateway,
+          paymentReference: payment.paymentReference,
+          totalClp,
+          currency,
+        }).catch((refundError) => {
+          console.error(`[drink-orders] Auto-refund failed for ${payment.paymentReference}`, refundError);
+        });
+      }
+      throw error;
+    }
 
     return formatDrinkOrder(order);
   },

@@ -149,6 +149,7 @@ export function EventTicketsPage() {
               onPause={handlePause}
               onHide={handleHide}
               onDelete={handleDelete}
+              timeZone={event?.timezone}
             />
           </div>
         )}
@@ -160,6 +161,7 @@ export function EventTicketsPage() {
         editingTicket={editingTicket}
         usedOfferingTypes={usedOfferingTypes}
         currency={currency}
+        timeZone={event?.timezone}
         onClose={closeModal}
         onSaved={() => {
           setActionMessage(

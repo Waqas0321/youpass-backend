@@ -60,6 +60,8 @@ export function buildCreateInvitationBody(input: {
   return {
     event_id: input.eventId,
     type: mapUiTypeToApiType(input.invitationType),
+    // "General" must not become a VIP entry at the door.
+    tier: input.invitationType === 'general' ? 'general' : 'vip',
     slot_label: buildSlotLabel(input.listAssignment, input.invitationType),
     ...(input.userId ? { recipient_user_id: input.userId } : { recipient_phone: phone }),
     recipient_name: input.name.trim(),

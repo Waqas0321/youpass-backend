@@ -9,6 +9,8 @@ type Props = {
   onPause: (ticket: EventTicketRow) => void;
   onHide: (ticket: EventTicketRow) => void;
   onDelete: (ticket: EventTicketRow) => void;
+  /** Event timezone used to display sale dates. */
+  timeZone?: string;
 };
 
 function formatTicketPrice(value: number, currency: string, locale: string) {
@@ -19,7 +21,7 @@ function formatTicketPrice(value: number, currency: string, locale: string) {
   }).format(value);
 }
 
-function formatTicketDate(iso: string | null, locale: string, emptyLabel: string) {
+function formatTicketDate(iso: string | null, locale: string, emptyLabel: string, timeZone?: string) {
   if (!iso) {
     return emptyLabel;
   }
@@ -32,6 +34,7 @@ function formatTicketDate(iso: string | null, locale: string, emptyLabel: string
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+    timeZone,
   }).format(date);
   return `${formatted} hrs`;
 }
@@ -46,7 +49,7 @@ function StatusBadge({ status }: { status: EventTicketStatus }) {
   );
 }
 
-export function EventTicketsTable({ tickets, onEdit, onPause, onHide, onDelete }: Props) {
+export function EventTicketsTable({ tickets, onEdit, onPause, onHide, onDelete, timeZone }: Props) {
   const { t, numberLocale, dateLocale } = useI18n();
   const [page, setPage] = useState(1);
 
@@ -152,8 +155,8 @@ export function EventTicketsTable({ tickets, onEdit, onPause, onHide, onDelete }
                     <td>
                       <StatusBadge status={ticket.status} />
                     </td>
-                    <td>{formatTicketDate(ticket.saleStart, dateLocale, t('eventTickets.noDate'))}</td>
-                    <td>{formatTicketDate(ticket.saleEnd, dateLocale, t('eventTickets.noDate'))}</td>
+                    <td>{formatTicketDate(ticket.saleStart, dateLocale, t('eventTickets.noDate'), timeZone)}</td>
+                    <td>{formatTicketDate(ticket.saleEnd, dateLocale, t('eventTickets.noDate'), timeZone)}</td>
                     <td>
                       <div className="event-tickets__actions">
                         <button type="button" className="event-tickets__action" onClick={() => onEdit(ticket)}>

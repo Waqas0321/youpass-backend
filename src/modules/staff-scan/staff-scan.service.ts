@@ -4,6 +4,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { invitationDoorValidationService } from '../invitations/invitation-door-validation.service.js';
 import { findInvitationTicketByScanInput } from '../invitations/invitation-ticket-scan.utils.js';
 import { resolveInvitationProductLabel } from '../invitations/invitation-product-type.utils.js';
+import { resolvePurchasedTicketName } from '../tickets/ticket-label.utils.js';
 import { eventDrinkRedemptionService, findDrinkRedemptionByScanInput } from '../event-drinks/event-drink-redemption.service.js';
 
 type StaffScanResponse = {
@@ -130,7 +131,9 @@ async function buildEntryScanResponse(
 
   const invitation = ticket.invitation;
   const guestName = invitation.recipient?.fullName ?? invitation.recipientName ?? 'Guest';
-  const ticketType = invitation.assignedSlot || resolveInvitationProductLabel(invitation);
+  const purchasedTicketName = await resolvePurchasedTicketName(invitation);
+  const ticketType =
+    purchasedTicketName || invitation.assignedSlot || resolveInvitationProductLabel(invitation);
 
   return {
     outcome: alreadyValidated ? 'already_used' : 'valid',

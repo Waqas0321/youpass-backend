@@ -168,6 +168,23 @@ function pickPrimaryEntryCode(order: AdminOrderWithRelations) {
   return null;
 }
 
+export function formatAdminDrinkPaymentMethod(order: AdminOrderWithRelations) {
+  if (order.cardLastFour) {
+    const brand = (order.cardBrand ?? 'card').toLowerCase();
+    return {
+      type: 'card',
+      label: brand === 'mastercard' ? 'Mastercard' : brand.charAt(0).toUpperCase() + brand.slice(1),
+      brand,
+      last_four: order.cardLastFour,
+    };
+  }
+  if (order.isComplimentary || order.subtotalClp === 0) {
+    return { type: 'courtesy', label: 'Courtesy', brand: 'courtesy', last_four: null };
+  }
+  // Legacy orders created before drink payments were recorded.
+  return { type: 'none', label: 'No payment', brand: 'app', last_four: null };
+}
+
 export function formatAdminDrinkOrderListItem(order: AdminOrderWithRelations) {
   const qrStatus = resolveAdminDrinkOrderQrStatus(order);
 
@@ -182,12 +199,7 @@ export function formatAdminDrinkOrderListItem(order: AdminOrderWithRelations) {
       initials: formatUserInitials(order.user.fullName),
     },
     product_summary: formatProductSummary(order.lines),
-    payment_method: {
-      type: 'none',
-      label: 'Sin pago',
-      brand: 'app',
-      last_four: null,
-    },
+    payment_method: formatAdminDrinkPaymentMethod(order),
     created_at: order.createdAt.toISOString(),
     qr_status: qrStatus,
     total_clp: order.totalClp,
@@ -229,6 +241,10 @@ export function formatAdminDrinkOrderDetail(order: AdminOrderWithRelations) {
     subtotal_clp: order.subtotalClp,
     service_fee_clp: order.serviceFeeClp,
     item_count: order.itemCount,
+    payment_gateway: order.paymentGateway,
+    payment_reference: order.paymentReference,
+    refund_reference: order.refundReference,
+    refunded_at: order.refundedAt?.toISOString() ?? null,
   };
 }
 

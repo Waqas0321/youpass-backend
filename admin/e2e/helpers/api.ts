@@ -42,6 +42,7 @@ export async function seedEvent(title: string): Promise<SeededEvent> {
       starts_at: startsAt,
       ends_at: endsAt,
       venue_name: 'Playwright Venue',
+      address_line: 'Av. Playwright 123, Santiago',
       city: 'Santiago',
       country_code: 'CL',
       event_type: 'parties',

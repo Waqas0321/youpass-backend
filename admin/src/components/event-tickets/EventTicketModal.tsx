@@ -11,6 +11,8 @@ type Props = {
   editingTicket: EventTicketRow | null;
   usedOfferingTypes: TicketOfferingType[];
   currency: string;
+  /** Event timezone; sale dates are entered in it. */
+  timeZone?: string;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -21,6 +23,7 @@ export function EventTicketModal({
   editingTicket,
   usedOfferingTypes,
   currency,
+  timeZone,
   onClose,
   onSaved,
 }: Props) {
@@ -31,6 +34,7 @@ export function EventTicketModal({
     editingTicket,
     onSaved,
     onClose,
+    timeZone,
   );
 
   const footer = (

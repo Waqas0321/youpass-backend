@@ -3,7 +3,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { isMetaWhatsAppProvider, isWhatsAppDeliveryMock, logMetaWhatsAppStartupSummary } from './config/meta-whatsapp.config.js';
 import { logTwilioWhatsAppStartupSummary } from './config/twilio-whatsapp.config.js';
-import { prisma } from './config/database.js';
+import { connectDatabase, prisma } from './config/database.js';
 import { startInvitationExpiryScheduler } from './modules/invitations/invitation-expiry.scheduler.js';
 import { startGuaranteedPassReminderScheduler } from './modules/invitations/guaranteed-pass-reminder.scheduler.js';
 import { startGuaranteedPassEventCloseScheduler } from './modules/invitations/guaranteed-pass-event-close.scheduler.js';
@@ -13,6 +13,9 @@ import { startTableLockExpiryScheduler } from './modules/vip-venue/table-lock-ex
 async function main() {
   logTwilioWhatsAppStartupSummary();
   logMetaWhatsAppStartupSummary();
+  // Same as api/index.ts on Vercel: without this the country cache stays empty and
+  // every event is formatted with timezone UTC / currency USD.
+  await connectDatabase();
   const app = createApp();
   startInvitationExpiryScheduler();
   startGuaranteedPassReminderScheduler();

@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database.js';
+import { resolvePurchasedTicketName } from '../tickets/ticket-label.utils.js';
 import {
   buildVipTags,
   formatPurchaseId,
@@ -320,7 +321,11 @@ async function formatEntrySearchDetail(ticket: TicketWithInvitation) {
     qr_payload: ticket.qrPayload,
     purchase_id: formatInvitationPurchaseId(invitation.id, order),
     purchase_status: formatPurchaseStatus(order),
-    ticket_type_label: formatTicketTypeLabel(invitation, vipTags),
+    ticket_type_label:
+      vipTags.length >= 2
+        ? formatTicketTypeLabel(invitation, vipTags)
+        : ((await resolvePurchasedTicketName(invitation)) ??
+          formatTicketTypeLabel(invitation, vipTags)),
     access_point: accessPoint,
     status: resolveEntryStatus(ticket),
     entry_time_label: ticket.validatedAt
@@ -338,7 +343,7 @@ async function formatEntrySearchDetail(ticket: TicketWithInvitation) {
   };
 }
 
-export function formatEntrySearchSummary(ticket: TicketWithInvitation) {
+export async function formatEntrySearchSummary(ticket: TicketWithInvitation) {
   const invitation = ticket.invitation;
   const guestName = invitation.recipient?.fullName ?? invitation.recipientName ?? 'Guest';
 
@@ -355,7 +360,9 @@ export function formatEntrySearchSummary(ticket: TicketWithInvitation) {
     purchase_id: `INV-${invitation.id.slice(-6).toUpperCase()}`,
     purchase_status: null,
     ticket_type_label:
-      invitation.assignedSlot.trim() || (invitation.tier === 'vip' ? 'VIP' : 'General'),
+      (await resolvePurchasedTicketName(invitation)) ||
+      invitation.assignedSlot.trim() ||
+      (invitation.tier === 'vip' ? 'VIP' : 'General'),
     access_point: null,
     status: resolveEntryStatus(ticket),
     entry_time_label: ticket.validatedAt
@@ -373,8 +380,8 @@ export function formatEntrySearchSummary(ticket: TicketWithInvitation) {
   };
 }
 
-export function formatEntrySearchSummaries(tickets: TicketWithInvitation[]) {
-  const results = tickets.map((ticket) => formatEntrySearchSummary(ticket));
+export async function formatEntrySearchSummaries(tickets: TicketWithInvitation[]) {
+  const results = await Promise.all(tickets.map((ticket) => formatEntrySearchSummary(ticket)));
   return {
     results,
     total: results.length,

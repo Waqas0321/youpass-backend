@@ -223,7 +223,7 @@ function buildProducerInvitationPayload(
     producerId,
     recipientPhone: normalizePhone(input.recipient_phone!),
     type: dbType,
-    tier: 'vip' as const,
+    tier: input.tier ?? ('vip' as const),
     status: 'sent' as const,
     source: 'producer' as const,
     assignedSlot: input.slot_label,

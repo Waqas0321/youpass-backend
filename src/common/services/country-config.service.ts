@@ -34,8 +34,8 @@ export async function getActiveCountry(code: string): Promise<CountryConfig> {
   return country;
 }
 
-export function getCountrySync(code: string): CountryConfig | undefined {
-  return cache.get(code.toUpperCase());
+export function getCountrySync(code: string | null | undefined): CountryConfig | undefined {
+  return code ? cache.get(code.toUpperCase()) : undefined;
 }
 
 export function getTimezone(countryCode: string): string {

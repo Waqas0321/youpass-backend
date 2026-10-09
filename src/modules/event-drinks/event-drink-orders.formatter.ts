@@ -152,7 +152,8 @@ export function formatDrinkOrder(order: OrderWithRelations) {
   };
 }
 
+/** Same format as the admin panel (`formatAdminDisplayOrderId`) so support can match orders. */
 function formatDisplayOrderId(orderId: string) {
-  const suffix = orderId.slice(-5).toUpperCase();
-  return `#${suffix}`;
+  const suffix = orderId.slice(-7).toUpperCase();
+  return `#ORD-${suffix}`;
 }

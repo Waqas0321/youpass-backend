@@ -16,6 +16,7 @@ import { EventOrdersLegend } from '../components/event-orders/EventOrdersLegend'
 import { EventOrdersTable } from '../components/event-orders/EventOrdersTable';
 import { EventOrdersToolbar } from '../components/event-orders/EventOrdersToolbar';
 import { EventWorkspacePage } from '../components/event-workspace/EventWorkspacePage';
+import { useEventWorkspaceEvent } from '../components/event-workspace/useEventWorkspaceEvent';
 import { Alert } from '../components/ui/Alert';
 import { IconChevronLeft, IconChevronRight } from '../components/ui/Icons';
 import { LoadingBlock } from '../components/ui/LoadingBlock';
@@ -25,6 +26,7 @@ const PAGE_SIZE = 8;
 
 export function EventOrdersPage() {
   const { eventId = '' } = useParams();
+  const { event } = useEventWorkspaceEvent();
   const { t } = useI18n();
   const [products, setProducts] = useState<EventDrinkProduct[]>([]);
   const [orders, setOrders] = useState<AdminDrinkOrderListItem[]>([]);
@@ -84,6 +86,7 @@ export function EventOrdersPage() {
       limit: PAGE_SIZE,
       product_id: productFilter || undefined,
       qr_status: qrStatusFilter || undefined,
+      payment: paymentFilter || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
     });
@@ -108,7 +111,7 @@ export function EventOrdersPage() {
       return;
     }
     void loadOrders();
-  }, [eventId, debouncedSearch, page, productFilter, qrStatusFilter, dateFrom, dateTo]);
+  }, [eventId, debouncedSearch, page, productFilter, paymentFilter, qrStatusFilter, dateFrom, dateTo]);
 
   const pageNumbers = useMemo(() => {
     const totalPages = pagination.total_pages;
@@ -136,6 +139,7 @@ export function EventOrdersPage() {
       q: debouncedSearch || undefined,
       product_id: productFilter || undefined,
       qr_status: qrStatusFilter || undefined,
+      payment: paymentFilter || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
     });
@@ -267,6 +271,7 @@ export function EventOrdersPage() {
                 onReissue={(orderId) => void runAction(orderId, 'reissue')}
                 onRefund={(orderId) => void runAction(orderId, 'refund')}
                 onInvalidate={(orderId) => void runAction(orderId, 'invalidate')}
+                timeZone={event?.timezone}
               />
             )}
 
@@ -320,7 +325,11 @@ export function EventOrdersPage() {
       </EventWorkspacePage>
 
       {selectedOrder ? (
-        <EventOrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
+        <EventOrderDetailModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          timeZone={event?.timezone}
+        />
       ) : null}
 
       <EventOrdersExportModal

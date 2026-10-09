@@ -119,7 +119,7 @@ export const adminEventPaymentsService = {
       select: { id: true, title: true },
     });
     if (!event) {
-      throw new AppError('EVENT_NOT_FOUND', 'Event not found', 404);
+      throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
     }
 
     const [ticketOrders, drinkOrders] = await Promise.all([

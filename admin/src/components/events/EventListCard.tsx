@@ -32,10 +32,11 @@ function formatRevenue(value: number, locale: string, currency = 'CLP') {
   }).format(value);
 }
 
-function formatTimeLabel(iso: string, dateLocale: string) {
+function formatTimeLabel(iso: string, dateLocale: string, timeZone?: string) {
   return new Intl.DateTimeFormat(dateLocale, {
     hour: 'numeric',
     minute: '2-digit',
+    timeZone,
   }).format(new Date(iso));
 }
 
@@ -62,9 +63,10 @@ export function EventListCard({
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone: event.timezone,
   }).format(new Date(event.starts_at));
 
-  const timeLabel = formatTimeLabel(event.starts_at, dateLocale);
+  const timeLabel = formatTimeLabel(event.starts_at, dateLocale, event.timezone);
 
   const locationLabel =
     event.venue_name && event.city

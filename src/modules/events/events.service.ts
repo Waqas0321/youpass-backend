@@ -1,4 +1,5 @@
 import type { Event, EventType, Prisma } from '@prisma/client';
+import { resolveDisplayLanguage } from '../../common/services/request-language.service.js';
 import { invitationSettingsService } from '../invitations/invitation-settings.service.js';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
@@ -418,6 +419,17 @@ export const eventsService = {
       throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
     }
 
+    // Drafts are not public. Keep them visible only to users who already hold a
+    // ticket/invitation, so an unpublished event doesn't break their ticket screens.
+    if (event.status !== 'published') {
+      const hasAccess = userId
+        ? await prisma.invitation.count({ where: { eventId: id, recipientUserId: userId } })
+        : 0;
+      if (!hasAccess) {
+        throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
+      }
+    }
+
     const favoriteIds = await getFavoriteIds(userId);
     const currencyMeta = getEventCurrencyMeta(event.countryCode);
     const purchase = await vipVenueService.getPurchaseMeta(id).catch(() => ({
@@ -458,7 +470,7 @@ export const eventsService = {
         : false;
 
     const timezone = country?.timezone;
-    const languageCode = country?.languageCode;
+    const languageCode = resolveDisplayLanguage(country?.languageCode);
 
     return {
       ...formatEvent(event, favoriteIds.has(event.id), {

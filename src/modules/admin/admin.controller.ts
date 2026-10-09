@@ -16,6 +16,7 @@ import { formatEvent } from '../events/events.formatter.js';
 import { getCountrySync, getEventCurrencyMeta } from '../../common/services/country-config.service.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { formatAdminTicketOffering } from '../ticket-offerings/ticket-offering.formatter.js';
+import { syncEventMinPrice } from '../ticket-offerings/ticket-offering-price.service.js';
 import {
   normalizeStatusAfterStockChange,
   resolveOfferingRef,
@@ -408,8 +409,15 @@ export const adminController = {
           saleEndAt: body.sale_end_at ? new Date(body.sale_end_at) : null,
           status,
           displayOrder: body.display_order ?? 0,
+          description: body.description?.trim() || null,
+          color: body.color ?? null,
+          imageUrl: body.image_url ?? null,
+          isFeatured: body.is_featured ?? false,
+          maxPerUser: body.max_per_user ?? null,
         },
       });
+
+      await syncEventMinPrice(eventId);
 
       res.status(201).json(
         successResponse(formatAdminTicketOffering(offering, currencyMeta.currency)),
@@ -464,9 +472,18 @@ export const adminController = {
             ? { saleEndAt: body.sale_end_at ? new Date(body.sale_end_at) : null }
             : {}),
           ...(body.display_order != null ? { displayOrder: body.display_order } : {}),
+          ...(body.description !== undefined
+            ? { description: body.description?.trim() || null }
+            : {}),
+          ...(body.color !== undefined ? { color: body.color } : {}),
+          ...(body.image_url !== undefined ? { imageUrl: body.image_url } : {}),
+          ...(body.is_featured !== undefined ? { isFeatured: body.is_featured } : {}),
+          ...(body.max_per_user !== undefined ? { maxPerUser: body.max_per_user } : {}),
           status: nextStatus,
         },
       });
+
+      await syncEventMinPrice(eventId);
 
       res.json(successResponse(formatAdminTicketOffering(offering, currencyMeta.currency)));
     } catch (err) {
@@ -491,6 +508,7 @@ export const adminController = {
       }
 
       await prisma.eventTicketOffering.delete({ where: { id: existing.id } });
+      await syncEventMinPrice(eventId);
       res.json(successResponse({ deleted: true, offering_id: existing.id }));
     } catch (err) {
       next(err);

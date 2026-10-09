@@ -57,6 +57,36 @@ const DEFAULT_UNIT_PRICES: Record<string, number> = {
 /** MongoDB transactions on serverless need extra time for multi-slot VIP table orders. */
 const CHECKOUT_TX_OPTIONS = { maxWait: 15_000, timeout: 30_000 } as const;
 
+/** Enforces the admin-configured "limit per user" across the buyer's paid and pending orders. */
+async function assertWithinPerUserLimit(
+  offering: { id: string; maxPerUser: number | null },
+  buyerUserId: string,
+  quantity: number,
+) {
+  if (offering.maxPerUser == null) {
+    return;
+  }
+
+  const existing = await prisma.ticketOrder.aggregate({
+    where: {
+      buyerUserId,
+      ticketOfferingId: offering.id,
+      status: { in: ['paid', 'pending_payment'] },
+    },
+    _sum: { quantity: true },
+  });
+  const alreadyBought = existing._sum.quantity ?? 0;
+
+  if (alreadyBought + quantity > offering.maxPerUser) {
+    throw new AppError(
+      409,
+      'PER_USER_LIMIT_EXCEEDED',
+      `You can buy at most ${offering.maxPerUser} ticket(s) of this type`,
+      { max_per_user: offering.maxPerUser, already_bought: alreadyBought },
+    );
+  }
+}
+
 async function assertAndDecrementOfferingStock(
   tx: Prisma.TransactionClient,
   offeringId: string,
@@ -570,6 +600,7 @@ export const ticketOrdersService = {
             'Not enough tickets available for this offering',
           );
         }
+        await assertWithinPerUserLimit(offering, buyerUserId, item.quantity);
         subtotal += offering.price * item.quantity;
         totalQty += item.quantity;
         tier = mapsToTier(offering.type);
@@ -588,6 +619,7 @@ export const ticketOrdersService = {
           'Not enough tickets available for this offering',
         );
       }
+      await assertWithinPerUserLimit(offering, buyerUserId, quantity);
       subtotal = offering.price * quantity;
       tier = mapsToTier(offering.type);
       type = mapsToCatalogType(offering.type);

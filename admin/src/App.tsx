@@ -28,6 +28,7 @@ import { EventCompsPage } from './pages/EventCompsPage';
 import { EventPaymentsPage } from './pages/EventPaymentsPage';
 import { EventStaffQrPage } from './pages/EventStaffQrPage';
 import { StaffQrPage } from './pages/StaffQrPage';
+import { UsersPage } from './pages/UsersPage';
 
 function EventSummaryRedirect() {
   const { eventId = '' } = useParams();
@@ -69,6 +70,7 @@ export default function App() {
         <Route element={<AdminLayout />}>
           <Route index element={<DashboardPage />} />
           <Route path="events" element={<EventsPage />} />
+          <Route path="users" element={<UsersPage />} />
           <Route path="drink-menus" element={<DrinkMenusPage />} />
           <Route path="venues" element={<VenuesPage />} />
           <Route path="categories" element={<CategoriesPage />} />

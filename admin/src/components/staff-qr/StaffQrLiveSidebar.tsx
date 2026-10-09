@@ -97,7 +97,7 @@ export function StaffQrLiveSidebar({ data, fetchedAt, onViewAll }: Props) {
                     <span>{item.staff_name}</span>
                   </div>
                   <p>
-                    {item.detail} · {item.zone}
+                    {[item.detail, item.guest_name, item.zone].filter(Boolean).join(' · ')}
                   </p>
                 </div>
                 {item.outcome === 'already_used' ? (

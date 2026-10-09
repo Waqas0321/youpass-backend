@@ -2,37 +2,52 @@ import { prisma } from '../../config/database.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { adminStaffService } from './admin-staff.service.js';
 
-const DASHBOARD_TIMEZONE = 'America/Santiago';
+const DEFAULT_TIMEZONE = 'America/Santiago';
 const QR_SCAN_OUTCOMES = ['valid', 'already_used'] as const;
+/** Nightlife "day": scans until 06:00 local still belong to the previous night. */
+const OPERATING_DAY_START_HOUR = 6;
 
-function startOfDayInTimezone(date: Date, timeZone: string) {
+/** Offset (ms) of `timeZone` from UTC at `date`: wall-clock time minus real time. */
+function timezoneOffsetMs(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
+    hourCycle: 'h23',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
   }).formatToParts(date);
-
-  const year = Number(parts.find((part) => part.type === 'year')?.value);
-  const month = Number(parts.find((part) => part.type === 'month')?.value);
-  const day = Number(parts.find((part) => part.type === 'day')?.value);
-  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value);
+  const wallAsUtc = Date.UTC(
+    value('year'),
+    value('month') - 1,
+    value('day'),
+    value('hour'),
+    value('minute'),
+    value('second'),
+  );
+  return wallAsUtc - Math.floor(date.getTime() / 1000) * 1000;
 }
 
-function endOfDayUtc(date: Date) {
-  const next = new Date(date);
-  next.setUTCHours(23, 59, 59, 999);
-  return next;
+/** Current operating day [06:00 local, next 06:00 local) as UTC instants. */
+function todayWindow(timeZone: string, now = new Date()) {
+  const shifted = new Date(now.getTime() - OPERATING_DAY_START_HOUR * 3600_000);
+  const wall = new Date(shifted.getTime() + timezoneOffsetMs(shifted, timeZone));
+  const wallStart = Date.UTC(
+    wall.getUTCFullYear(),
+    wall.getUTCMonth(),
+    wall.getUTCDate(),
+    OPERATING_DAY_START_HOUR,
+  );
+  const gte = new Date(wallStart - timezoneOffsetMs(new Date(wallStart), timeZone));
+  return { gte, lte: new Date(gte.getTime() + 24 * 3600_000 - 1) };
 }
 
-function todayWindow(now = new Date()) {
-  const start = startOfDayInTimezone(now, DASHBOARD_TIMEZONE);
-  return { gte: start, lte: endOfDayUtc(start) };
-}
-
-function formatTime(iso: string) {
+function formatTime(iso: string, timeZone: string) {
   return new Intl.DateTimeFormat('en-GB', {
-    timeZone: DASHBOARD_TIMEZONE,
+    timeZone,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -43,14 +58,18 @@ function formatTime(iso: string) {
 async function assertEventExists(eventId: string) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { id: true, title: true },
+    select: { id: true, title: true, countryCode: true },
   });
 
   if (!event) {
     throw new AppError(404, 'EVENT_NOT_FOUND', 'Event not found');
   }
 
-  return event;
+  const country = await prisma.country.findFirst({
+    where: { code: event.countryCode },
+    select: { timezone: true },
+  });
+  return { ...event, timeZone: country?.timezone || DEFAULT_TIMEZONE };
 }
 
 type ScanLogWithStaff = Awaited<ReturnType<typeof loadEventScanLogs>>[number];
@@ -63,12 +82,25 @@ function resolveScanZone(log: ScanLogWithStaff) {
   return log.accessLevel ?? log.staffMember.zone.label;
 }
 
-function formatQrLiveItem(log: ScanLogWithStaff) {
+/** Supervisor actions are logged with machine codes; show them readably in the live feed. */
+function formatScanDetail(itemName: string) {
+  if (!itemName.startsWith('supervisor_')) {
+    return itemName;
+  }
+  const words = itemName
+    .replace(/^supervisor_(entry_|drink_)?/, '')
+    .replace(/_/g, ' ')
+    .trim();
+  return `Supervisor · ${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
+function formatQrLiveItem(log: ScanLogWithStaff, timeZone: string) {
   return {
     id: log.id,
-    time_label: formatTime(log.scannedAt.toISOString()),
+    time_label: formatTime(log.scannedAt.toISOString(), timeZone),
     staff_name: log.staffMember.name,
-    detail: log.itemName,
+    guest_name: log.guestName,
+    detail: formatScanDetail(log.itemName),
     zone: resolveScanZone(log),
     kind: log.scanType === 'product' ? ('drink' as const) : ('ticket' as const),
     outcome: log.outcome,
@@ -153,7 +185,7 @@ function buildSummaryMetrics(logs: ScanLogWithStaff[]) {
 export const adminEventStaffQrService = {
   async getEventStaffQrDashboard(eventId: string) {
     const event = await assertEventExists(eventId);
-    const window = todayWindow();
+    const window = todayWindow(event.timeZone);
     const fetchedAt = new Date().toISOString();
 
     const [roles, staff, permissions, todayLogs] = await Promise.all([
@@ -164,7 +196,12 @@ export const adminEventStaffQrService = {
     ]);
 
     const scanMetrics = buildSummaryMetrics(todayLogs);
-    const activeStaff = staff.filter((member) => member.status === 'online').length;
+    // `status` is only the admin on/pause switch; online means seen in the last 15 minutes.
+    const onlineSince = Date.now() - 15 * 60 * 1000;
+    const activeStaff = staff.filter(
+      (member) =>
+        member.status === 'online' && new Date(member.last_activity_at).getTime() >= onlineSince,
+    ).length;
     const zonesAssigned = new Set(staff.map((member) => member.zone)).size;
 
     return {
@@ -180,7 +217,7 @@ export const adminEventStaffQrService = {
       },
       staff,
       staff_total: staff.length,
-      qr_live: todayLogs.slice(0, 8).map(formatQrLiveItem),
+      qr_live: todayLogs.slice(0, 8).map((log) => formatQrLiveItem(log, event.timeZone)),
       top_bar: buildTopBar(todayLogs),
       activity_by_zone: buildActivityByZone(todayLogs),
     };
@@ -188,7 +225,7 @@ export const adminEventStaffQrService = {
 
   async listEventStaffQrScans(eventId: string, page = 1, limit = 20) {
     const event = await assertEventExists(eventId);
-    const window = todayWindow();
+    const window = todayWindow(event.timeZone);
     const safePage = Math.max(1, page);
     const safeLimit = Math.min(Math.max(limit, 1), 50);
     const where = eventScanLogWhere(event.title, window);
@@ -213,7 +250,7 @@ export const adminEventStaffQrService = {
       page: safePage,
       limit: safeLimit,
       total,
-      scans: rows.map(formatQrLiveItem),
+      scans: rows.map((log) => formatQrLiveItem(log, event.timeZone)),
     };
   },
 };

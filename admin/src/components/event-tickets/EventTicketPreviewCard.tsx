@@ -29,7 +29,7 @@ export function EventTicketPreviewCard({
       </span>
       <div>
         <strong>{name || nameFallback}</strong>
-        <p>${priceLabel} CLP</p>
+        <p>{priceLabel}</p>
         <small>{validFromLabel}</small>
         <small>{validToLabel}</small>
       </div>

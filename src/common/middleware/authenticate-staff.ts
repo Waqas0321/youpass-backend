@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../errors/app-error.js';
-import { AUTH_ERROR_CODES } from '../../config/constants.js';
+import { AUTH_ERROR_CODES, STAFF_AUTH_ERROR_CODES } from '../../config/constants.js';
 import type { StaffJwtPayload } from '../types/auth.js';
 import { hashToken } from '../utils/crypto.js';
 import { staffActiveSessionWhere, isSessionActive, isSessionExpired } from '../utils/session-query.js';
@@ -55,10 +55,28 @@ export async function authenticateStaff(
       throw new AppError(401, AUTH_ERROR_CODES.SESSION_INVALID, 'Session is no longer valid');
     }
 
+    // Paused by an admin: cut off existing sessions immediately, not just new logins.
+    if (session.staffMember.status === 'paused') {
+      throw new AppError(
+        403,
+        STAFF_AUTH_ERROR_CODES.STAFF_INACTIVE,
+        'Your staff access is paused. Contact the event administrator.',
+      );
+    }
+
+    const now = new Date();
     await prisma.staffSession.update({
       where: { id: session.id },
-      data: { lastActivityAt: new Date() },
+      data: { lastActivityAt: now },
     });
+    // The admin panel reads presence from the member; throttle to one write a minute.
+    const memberLastActivity = session.staffMember.lastActivityAt?.getTime() ?? 0;
+    if (now.getTime() - memberLastActivity > 60_000) {
+      await prisma.staffMember.update({
+        where: { id: session.staffMember.id },
+        data: { lastActivityAt: now },
+      });
+    }
 
     req.staffMember = session.staffMember;
     req.sessionId = session.id;

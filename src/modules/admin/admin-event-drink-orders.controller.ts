@@ -14,6 +14,7 @@ function parseListQuery(req: Request) {
     limit: Number.isFinite(limit) ? limit : undefined,
     product_id: req.query.product_id?.toString(),
     qr_status: qrStatus,
+    payment: req.query.payment?.toString() || undefined,
     date_from: req.query.date_from?.toString(),
     date_to: req.query.date_to?.toString(),
   };

@@ -6,12 +6,14 @@ import {
   type AdminEvent,
   type AdminEventInput,
   type EventTypeOption,
+  type Producer,
 } from '../api/client';
 import { EventInfoAppPreviewModal } from '../components/event-info/EventInfoAppPreviewModal';
 import { EventInfoField } from '../components/event-info/EventInfoField';
 import {
   buildEventInfoPayload,
   createEventInfoId,
+  DEFAULT_EVENT_TIMEZONE,
   DESCRIPTION_MAX,
   EMPTY_EVENT_FORM,
   eventToFormState,
@@ -72,6 +74,7 @@ export function EventInfoPage() {
   const [sponsors, setSponsors] = useState<EventInfoSponsor[]>([]);
   const [socialLinks, setSocialLinks] = useState<EventInfoSocialLink[]>([]);
   const [categories, setCategories] = useState<EventTypeOption[]>([]);
+  const [producers, setProducers] = useState<Producer[]>([]);
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -167,7 +170,7 @@ export function EventInfoPage() {
           : baseTypes;
       setCategories(mergedTypes);
 
-      const state = eventToFormState(matched);
+      const state = eventToFormState(matched, matched.timezone ?? DEFAULT_EVENT_TIMEZONE);
       setEvent(matched);
       setSelectedEventId(matched.id);
       setForm(state.form);
@@ -182,6 +185,19 @@ export function EventInfoPage() {
       cancelled = true;
     };
   }, [eventId, isNew, setSelectedEventId, t]);
+
+  // Invitations/comps are signed by the event's producer, so admins must be able to set it.
+  useEffect(() => {
+    let cancelled = false;
+    void adminApi.producers().then((result) => {
+      if (!cancelled && result.ok) {
+        setProducers(result.data?.producers ?? []);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function updateForm<K extends keyof AdminEventInput>(key: K, value: AdminEventInput[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -243,16 +259,32 @@ export function EventInfoPage() {
   }
 
   async function persistEvent(nextStatus?: AdminEventInput['status']) {
-    const payload = buildEventInfoPayload({
-      form: nextStatus ? { ...form, status: nextStatus } : form,
-      addressLine,
-      endTime,
-      sponsors,
-      socialLinks,
-    });
+    // Times are typed in the event's local time, not the admin's browser timezone.
+    const eventTimeZone = event?.timezone ?? DEFAULT_EVENT_TIMEZONE;
+    const payload = buildEventInfoPayload(
+      {
+        form: nextStatus ? { ...form, status: nextStatus } : form,
+        addressLine,
+        endTime,
+        sponsors,
+        socialLinks,
+      },
+      eventTimeZone,
+    );
 
     if (!payload) {
       setError(t('eventInfo.requiredFields'));
+      return null;
+    }
+
+    // The API rejects events without a venue with a generic "Invalid request data".
+    if (!payload.venue_id && (payload.venue_name?.length ?? 0) < 2) {
+      setError(t('eventInfo.venueRequired'));
+      return null;
+    }
+
+    if (payload.status === 'published' && (!payload.description || !payload.address_line)) {
+      setError(t('eventInfo.publishRequiredFields'));
       return null;
     }
 
@@ -272,7 +304,7 @@ export function EventInfoPage() {
     }
 
     const saved = result.data;
-    const state = eventToFormState(saved);
+    const state = eventToFormState(saved, saved.timezone ?? eventTimeZone);
     setEvent(saved);
     setForm(state.form);
     setAddressLine(state.addressLine);
@@ -431,6 +463,24 @@ export function EventInfoPage() {
               {categories.map((category) => (
                 <option key={category.id} value={category.slug}>
                   {category.name}
+                </option>
+              ))}
+            </select>
+          </EventInfoField>
+
+          <EventInfoField
+            label={t('eventInfo.producer')}
+            hint={t('eventInfo.producerHint')}
+            className="event-info-field--full"
+          >
+            <select
+              value={form.producer_name ?? ''}
+              onChange={(e) => updateForm('producer_name', e.target.value)}
+            >
+              <option value="">{t('eventInfo.producerNone')}</option>
+              {producers.map((producer) => (
+                <option key={producer.id} value={producer.name}>
+                  {producer.name}
                 </option>
               ))}
             </select>

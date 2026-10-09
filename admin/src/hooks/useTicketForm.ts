@@ -33,6 +33,7 @@ export function useTicketForm(
   editingTicket: EventTicketRow | null,
   onSuccess: () => void,
   onClose: () => void,
+  timeZone?: string,
 ) {
   const { t } = useI18n();
   const isEdit = editingTicket !== null;
@@ -48,9 +49,9 @@ export function useTicketForm(
       return;
     }
 
-    setForm(editingTicket ? ticketRowToFormState(editingTicket) : EMPTY_TICKET_FORM);
+    setForm(editingTicket ? ticketRowToFormState(editingTicket, timeZone) : EMPTY_TICKET_FORM);
     setError('');
-  }, [open, editingTicket]);
+  }, [open, editingTicket, timeZone]);
 
   const updateForm = useCallback(<K extends keyof TicketFormState>(
     key: K,
@@ -83,6 +84,7 @@ export function useTicketForm(
       const payload = mapTicketFormToOfferingInput(
         form,
         resolveSaveStatus(editingTicket, asDraft, form.showInApp),
+        timeZone,
       );
 
       if (isEdit && editingTicket && payload.stock_total != null) {
@@ -106,7 +108,7 @@ export function useTicketForm(
       onSuccess();
       onClose();
     },
-    [editingTicket, eventId, form, isEdit, onClose, onSuccess, t],
+    [editingTicket, eventId, form, isEdit, onClose, onSuccess, t, timeZone],
   );
 
   return {

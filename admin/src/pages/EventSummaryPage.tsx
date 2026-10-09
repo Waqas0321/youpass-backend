@@ -155,12 +155,14 @@ export function EventSummaryPage() {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
+        timeZone: event.timezone,
       }).format(new Date(event.starts_at))
     : '';
   const timeLabel = event
     ? new Intl.DateTimeFormat(dateLocale, {
         hour: 'numeric',
         minute: '2-digit',
+        timeZone: event.timezone,
       }).format(new Date(event.starts_at))
     : '';
   const locationLabel =

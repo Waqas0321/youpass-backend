@@ -17,6 +17,8 @@ type Props = {
   onReissue: (orderId: string) => void;
   onRefund: (orderId: string) => void;
   onInvalidate: (orderId: string) => void;
+  /** Event timezone for order times. */
+  timeZone?: string;
 };
 
 function PaymentBadge({ brand, label }: { brand: string; label: string }) {
@@ -61,6 +63,7 @@ export function EventOrdersTable({
   onReissue,
   onRefund,
   onInvalidate,
+  timeZone,
 }: Props) {
   const { t, dateLocale, numberLocale } = useI18n();
 
@@ -96,7 +99,9 @@ export function EventOrdersTable({
               const paymentLabel =
                 order.payment_method.type === 'none'
                   ? t('orders.noPayment')
-                  : order.payment_method.last_four
+                  : order.payment_method.type === 'courtesy'
+                    ? t('orders.courtesy')
+                    : order.payment_method.last_four
                     ? `${order.payment_method.label} •••• ${order.payment_method.last_four}`
                     : order.payment_method.label;
 
@@ -133,10 +138,10 @@ export function EventOrdersTable({
                   <td>
                     <div className="event-orders-time">
                       <span className="event-orders-time__date">
-                        {formatOrderDate(order.created_at, dateLocale)}
+                        {formatOrderDate(order.created_at, dateLocale, timeZone)}
                       </span>
                       <span className="event-orders-time__hour">
-                        {formatOrderTime(order.created_at, dateLocale)}
+                        {formatOrderTime(order.created_at, dateLocale, timeZone)}
                       </span>
                     </div>
                   </td>
@@ -148,7 +153,6 @@ export function EventOrdersTable({
                       <span className="event-orders-total__amount">
                         {formatMoneyAmount(order.total_clp, order.currency ?? 'CLP', numberLocale)}
                       </span>
-                      <span className="event-orders-total__currency">{order.currency}</span>
                     </div>
                   </td>
                   <td>
