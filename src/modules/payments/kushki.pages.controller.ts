@@ -166,19 +166,19 @@ export function renderKushkiTokenizePage(req: Request, res: Response): void {
     <p>Los datos se tokenizan de forma segura. El CVV nunca se almacena en YouPass.</p>
     <form id="form" autocomplete="off">
       <label>Número de tarjeta</label>
-      <input id="card" name="yp-card" inputmode="numeric" placeholder="5451 9515 7492 5480" maxlength="19" ${inputAttrs} required />
+      <input id="card" name="yp-card" type="tel" inputmode="numeric" pattern="[0-9 ]*" autocomplete="cc-number" placeholder="5451 9515 7492 5480" maxlength="19" ${inputAttrs} required />
       <div class="row">
         <div>
           <label>Vencimiento</label>
-          <input id="expiry" name="yp-exp" placeholder="MM/YY" maxlength="5" ${inputAttrs} required />
+          <input id="expiry" name="yp-exp" type="tel" inputmode="numeric" pattern="[0-9/]*" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5" ${inputAttrs} required />
         </div>
         <div>
           <label>CVV</label>
-          <input id="cvv" name="yp-cvc" inputmode="numeric" placeholder="123" maxlength="4" ${inputAttrs} required />
+          <input id="cvv" name="yp-cvc" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="cc-csc" placeholder="123" maxlength="4" ${inputAttrs} required />
         </div>
       </div>
       <label>Nombre en la tarjeta</label>
-      <input id="name" name="yp-name" placeholder="Alejandro Ruiz" ${inputAttrs} required />
+      <input id="name" name="yp-name" autocomplete="cc-name" placeholder="Alejandro Ruiz" ${inputAttrs} required />
       <div id="err" class="err"></div>
       <button id="submit" type="submit">Guardar tarjeta</button>
       <p class="hint">Si iOS pide guardar la tarjeta en Wallet, elige Not Now y vuelve a pulsar el botón.</p>
@@ -339,19 +339,19 @@ export async function renderKushkiCheckoutPage(req: Request, res: Response): Pro
     <p>Pago seguro con tarjeta vía Kushki. Pedido ${escapeHtml(orderId)}.</p>
     <form id="form" autocomplete="off">
       <label>Número de tarjeta</label>
-      <input id="card" name="yp-card" inputmode="numeric" placeholder="5451 9515 7492 5480" maxlength="19" ${inputAttrs} required />
+      <input id="card" name="yp-card" type="tel" inputmode="numeric" pattern="[0-9 ]*" autocomplete="cc-number" placeholder="5451 9515 7492 5480" maxlength="19" ${inputAttrs} required />
       <div class="row">
         <div>
           <label>Vencimiento</label>
-          <input id="expiry" name="yp-exp" placeholder="MM/YY" maxlength="5" ${inputAttrs} required />
+          <input id="expiry" name="yp-exp" type="tel" inputmode="numeric" pattern="[0-9/]*" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5" ${inputAttrs} required />
         </div>
         <div>
           <label>CVV</label>
-          <input id="cvv" name="yp-cvc" inputmode="numeric" placeholder="123" maxlength="4" ${inputAttrs} required />
+          <input id="cvv" name="yp-cvc" type="tel" inputmode="numeric" pattern="[0-9]*" autocomplete="cc-csc" placeholder="123" maxlength="4" ${inputAttrs} required />
         </div>
       </div>
       <label>Nombre en la tarjeta</label>
-      <input id="name" name="yp-name" placeholder="Alejandro Ruiz" ${inputAttrs} required />
+      <input id="name" name="yp-name" autocomplete="cc-name" placeholder="Alejandro Ruiz" ${inputAttrs} required />
       <div id="err" class="err"></div>
       <button id="submit" type="submit">Pagar ahora</button>
       <p class="hint">Tarjeta de prueba: 5451951574925480 · MM/YY futuro · CVV 123. Si iOS pide guardar en Wallet, elige Not Now y pulsa Pagar ahora otra vez.</p>
